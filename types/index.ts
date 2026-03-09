@@ -1,0 +1,170 @@
+export interface QuoteData {
+  symbol: string
+  name: string
+  price: number
+  change: number
+  changePct: number
+  volume: number
+  high52w: number
+  low52w: number
+  marketCap: number
+  exchange: string
+  industry: string
+  timestamp: string
+}
+
+export interface CandleData {
+  time: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
+export interface MACDPoint {
+  macd: number
+  signal: number
+  histogram: number
+}
+
+export interface BBPoint {
+  upper: number
+  middle: number
+  lower: number
+}
+
+export interface IndicatorData {
+  sma20: number[]
+  sma50: number[]
+  rsi: number[]
+  macd: MACDPoint[]
+  bb: BBPoint[]
+}
+
+export interface HistoryData {
+  candles: CandleData[]
+  indicators: IndicatorData
+}
+
+export interface FundamentalData {
+  pe: number
+  eps: number
+  roe: number
+  roa: number
+  debtEquity: number
+  revenueGrowth: number
+  profitGrowth: number
+  dividendYield: number
+  bookValue: number
+  tcbsRating: number
+  tcbsRecommend: string
+}
+
+export interface NewsItem {
+  id: string
+  title: string
+  summary: string
+  source: string
+  url: string
+  publishedAt: string
+  sentiment: number
+  relatedSymbol: string | null
+}
+
+export interface EntryZone {
+  low: number
+  high: number
+}
+
+export interface AnalysisResult {
+  recommendation: 'MUA MẠNH' | 'MUA' | 'GIỮ' | 'BÁN' | 'BÁN MẠNH'
+  confidence: number
+  targetPrice: number
+  stopLoss: number
+  entryZone: EntryZone
+  holdingPeriod: string
+  technicalScore: number
+  fundamentalScore: number
+  sentimentScore: number
+  technical: string
+  fundamental: string
+  sentiment: string
+  pros: string[]
+  risks: string[]
+  action: string
+  nextReview: string
+}
+
+export interface SavedAnalysis {
+  id: string
+  user_id: string
+  symbol: string
+  recommendation: string
+  confidence: number
+  target_price: number
+  stop_loss: number
+  full_result: AnalysisResult
+  analyzed_at: string
+}
+
+export interface PortfolioHolding {
+  id: string
+  user_id: string
+  symbol: string
+  qty: number
+  avg_cost: number
+  total_cost: number
+  created_at: string
+  updated_at: string
+  currentPrice?: number
+  currentValue?: number
+  pnl?: number
+  pnlPct?: number
+}
+
+export interface Trade {
+  id: string
+  user_id: string
+  symbol: string
+  type: 'BUY' | 'SELL'
+  qty: number
+  price: number
+  fee: number
+  tax: number
+  total: number
+  traded_at: string
+}
+
+export interface Alert {
+  id: string
+  user_id: string
+  symbol: string
+  condition: 'ABOVE' | 'BELOW'
+  target_price: number
+  is_active: boolean
+  triggered_at: string | null
+  created_at: string
+}
+
+export interface Balance {
+  user_id: string
+  cash: number
+  updated_at: string
+}
+
+export interface ExchangeRate {
+  usdVnd: number
+  eurVnd: number
+  updatedAt: string
+}
+
+export interface OptimizeResult {
+  analysis: string
+  suggestions: string[]
+  rebalancePlan: string
+}
+
+export interface IndustryMap {
+  [symbol: string]: string
+}

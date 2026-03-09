@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: 220 40% 7%;
+    --surface: 222 30% 12%;
+    --surface2: 220 28% 16%;
+    --border-custom: 215 38% 19%;
+    --accent: 165 100% 41%;
+    --danger: 350 89% 60%;
+    --gold: 35 90% 55%;
+    --muted: 212 16% 56%;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #1e2d45 #0b0f1a;
+  }
+
+  body {
+    @apply bg-bg text-gray-100 antialiased;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #0b0f1a;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #1e2d45;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #2a3f5f;
+  }
+}
+
+@layer components {
+  .card-glass {
+    @apply bg-surface border border-border rounded-xl backdrop-blur-sm;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-accent to-blue-400 bg-clip-text text-transparent;
+  }
+
+  .btn-primary {
+    @apply bg-accent hover:bg-accent/90 text-bg font-semibold px-6 py-2.5 rounded-lg transition-all duration-200 hover:shadow-lg hover:shadow-accent/20;
+  }
+
+  .btn-danger {
+    @apply bg-danger hover:bg-danger/90 text-white font-semibold px-6 py-2.5 rounded-lg transition-all duration-200;
+  }
+
+  .input-dark {
+    @apply bg-surface2 border border-border rounded-lg px-4 py-2.5 text-gray-100 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-all;
+  }
+}
