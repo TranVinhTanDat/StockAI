@@ -6,7 +6,7 @@ export const maxDuration = 60
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { symbol, quote, indicators, fundamental, news } = body
+    const { symbol, quote, indicators, fundamental, news, currentHolding } = body
 
     if (!symbol) {
       return NextResponse.json(
@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
     const result = await analyzeStock({
       symbol,
       price: quote?.price || 0,
+      currentHolding: currentHolding || null,
       changePct: quote?.changePct || 0,
       sma20: latestSma20,
       sma50: latestSma50,

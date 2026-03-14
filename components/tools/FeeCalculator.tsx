@@ -4,13 +4,23 @@ import { useState } from 'react'
 import { formatVND } from '@/lib/utils'
 import { Calculator } from 'lucide-react'
 
-export default function FeeCalculator() {
-  const [price, setPrice] = useState('')
-  const [qty, setQty] = useState('')
-  const [type, setType] = useState<'BUY' | 'SELL'>('BUY')
+function useDotInput(initial = '') {
+  const [val, setVal] = useState(initial)
+  const num = parseFloat(val.replace(/\./g, '')) || 0
+  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\./g, '').replace(/[^\d]/g, '')
+    setVal(raw ? Number(raw).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '')
+  }
+  return { val, num, onChange }
+}
 
-  const p = parseFloat(price) || 0
-  const q = parseInt(qty) || 0
+export default function FeeCalculator() {
+  const price = useDotInput()
+  const qty = useDotInput()
+  const [type] = useState<'both'>('both')
+
+  const p = price.num
+  const q = qty.num
   const value = p * q
 
   const buyFee = value * 0.0015
@@ -18,6 +28,8 @@ export default function FeeCalculator() {
   const sellTax = value * 0.001
   const totalBuy = value + buyFee
   const totalSell = value - sellFee - sellTax
+
+  void type // suppress unused warning
 
   return (
     <div className="space-y-4">
@@ -30,21 +42,23 @@ export default function FeeCalculator() {
         <div>
           <label className="text-xs text-muted mb-1 block">Giá (VNĐ)</label>
           <input
-            type="number"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            placeholder="85000"
+            type="text"
+            value={price.val}
+            onChange={price.onChange}
+            placeholder="85.000"
             className="input-dark w-full text-sm"
+            inputMode="numeric"
           />
         </div>
         <div>
           <label className="text-xs text-muted mb-1 block">Số lượng</label>
           <input
-            type="number"
-            value={qty}
-            onChange={(e) => setQty(e.target.value)}
-            placeholder="100"
+            type="text"
+            value={qty.val}
+            onChange={qty.onChange}
+            placeholder="1.000"
             className="input-dark w-full text-sm"
+            inputMode="numeric"
           />
         </div>
       </div>
@@ -58,7 +72,7 @@ export default function FeeCalculator() {
           <div className="border-t border-border pt-2">
             <p className="text-xs text-accent font-medium mb-1">MUA</p>
             <div className="flex justify-between">
-              <span className="text-muted">Phí MG (0.15%):</span>
+              <span className="text-muted">Phí MG (0,15%):</span>
               <span>{formatVND(buyFee)}</span>
             </div>
             <div className="flex justify-between font-medium">
@@ -69,11 +83,11 @@ export default function FeeCalculator() {
           <div className="border-t border-border pt-2">
             <p className="text-xs text-danger font-medium mb-1">BÁN</p>
             <div className="flex justify-between">
-              <span className="text-muted">Phí MG (0.25%):</span>
+              <span className="text-muted">Phí MG (0,25%):</span>
               <span>{formatVND(sellFee)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted">Thuế (0.1%):</span>
+              <span className="text-muted">Thuế (0,1%):</span>
               <span>{formatVND(sellTax)}</span>
             </div>
             <div className="flex justify-between font-medium">

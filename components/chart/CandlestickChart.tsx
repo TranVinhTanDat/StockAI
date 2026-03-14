@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import type { HistoryData } from '@/types'
 
 interface CandlestickChartProps {
@@ -11,6 +11,10 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<ReturnType<typeof import('lightweight-charts').createChart> | null>(null)
   const resizeHandlerRef = useRef<(() => void) | null>(null)
+  const subCanvasRef = useRef<HTMLCanvasElement>(null)
+  const visibleRangeRef = useRef<{ from: number; to: number } | null>(null)
+  const drawSubCanvasRef = useRef<(() => void) | null>(null)
+
   const [data, setData] = useState<HistoryData | null>(null)
   const [days, setDays] = useState(90)
   const [loading, setLoading] = useState(false)
@@ -34,10 +38,190 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
     return () => { cancelled = true }
   }, [symbol, days])
 
+  // ── Draw sub-pane canvas (synced to visible range) ──────────────────────────
+  const drawSubCanvas = useCallback(() => {
+    const canvas = subCanvasRef.current
+    if (!canvas || !data?.candles?.length) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    // Determine visible range
+    const totalCandles = data.candles.length
+    const range = visibleRangeRef.current
+    const startIdx = range ? Math.max(0, Math.floor(range.from)) : 0
+    const endIdx = range ? Math.min(totalCandles - 1, Math.ceil(range.to)) : totalCandles - 1
+
+    const dpr = window.devicePixelRatio || 1
+    const w = canvas.offsetWidth || 600
+    const h = 90
+    canvas.width = w * dpr
+    canvas.height = h * dpr
+    ctx.scale(dpr, dpr)
+    ctx.clearRect(0, 0, w, h)
+
+    const pad = { l: 4, r: 60, t: 6, b: 6 }
+    const cw = w - pad.l - pad.r
+    const ch = h - pad.t - pad.b
+
+    const visibleCandles = data.candles.slice(startIdx, endIdx + 1)
+    const visibleCount = visibleCandles.length
+    if (visibleCount === 0) return
+
+    if (activePane === 'volume') {
+      const vols = visibleCandles.map((c) => c.volume)
+      const maxVol = Math.max(...vols, 1)
+      const bw = cw / visibleCount
+
+      vols.forEach((v, i) => {
+        const barH = (v / maxVol) * ch
+        const isUp = visibleCandles[i].close >= visibleCandles[i].open
+        ctx.fillStyle = isUp ? '#00d4aa66' : '#f43f5e66'
+        ctx.fillRect(pad.l + i * bw + 0.5, pad.t + ch - barH, Math.max(bw - 1, 1), barH)
+      })
+
+      // Latest volume label
+      const latest = vols[vols.length - 1]
+      ctx.fillStyle = '#7a8ba0'
+      ctx.font = '10px sans-serif'
+      ctx.textAlign = 'left'
+      ctx.fillText(`Vol: ${latest >= 1_000_000 ? (latest / 1_000_000).toFixed(1) + 'M' : (latest / 1_000).toFixed(0) + 'K'}`, w - pad.r + 4, 14)
+    }
+
+    if (activePane === 'rsi') {
+      const rsiSlice = (data.indicators?.rsi || []).slice(startIdx, endIdx + 1)
+      const validRsi: { x: number; v: number }[] = []
+      rsiSlice.forEach((v, i) => {
+        if (v != null && !isNaN(v)) validRsi.push({ x: pad.l + (i / (visibleCount - 1)) * cw, v })
+      })
+      if (validRsi.length < 2) return
+
+      // Zones
+      ctx.fillStyle = '#f43f5e12'
+      ctx.fillRect(pad.l, pad.t, cw, (ch * 30) / 100)         // overbought zone top
+      ctx.fillStyle = '#00d4aa12'
+      ctx.fillRect(pad.l, pad.t + (ch * 70) / 100, cw, (ch * 30) / 100) // oversold zone bottom
+
+      // Dashed lines at 70 / 30
+      ctx.strokeStyle = '#f43f5e50'
+      ctx.lineWidth = 1
+      ctx.setLineDash([3, 3])
+      ctx.beginPath()
+      ctx.moveTo(pad.l, pad.t + (ch * 30) / 100)
+      ctx.lineTo(pad.l + cw, pad.t + (ch * 30) / 100)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(pad.l, pad.t + (ch * 70) / 100)
+      ctx.lineTo(pad.l + cw, pad.t + (ch * 70) / 100)
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      // RSI line
+      const latest = validRsi[validRsi.length - 1].v
+      ctx.beginPath()
+      validRsi.forEach(({ x, v }, i) => {
+        const y = pad.t + ch * (1 - v / 100)
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+      })
+      ctx.strokeStyle = latest > 70 ? '#f43f5e' : latest < 30 ? '#00d4aa' : '#3b82f6'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+
+      // Labels
+      ctx.fillStyle = '#f43f5e80'
+      ctx.font = '9px sans-serif'
+      ctx.textAlign = 'left'
+      ctx.fillText('70', w - pad.r + 4, pad.t + (ch * 30) / 100 + 3)
+      ctx.fillStyle = '#00d4aa80'
+      ctx.fillText('30', w - pad.r + 4, pad.t + (ch * 70) / 100 + 3)
+      if (latest != null && !isNaN(latest)) {
+        ctx.fillStyle = ctx.strokeStyle
+        ctx.fillText(`RSI: ${latest.toFixed(1)}`, w - pad.r + 4, 14)
+      }
+    }
+
+    if (activePane === 'macd') {
+      const macdSlice = (data.indicators?.macd || []).slice(startIdx, endIdx + 1)
+      const validMacd = macdSlice.filter(
+        (v) => v.macd != null && v.signal != null && !isNaN(v.macd) && !isNaN(v.signal)
+      )
+      if (validMacd.length < 2) return
+
+      const histVals = validMacd.map((v) => v.histogram)
+      const maxAbs = Math.max(...histVals.map(Math.abs), 0.001)
+      const midY = pad.t + ch / 2
+      const xStep = cw / (validMacd.length - 1)
+      const bw = cw / validMacd.length
+
+      // Zero line
+      ctx.strokeStyle = '#1e2d4580'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(pad.l, midY)
+      ctx.lineTo(pad.l + cw, midY)
+      ctx.stroke()
+
+      // Histogram bars
+      validMacd.forEach((v, i) => {
+        const barH = (Math.abs(v.histogram) / maxAbs) * (ch / 2)
+        ctx.fillStyle = v.histogram >= 0 ? '#00d4aa55' : '#f43f5e55'
+        if (v.histogram >= 0) {
+          ctx.fillRect(pad.l + i * bw, midY - barH, Math.max(bw - 1, 1), barH)
+        } else {
+          ctx.fillRect(pad.l + i * bw, midY, Math.max(bw - 1, 1), barH)
+        }
+      })
+
+      // MACD line
+      ctx.beginPath()
+      validMacd.forEach((v, i) => {
+        const x = pad.l + i * xStep
+        const y = midY - (v.macd / maxAbs) * (ch / 2)
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+      })
+      ctx.strokeStyle = '#00d4aa'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+
+      // Signal line
+      ctx.beginPath()
+      validMacd.forEach((v, i) => {
+        const x = pad.l + i * xStep
+        const y = midY - (v.signal / maxAbs) * (ch / 2)
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+      })
+      ctx.strokeStyle = '#f43f5e'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+
+      // Labels
+      const latest = validMacd[validMacd.length - 1]
+      ctx.fillStyle = '#7a8ba0'
+      ctx.font = '9px sans-serif'
+      ctx.textAlign = 'left'
+      if (latest.macd != null && !isNaN(latest.macd)) {
+        ctx.fillText(`MACD ${latest.macd.toFixed(1)}`, w - pad.r + 4, 14)
+      }
+      if (latest.signal != null && !isNaN(latest.signal)) {
+        ctx.fillText(`Sig ${latest.signal.toFixed(1)}`, w - pad.r + 4, 26)
+      }
+      if (latest.histogram != null && !isNaN(latest.histogram)) {
+        ctx.fillStyle = latest.histogram >= 0 ? '#00d4aa' : '#f43f5e'
+        ctx.fillText(`H ${latest.histogram >= 0 ? '+' : ''}${latest.histogram.toFixed(1)}`, w - pad.r + 4, 38)
+      }
+    }
+  }, [data, activePane])
+
+  // Keep ref updated so chart subscription can call latest version
+  drawSubCanvasRef.current = drawSubCanvas
+
+  useEffect(() => {
+    drawSubCanvas()
+  }, [drawSubCanvas])
+
+  // ── Build main Lightweight Chart ────────────────────────────────────────────
   useEffect(() => {
     if (!data?.candles?.length || !chartContainerRef.current) return
 
-    // Clean up previous resize handler
     if (resizeHandlerRef.current) {
       window.removeEventListener('resize', resizeHandlerRef.current)
       resizeHandlerRef.current = null
@@ -91,14 +275,14 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
       }))
       candleSeries.setData(candleData)
 
-      // Helper to safely map indicator to chart data
+      // Helper to map indicator to chart data
       const mapIndicator = (values: number[]) =>
         values
           .map((v, i) => ({
             time: i < data.candles.length ? (data.candles[i].time as string) : '',
             value: v,
           }))
-          .filter((d) => !isNaN(d.value) && d.time)
+          .filter((d) => d.value != null && !isNaN(d.value) && d.time !== '')
 
       if (showSMA20 && data.indicators?.sma20) {
         const series = chart.addSeries(LineSeries, { color: '#f5a623', lineWidth: 1, priceLineVisible: false })
@@ -118,7 +302,7 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
               time: i < data.candles.length ? (data.candles[i].time as string) : '',
               value: fn(v),
             }))
-            .filter((d) => !isNaN(d.value) && d.time)
+            .filter((d) => d.value != null && !isNaN(d.value) && d.time !== '')
 
         const upper = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 1, lineStyle: 2, priceLineVisible: false })
         const lower = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 1, lineStyle: 2, priceLineVisible: false })
@@ -130,11 +314,20 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
 
       chart.timeScale().fitContent()
 
-      // Resize handler — stored in ref for proper cleanup
+      // ── Sync sub-pane with main chart zoom/scroll ──────────────────────────
+      chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (range) {
+          visibleRangeRef.current = range
+          drawSubCanvasRef.current?.()
+        }
+      })
+
+      // Resize handler
       const handleResize = () => {
         const el = chartContainerRef.current
         if (el && chartRef.current) {
           chartRef.current.applyOptions({ width: el.clientWidth })
+          drawSubCanvasRef.current?.()
         }
       }
       resizeHandlerRef.current = handleResize
@@ -155,68 +348,9 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
     }
   }, [data, showSMA20, showSMA50, showBB])
 
-  const renderSubPane = () => {
-    if (!data?.candles?.length) return null
-
-    if (activePane === 'rsi') {
-      const rsiValues = (data.indicators?.rsi || []).filter((v) => !isNaN(v))
-      const latest = rsiValues[rsiValues.length - 1]
-      return (
-        <div className="p-4">
-          <div className="flex items-center gap-4 text-sm">
-            <span className="text-muted">RSI(14):</span>
-            <span className={`font-medium ${latest > 70 ? 'text-danger' : latest < 30 ? 'text-accent' : 'text-gray-100'}`}>
-              {latest?.toFixed(1) || '---'}
-            </span>
-            <span className="text-xs text-muted">
-              {latest > 70 ? 'Quá mua' : latest < 30 ? 'Quá bán' : 'Trung lập'}
-            </span>
-          </div>
-          <div className="mt-2 h-2 bg-surface2 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full ${latest > 70 ? 'bg-danger' : latest < 30 ? 'bg-accent' : 'bg-blue-400'}`}
-              style={{ width: `${latest || 50}%` }}
-            />
-          </div>
-        </div>
-      )
-    }
-
-    if (activePane === 'macd') {
-      const macdValues = (data.indicators?.macd || []).filter((v) => !isNaN(v.macd))
-      const latest = macdValues[macdValues.length - 1]
-      return (
-        <div className="p-4">
-          <div className="flex items-center gap-4 text-sm">
-            <span className="text-muted">MACD:</span>
-            <span className="font-medium text-accent">{latest?.macd?.toFixed(0) || '---'}</span>
-            <span className="text-muted">Signal:</span>
-            <span className="font-medium text-danger">{latest?.signal?.toFixed(0) || '---'}</span>
-            <span className="text-muted">Hist:</span>
-            <span className={`font-medium ${(latest?.histogram || 0) >= 0 ? 'text-accent' : 'text-danger'}`}>
-              {latest?.histogram?.toFixed(0) || '---'}
-            </span>
-          </div>
-        </div>
-      )
-    }
-
-    // Volume
-    const latestCandle = data.candles[data.candles.length - 1]
-    return (
-      <div className="p-4">
-        <div className="flex items-center gap-4 text-sm">
-          <span className="text-muted">Volume:</span>
-          <span className="font-medium">
-            {latestCandle?.volume?.toLocaleString('vi-VN') || '---'}
-          </span>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="card-glass overflow-hidden">
+      {/* Controls */}
       <div className="p-4 border-b border-border flex flex-wrap items-center gap-2">
         <h3 className="font-semibold mr-4">Biểu Đồ {symbol}</h3>
         <div className="flex gap-1">
@@ -259,6 +393,7 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
         </div>
       </div>
 
+      {/* Main chart */}
       {loading ? (
         <div className="h-[400px] flex items-center justify-center">
           <div className="animate-spin w-8 h-8 border-2 border-accent border-t-transparent rounded-full" />
@@ -267,6 +402,7 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
         <div ref={chartContainerRef} className="w-full" />
       )}
 
+      {/* Sub-pane tabs + canvas */}
       <div className="border-t border-border">
         <div className="flex border-b border-border">
           {(['volume', 'rsi', 'macd'] as const).map((pane) => (
@@ -281,7 +417,15 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
             </button>
           ))}
         </div>
-        {renderSubPane()}
+        {data?.candles?.length ? (
+          <div className="px-0 py-2">
+            <canvas
+              ref={subCanvasRef}
+              className="w-full"
+              style={{ height: 90, display: 'block' }}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   )

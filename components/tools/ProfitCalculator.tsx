@@ -4,15 +4,25 @@ import { useState } from 'react'
 import { formatVND, formatPct } from '@/lib/utils'
 import { TrendingUp } from 'lucide-react'
 
+function useDotInput(initial = '') {
+  const [val, setVal] = useState(initial)
+  const num = parseFloat(val.replace(/\./g, '')) || 0
+  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\./g, '').replace(/[^\d]/g, '')
+    setVal(raw ? Number(raw).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '')
+  }
+  return { val, num, onChange }
+}
+
 export default function ProfitCalculator() {
-  const [buyPrice, setBuyPrice] = useState('')
-  const [sellPrice, setSellPrice] = useState('')
-  const [qty, setQty] = useState('')
+  const buyPrice = useDotInput()
+  const sellPrice = useDotInput()
+  const qty = useDotInput()
   const [days, setDays] = useState('')
 
-  const bp = parseFloat(buyPrice) || 0
-  const sp = parseFloat(sellPrice) || 0
-  const q = parseInt(qty) || 0
+  const bp = buyPrice.num
+  const sp = sellPrice.num
+  const q = qty.num
   const d = parseInt(days) || 0
 
   const buyValue = bp * q
@@ -27,9 +37,7 @@ export default function ProfitCalculator() {
   const profit = totalSell - totalBuy
   const roi = totalBuy > 0 ? (profit / totalBuy) * 100 : 0
   const annualizedRoi =
-    d > 0 && totalBuy > 0
-      ? (Math.pow(totalSell / totalBuy, 365 / d) - 1) * 100
-      : 0
+    d > 0 && totalBuy > 0 ? (Math.pow(totalSell / totalBuy, 365 / d) - 1) * 100 : 0
 
   return (
     <div className="space-y-4">
@@ -40,33 +48,36 @@ export default function ProfitCalculator() {
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs text-muted mb-1 block">Giá mua</label>
+          <label className="text-xs text-muted mb-1 block">Giá mua (VNĐ)</label>
           <input
-            type="number"
-            value={buyPrice}
-            onChange={(e) => setBuyPrice(e.target.value)}
-            placeholder="80000"
+            type="text"
+            value={buyPrice.val}
+            onChange={buyPrice.onChange}
+            placeholder="80.000"
             className="input-dark w-full text-sm"
+            inputMode="numeric"
           />
         </div>
         <div>
-          <label className="text-xs text-muted mb-1 block">Giá bán</label>
+          <label className="text-xs text-muted mb-1 block">Giá bán (VNĐ)</label>
           <input
-            type="number"
-            value={sellPrice}
-            onChange={(e) => setSellPrice(e.target.value)}
-            placeholder="95000"
+            type="text"
+            value={sellPrice.val}
+            onChange={sellPrice.onChange}
+            placeholder="95.000"
             className="input-dark w-full text-sm"
+            inputMode="numeric"
           />
         </div>
         <div>
           <label className="text-xs text-muted mb-1 block">Số lượng</label>
           <input
-            type="number"
-            value={qty}
-            onChange={(e) => setQty(e.target.value)}
-            placeholder="100"
+            type="text"
+            value={qty.val}
+            onChange={qty.onChange}
+            placeholder="1.000"
             className="input-dark w-full text-sm"
+            inputMode="numeric"
           />
         </div>
         <div>
@@ -99,9 +110,7 @@ export default function ProfitCalculator() {
           </div>
           <div className="flex justify-between">
             <span className="text-muted">ROI:</span>
-            <span className={roi >= 0 ? 'text-accent' : 'text-danger'}>
-              {formatPct(roi)}
-            </span>
+            <span className={roi >= 0 ? 'text-accent' : 'text-danger'}>{formatPct(roi)}</span>
           </div>
           {d > 0 && (
             <div className="flex justify-between">

@@ -6,15 +6,16 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatVND(n: number): string {
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-    maximumFractionDigits: 0,
-  }).format(n)
+  if (!isFinite(n) || isNaN(n)) return '0 ₫'
+  const rounded = Math.round(n)
+  const sign = rounded < 0 ? '-' : ''
+  const dotted = Math.abs(rounded).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${sign}${dotted} ₫`
 }
 
 export function formatNumber(n: number): string {
-  return new Intl.NumberFormat('vi-VN').format(n)
+  if (!isFinite(n) || isNaN(n)) return '0'
+  return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 }
 
 export function formatPct(n: number): string {

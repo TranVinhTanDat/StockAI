@@ -168,3 +168,62 @@ export interface OptimizeResult {
 export interface IndustryMap {
   [symbol: string]: string
 }
+
+export interface PredictionItem {
+  rank: number
+  symbol: string
+  score: number
+  recommendation: string
+  targetPrice: number
+  currentPrice: number
+  upsidePct: number
+  reason: string
+  keyMetrics: { pe: number; roe: number; growth: number }
+  riskLevel: string
+  entryZone: { low: number; high: number }
+}
+
+export interface CompanyYearly {
+  year: number
+  revenue: number
+  netIncome: number
+  eps: number
+  roe: number
+  roa: number
+  debtEquity: number
+  pe: number
+  pb: number
+  dividendYield: number
+  revenueGrowth: number
+  profitGrowth: number
+}
+
+export interface CompanyData {
+  symbol: string
+  companyName: string
+  industry: string
+  exchange: string
+  overview: {
+    marketCap: number
+    sharesOutstanding: number
+    high52w: number
+    low52w: number
+  }
+  yearly: CompanyYearly[]
+  currentRatios: {
+    pe: number
+    pb: number
+    roe: number
+    roa: number
+    debtEquity: number
+  }
+  tcbsRating: number
+  tcbsRecommend: string
+}
+
+export interface MarketIndexData {
+  vnindex: { value: number; change: number; changePct: number; volume: number }
+  hnxindex: { value: number; change: number; changePct: number; volume: number }
+  breadth: { advancing: number; declining: number; unchanged: number }
+  updatedAt: string
+}

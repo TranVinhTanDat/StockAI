@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import useSWR from 'swr'
 import { useWatchlist } from '@/hooks/useWatchlist'
 import { useMultiQuote } from '@/hooks/useQuote'
 import {
@@ -16,26 +17,80 @@ interface WatchlistTableProps {
   onAnalyze?: (symbol: string) => void
 }
 
+const sparklineFetcher = (url: string) =>
+  fetch(url).then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
+  })
+
+function Sparkline({ symbol }: { symbol: string }) {
+  const { data } = useSWR(
+    `/api/history?symbol=${symbol}&days=7`,
+    sparklineFetcher,
+    { revalidateOnFocus: false, dedupingInterval: 300000 }
+  )
+
+  if (!data?.candles?.length) {
+    return <span className="text-muted text-xs">---</span>
+  }
+
+  const prices: number[] = data.candles.map(
+    (c: { close: number }) => c.close
+  )
+  if (prices.length < 2) return <span className="text-muted text-xs">---</span>
+
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  const range = max - min || 1
+  const w = 60
+  const h = 24
+  const trend = prices[prices.length - 1] >= prices[0]
+  const color = trend ? '#00d4aa' : '#f43f5e'
+
+  const points = prices
+    .map((p, i) => {
+      const x = (i / Math.max(prices.length - 1, 1)) * w
+      const y = h - 2 - ((p - min) / range) * (h - 4)
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(' ')
+
+  return (
+    <svg width={w} height={h} className="inline-block">
+      <polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 export default function WatchlistTable({ onAnalyze }: WatchlistTableProps) {
   const { symbols, add, remove, has } = useWatchlist()
   const { quotes, isLoading } = useMultiQuote(symbols)
   const [searchInput, setSearchInput] = useState('')
   const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState('')
 
   const handleAdd = useCallback(async () => {
     const symbol = searchInput.trim().toUpperCase()
     if (!symbol) return
     setAdding(true)
+    setAddError('')
     try {
       const res = await fetch(`/api/quote?symbol=${symbol}`)
       if (res.ok) {
         await add(symbol)
         setSearchInput('')
       } else {
-        alert(`Mã ${symbol} không tồn tại`)
+        setAddError(`Mã ${symbol} không tồn tại`)
       }
     } catch {
-      alert('Lỗi khi thêm mã')
+      setAddError('Lỗi khi thêm mã')
     } finally {
       setAdding(false)
     }
@@ -67,6 +122,9 @@ export default function WatchlistTable({ onAnalyze }: WatchlistTableProps) {
             Thêm
           </button>
         </div>
+        {addError && (
+          <p className="text-xs text-danger mt-1">{addError}</p>
+        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -80,6 +138,7 @@ export default function WatchlistTable({ onAnalyze }: WatchlistTableProps) {
               <th className="px-4 py-3 text-right">+/-</th>
               <th className="px-4 py-3 text-right">%</th>
               <th className="px-4 py-3 text-right hidden lg:table-cell">KL</th>
+              <th className="px-3 py-3 text-center hidden sm:table-cell">7 ngày</th>
               <th className="px-4 py-3 text-center w-24" />
             </tr>
           </thead>
@@ -94,12 +153,13 @@ export default function WatchlistTable({ onAnalyze }: WatchlistTableProps) {
                   <td className="px-4 py-3"><div className="h-4 w-16 bg-border rounded ml-auto" /></td>
                   <td className="px-4 py-3"><div className="h-4 w-14 bg-border rounded ml-auto" /></td>
                   <td className="px-4 py-3 hidden lg:table-cell"><div className="h-4 w-14 bg-border rounded ml-auto" /></td>
+                  <td className="px-3 py-3 hidden sm:table-cell"><div className="h-4 w-14 bg-border rounded mx-auto" /></td>
                   <td className="px-4 py-3"><div className="h-4 w-16 bg-border rounded mx-auto" /></td>
                 </tr>
               ))
             ) : symbols.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-muted">
+                <td colSpan={9} className="px-4 py-12 text-center text-muted">
                   Chưa có mã trong watchlist. Thêm mã để theo dõi.
                 </td>
               </tr>
@@ -141,6 +201,9 @@ export default function WatchlistTable({ onAnalyze }: WatchlistTableProps) {
                     </td>
                     <td className="px-4 py-3 text-right text-muted hidden lg:table-cell">
                       {q ? formatVolume(q.volume) : '---'}
+                    </td>
+                    <td className="px-3 py-3 text-center hidden sm:table-cell">
+                      <Sparkline symbol={symbol} />
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button

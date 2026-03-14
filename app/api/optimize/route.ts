@@ -51,8 +51,16 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result)
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Optimization failed'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Optimization failed'
+    console.error('[optimize]', message)
+    return NextResponse.json({
+      analysis: 'Không thể kết nối AI lúc này. Vui lòng thử lại sau.',
+      suggestions: [
+        'Kiểm tra kết nối internet.',
+        'Đảm bảo API key Claude đã được cấu hình.',
+        'Thử lại sau vài phút.',
+      ],
+      rebalancePlan: message,
+    })
   }
 }

@@ -1,0 +1,536 @@
+# StockAI VN — Kế Hoạch Toàn Diện Từ Đầu
+
+---
+
+## 0. KIỂM TRA HIỆN TRẠNG (ĐÃ HOÀN TẤT ✅)
+
+### 0.1 Cấu Trúc Dự Án — 46 File Source Code
+
+```
+Trạng thái: ✅ = hoàn chỉnh, ⚠️ = cần sửa, 🆕 = cần tạo mới
+```
+
+#### API Routes (7 file — tất cả ✅)
+| File | Endpoint | Trạng thái | Ghi chú |
+|------|----------|------------|---------|
+| [app/api/quote/route.ts](file:///c:/Users/culua/Downloads/D_ToolStock/app/api/quote/route.ts) | `GET /api/quote?symbol=X` | ✅ | TCBS overview + intraday, cache 60s |
+| [app/api/history/route.ts](file:///c:/Users/culua/Downloads/D_ToolStock/app/api/history/route.ts) | `GET /api/history?symbol=X&days=90` | ✅ | TCBS bars-long-term + calcSMA/RSI/MACD/BB |
+| [app/api/fundamental/route.ts](file:///c:/Users/culua/Downloads/D_ToolStock/app/api/fundamental/route.ts) | `GET /api/fundamental?symbol=X` | ✅ | TCBS financialreport + rating |
+| [app/api/news/route.ts](file:///c:/Users/culua/Downloads/D_ToolStock/app/api/news/route.ts) | `GET /api/news?symbol=X` | ✅ | CafeF RSS + Finnhub, sentiment scoring |
+| [app/api/analyze/route.ts](file:///c:/Users/culua/Downloads/D_ToolStock/app/api/analyze/route.ts) | `POST /api/analyze` | ✅ | Claude claude-opus-4-5, JSON response |
+| [app/api/optimize/route.ts](file:///c:/Users/culua/Downloads/D_ToolStock/app/api/optimize/route.ts) | `POST /api/optimize` | ✅ | Claude tối ưu danh mục với ngành mapping |
+| [app/api/exchange/route.ts](file:///c:/Users/culua/Downloads/D_ToolStock/app/api/exchange/route.ts) | `GET /api/exchange` | ✅ | ExchangeRate-API, cache 300s |
+
+#### Lib Files (7 file — tất cả ✅)
+| File | Functions | Trạng thái |
+|------|-----------|------------|
+| [lib/tcbs.ts](file:///c:/Users/culua/Downloads/D_ToolStock/lib/tcbs.ts) | [fetchQuote](file:///c:/Users/culua/Downloads/D_ToolStock/lib/tcbs.ts#5-52), [fetchHistory](file:///c:/Users/culua/Downloads/D_ToolStock/lib/tcbs.ts#53-93), [fetchFundamental](file:///c:/Users/culua/Downloads/D_ToolStock/lib/tcbs.ts#94-150) | ✅ |
+| [lib/claude.ts](file:///c:/Users/culua/Downloads/D_ToolStock/lib/claude.ts) | [analyzeStock](file:///c:/Users/culua/Downloads/D_ToolStock/lib/claude.ts#37-122), [optimizePortfolio](file:///c:/Users/culua/Downloads/D_ToolStock/lib/claude.ts#136-182) | ✅ — cần thêm `predictStocks` |
+| [lib/finnhub.ts](file:///c:/Users/culua/Downloads/D_ToolStock/lib/finnhub.ts) | [fetchFinnhubNews](file:///c:/Users/culua/Downloads/D_ToolStock/lib/finnhub.ts#3-50) | ✅ |
+| [lib/indicators.ts](file:///c:/Users/culua/Downloads/D_ToolStock/lib/indicators.ts) | [calcSMA](file:///c:/Users/culua/Downloads/D_ToolStock/lib/indicators.ts#3-18), [calcEMA](file:///c:/Users/culua/Downloads/D_ToolStock/lib/indicators.ts#19-40), [calcRSI](file:///c:/Users/culua/Downloads/D_ToolStock/lib/indicators.ts#41-98), [calcMACD](file:///c:/Users/culua/Downloads/D_ToolStock/lib/indicators.ts#99-137), [calcBB](file:///c:/Users/culua/Downloads/D_ToolStock/lib/indicators.ts#138-166) | ✅ |
+| [lib/storage.ts](file:///c:/Users/culua/Downloads/D_ToolStock/lib/storage.ts) | CRUD watchlist/portfolio/trades/analyses/alerts/balance | ✅ — dual Supabase+localStorage |
+| [lib/supabase.ts](file:///c:/Users/culua/Downloads/D_ToolStock/lib/supabase.ts) | [getSupabase](file:///c:/Users/culua/Downloads/D_ToolStock/lib/supabase.ts#5-16), [isSupabaseConfigured](file:///c:/Users/culua/Downloads/D_ToolStock/lib/supabase.ts#17-23) | ✅ |
+| [lib/utils.ts](file:///c:/Users/culua/Downloads/D_ToolStock/lib/utils.ts) | formatVND/Pct/Volume, getUserId, INDUSTRY_MAP, POPULAR_SYMBOLS | ✅ |
+
+#### Components (25 file — 22 ✅, 3 ⚠️)
+| File | Trạng thái | Ghi chú |
+|------|------------|---------|
+| [components/layout/Navbar.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/layout/Navbar.tsx) | ✅ | Sticky nav, mobile hamburger |
+| [components/layout/MarketTicker.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/layout/MarketTicker.tsx) | ✅ | 10 mã ticker chạy ngang |
+| [components/dashboard/MarketOverview.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/dashboard/MarketOverview.tsx) | ⚠️ | **Dùng VCB proxy thay vì VN-Index thật** |
+| [components/dashboard/WatchlistTable.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/dashboard/WatchlistTable.tsx) | ⚠️ | **Thiếu sparkline 7 ngày** |
+| [components/dashboard/SentimentBar.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/dashboard/SentimentBar.tsx) | ✅ | Thanh trượt bi quan/lạc quan |
+| [components/analysis/AnalysisInput.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/analysis/AnalysisInput.tsx) | ✅ | Input + suggestions 20 mã |
+| [components/analysis/AnalysisResult.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/analysis/AnalysisResult.tsx) | ⚠️ | **Thiếu CompanyProfile chi tiết** |
+| [components/analysis/AnalysisHistory.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/analysis/AnalysisHistory.tsx) | ✅ | 10 phân tích gần nhất |
+| [components/analysis/LoadingSteps.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/analysis/LoadingSteps.tsx) | ✅ | 5 bước progress bar |
+| [components/chart/CandlestickChart.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/chart/CandlestickChart.tsx) | ✅ | Lightweight Charts + overlay + sub panes |
+| [components/news/NewsFeed.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/news/NewsFeed.tsx) | ✅ | Tabs thị trường/theo mã + SentimentBar |
+| [components/news/NewsCard.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/news/NewsCard.tsx) | ✅ | Source badge + sentiment emoji |
+| [components/portfolio/PortfolioDashboard.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/portfolio/PortfolioDashboard.tsx) | ✅ | 4 cards tổng quan |
+| [components/portfolio/TradeForm.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/portfolio/TradeForm.tsx) | ✅ | MUA/BÁN + auto fetch giá |
+| [components/portfolio/HoldingsTable.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/portfolio/HoldingsTable.tsx) | ✅ | Bảng danh mục + nút Bán |
+| [components/portfolio/AllocationChart.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/portfolio/AllocationChart.tsx) | ✅ | Canvas donut chart |
+| [components/portfolio/OptimizeModal.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/portfolio/OptimizeModal.tsx) | ✅ | AI tối ưu modal |
+| [components/tools/FeeCalculator.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/tools/FeeCalculator.tsx) | ✅ | Phí 0.15% mua / 0.25%+0.1% bán |
+| [components/tools/ProfitCalculator.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/tools/ProfitCalculator.tsx) | ✅ | Lãi/lỗ + ROI + annualized |
+| [components/tools/DCASimulator.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/tools/DCASimulator.tsx) | ✅ | Canvas chart + bảng tháng |
+| [components/tools/PECalculator.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/tools/PECalculator.tsx) | ✅ | P/E + so sánh 10 ngành VN |
+| [components/tools/Glossary.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/tools/Glossary.tsx) | ✅ | 35 thuật ngữ + search filter |
+| [components/alerts/AlertManager.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/alerts/AlertManager.tsx) | ✅ | Form + bảng + browser notification |
+
+#### Hooks (4 file — tất cả ✅)
+| File | Trạng thái |
+|------|------------|
+| [hooks/useQuote.ts](file:///c:/Users/culua/Downloads/D_ToolStock/hooks/useQuote.ts) | ✅ — SWR, refreshInterval 60s, useMultiQuote batch |
+| [hooks/useWatchlist.ts](file:///c:/Users/culua/Downloads/D_ToolStock/hooks/useWatchlist.ts) | ✅ — add/remove/has |
+| [hooks/usePortfolio.ts](file:///c:/Users/culua/Downloads/D_ToolStock/hooks/usePortfolio.ts) | ✅ — buy/sell/reload, phí + thuế |
+| [hooks/useAlerts.ts](file:///c:/Users/culua/Downloads/D_ToolStock/hooks/useAlerts.ts) | ✅ — create/toggle/remove/checkAlerts |
+
+#### Config & Build
+| File | Trạng thái |
+|------|------------|
+| [package.json](file:///c:/Users/culua/Downloads/D_ToolStock/package.json) | ✅ — 24 deps, Next 14.2.35, React 18.3.1, lightweight-charts 5.1.0 |
+| [tailwind.config.ts](file:///c:/Users/culua/Downloads/D_ToolStock/tailwind.config.ts) | ✅ — custom colors/fonts/animations |
+| [tsconfig.json](file:///c:/Users/culua/Downloads/D_ToolStock/tsconfig.json) | ✅ — `@/` path alias |
+| [.env.local](file:///c:/Users/culua/Downloads/D_ToolStock/.env.local) | ✅ — Claude key + Finnhub key có giá trị |
+| `next build` | ✅ — exit code 0, compiled successfully |
+
+---
+
+### 0.2 Gap Analysis — Những Gì Còn Thiếu
+
+| # | Gap | Mức ảnh hưởng | Giải pháp |
+|---|-----|--------------|-----------|
+| G1 | VN-Index card dùng VCB proxy, không phải chỉ số thật | 🔴 Cao | Tạo `/api/market-index` fetch TCBS market data |
+| G2 | Không có tính năng AI dự đoán mã nên đầu tư | 🔴 Cao | Tạo `/api/predict` + `StockPredictions.tsx` |
+| G3 | Khi phân tích không có hồ sơ tài chính chi tiết 4 năm | 🟡 Trung bình | Tạo `/api/company` + `CompanyProfile.tsx` |
+| G4 | WatchlistTable thiếu sparkline 7 ngày | 🟡 Trung bình | Thêm inline SVG sparkline component |
+| G5 | AI Hôm Nay card hiện "chờ phân tích" cứng | 🟡 Trung bình | Đếm MUA/GIỮ/BÁN từ analyses trong ngày |
+| G6 | Tâm lý TT card hiện 55% cứng | 🟡 Trung bình | Tính từ market breadth thật |
+
+---
+
+## 1. CHI TIẾT TỪNG THAY ĐỔI
+
+---
+
+### THAY ĐỔI 1 — API VN-Index Thật
+
+#### [NEW] `app/api/market-index/route.ts`
+
+**Endpoint**: `GET /api/market-index`
+
+**TCBS API endpoints thử theo thứ tự**:
+```
+1. https://apipubaws.tcbs.com.vn/stock-insight/v1/stock/second-tc-price?tickers=VNINDEX,HNXINDEX
+2. Fallback: https://apipubaws.tcbs.com.vn/stock-insight/v2/stock/ticker-overview?ticker=VNINDEX
+3. Fallback cuối: tính từ 10 mã watchlist default
+```
+
+**Response**:
+```typescript
+interface MarketIndexData {
+  vnindex: { value: number; change: number; changePct: number; volume: number }
+  hnxindex: { value: number; change: number; changePct: number; volume: number }
+  breadth: { advancing: number; declining: number; unchanged: number }
+  updatedAt: string
+}
+```
+
+**Cache**: `revalidate = 60`
+
+**Logic breadth (fallback)**: fetch `/api/quote` cho 10 mã default → đếm:
+- `advancing` = số mã có `changePct > 0`
+- `declining` = số mã có `changePct < 0`
+- `unchanged` = số mã có `changePct === 0`
+
+---
+
+### THAY ĐỔI 2 — API Dự Đoán Mã Nên Đầu Tư
+
+#### [NEW] `app/api/predict/route.ts`
+
+**Endpoint**: `GET /api/predict?style=balanced`
+
+**Query params**:
+| Param | Type | Default | Accepted |
+|-------|------|---------|----------|
+| `style` | string | `balanced` | `safe`, `balanced`, `growth`, `speculative` |
+
+**Bước xử lý chi tiết**:
+```
+Bước 1: Lấy 20 mã từ POPULAR_SYMBOLS
+Bước 2: Fetch song song cho mỗi mã (Promise.allSettled):
+  - fetchQuote(symbol) → price, changePct, volume
+  - fetchFundamental(symbol) → pe, eps, roe, revenueGrowth, profitGrowth, debtEquity
+Bước 3: Fetch history 30 ngày → tính RSI cuối cho mỗi mã
+Bước 4: Gộp bảng 20 mã → gửi Claude
+Bước 5: Parse JSON → trả về client
+```
+
+**Mô tả phong cách cho Claude prompt**:
+| Style | Label VN | Mô tả gửi Claude |
+|-------|----------|-------------------|
+| `safe` | An Toàn | Nhà đầu tư bảo thủ: blue-chip, P/E < 15, ROE > 15%, D/E < 1, cổ tức > 3%, vốn hóa lớn, thanh khoản cao |
+| `balanced` | Cân Bằng | Nhà đầu tư cân bằng: P/E 10-20, ROE > 12%, tăng trưởng ổn định 10-20%, beta < 1.2 |
+| `growth` | Tăng Trưởng | Nhà đầu tư tăng trưởng: tăng trưởng DT > 20%, LN > 15%, xu hướng kỹ thuật bullish |
+| `speculative` | Đầu Cơ | Nhà đầu tư đầu cơ: RSI < 40 quá bán, giá dưới SMA50, P/E thấp hơn ngành, tiềm năng phục hồi mạnh |
+
+**Claude system prompt**:
+```
+Bạn là chuyên gia quản lý quỹ đầu tư CFA chuyên thị trường Việt Nam, 20 năm kinh nghiệm.
+Dựa trên data THẬT bên dưới, chọn TOP 5-8 mã tốt nhất cho phong cách ${styleDescription}.
+Xếp hạng từ cao tới thấp theo mức độ phù hợp.
+CHỈ trả về JSON array hợp lệ, KHÔNG có text nào khác ngoài JSON.
+```
+
+**Claude user prompt**:
+```
+DATA 20 MÃ CỔ PHIẾU VN (${timestamp}):
+
+| # | Mã | Giá (₫) | %Change | P/E | EPS (₫) | ROE% | DT_Growth% | LN_Growth% | D/E | RSI14 | KL |
+${tableRows}
+
+PHONG CÁCH ĐẦU TƯ: ${styleDescription}
+
+Trả về JSON array (5-8 mã tốt nhất):
+[{
+  "rank": 1,
+  "symbol": "FPT",
+  "score": 85,
+  "recommendation": "MUA MẠNH|MUA|GIỮ",
+  "targetPrice": 98000,
+  "currentPrice": 85200,
+  "upsidePct": 15.0,
+  "reason": "Phân tích 80-100 từ dựa trên data thật ở trên, giải thích TẠI SAO mã này phù hợp phong cách ${style}",
+  "keyMetrics": {"pe": 18.5, "roe": 22.1, "growth": 25.3},
+  "riskLevel": "THẤP|TRUNG BÌNH|CAO",
+  "entryZone": {"low": 83000, "high": 86000}
+}]
+```
+
+**Response type**: `PredictionItem[]`  
+**Cache**: `revalidate = 1800` (30 phút)  
+**Model**: `claude-opus-4-5-20250514`, `max_tokens = 2500`
+
+---
+
+### THAY ĐỔI 3 — API Hồ Sơ Tài Chính Chi Tiết
+
+#### [NEW] `app/api/company/route.ts`
+
+**Endpoint**: `GET /api/company?symbol=FPT`
+
+**TCBS API calls (song song)**:
+```typescript
+const [reportRes, ratingRes, overviewRes] = await Promise.all([
+  // 4 năm financial report
+  fetch(`https://apipubaws.tcbs.com.vn/tcanalysis/v1/finance/${symbol}/financialreport?yearly=4&quarterly=0`),
+  // Rating
+  fetch(`https://apipubaws.tcbs.com.vn/tcanalysis/v1/rating/${symbol}/rating`),
+  // Overview (đã dùng trong quote)
+  fetch(`https://apipubaws.tcbs.com.vn/stock-insight/v1/stock/ticker-overview?ticker=${symbol}`)
+])
+```
+
+**Parse logic cho yearly array**:
+```typescript
+// TCBS trả về array 4 phần tử, mỗi phần tử 1 năm (mới → cũ)
+const reports = await reportRes.json() // Array<{...}>
+const yearly = reports.map((r, i) => ({
+  year: new Date().getFullYear() - i,
+  revenue: (r.revenue || 0) / 1e9,              // → tỷ VNĐ
+  netIncome: (r.netIncome || r.postTaxProfit || 0) / 1e9,
+  eps: (r.eps || 0) * 1000,                      // → VNĐ
+  roe: (r.roe || 0) * 100,                       // → %
+  roa: (r.roa || 0) * 100,
+  debtEquity: r.debtOnEquity || 0,
+  pe: r.pe || 0,
+  pb: r.pb || 0,
+  dividendYield: (r.dividendYield || 0) * 100,
+  revenueGrowth: (r.revenueGrowth || 0) * 100,
+  profitGrowth: (r.earningGrowth || 0) * 100,
+}))
+```
+
+**Response type**: `CompanyData` (xem Types bên dưới)  
+**Cache**: `revalidate = 3600` (1 giờ)
+
+---
+
+### THAY ĐỔI 4 — TypeScript Interfaces Mới
+
+#### [MODIFY] [types/index.ts](file:///c:/Users/culua/Downloads/D_ToolStock/types/index.ts)
+
+Thêm 3 interfaces ở cuối file:
+
+```typescript
+export interface PredictionItem {
+  rank: number
+  symbol: string
+  score: number
+  recommendation: string
+  targetPrice: number
+  currentPrice: number
+  upsidePct: number
+  reason: string
+  keyMetrics: { pe: number; roe: number; growth: number }
+  riskLevel: string
+  entryZone: { low: number; high: number }
+}
+
+export interface CompanyData {
+  symbol: string
+  companyName: string
+  industry: string
+  exchange: string
+  overview: {
+    marketCap: number
+    sharesOutstanding: number
+    high52w: number
+    low52w: number
+  }
+  yearly: Array<{
+    year: number; revenue: number; netIncome: number
+    eps: number; roe: number; roa: number
+    debtEquity: number; pe: number; pb: number
+    dividendYield: number; revenueGrowth: number; profitGrowth: number
+  }>
+  currentRatios: {
+    pe: number; pb: number; roe: number
+    roa: number; debtEquity: number
+  }
+  tcbsRating: number
+  tcbsRecommend: string
+}
+
+export interface MarketIndexData {
+  vnindex: { value: number; change: number; changePct: number; volume: number }
+  hnxindex: { value: number; change: number; changePct: number; volume: number }
+  breadth: { advancing: number; declining: number; unchanged: number }
+  updatedAt: string
+}
+```
+
+---
+
+### THAY ĐỔI 5 — Claude Predict Function
+
+#### [MODIFY] [lib/claude.ts](file:///c:/Users/culua/Downloads/D_ToolStock/lib/claude.ts)
+
+Thêm function `predictStocks()` sau [optimizePortfolio()](file:///c:/Users/culua/Downloads/D_ToolStock/lib/claude.ts#136-182):
+
+```typescript
+interface PredictContext {
+  style: 'safe' | 'balanced' | 'growth' | 'speculative'
+  styleDescription: string
+  stocks: Array<{
+    symbol: string; price: number; changePct: number
+    pe: number; eps: number; roe: number
+    revenueGrowth: number; profitGrowth: number
+    debtEquity: number; rsi: number; volume: number
+  }>
+}
+
+export async function predictStocks(ctx: PredictContext): Promise<PredictionItem[]>
+```
+
+**Model**: `claude-opus-4-5-20250514`, `max_tokens = 2500`
+
+---
+
+### THAY ĐỔI 6 — Component AI Dự Đoán
+
+#### [NEW] `components/dashboard/StockPredictions.tsx`
+
+**Props**: none (self-contained)
+
+**UI wireframe**:
+```
+┌──────────────────────────────────────────────────────────────┐
+│ 🎯 AI Dự Đoán — Mã Nên Đầu Tư Hôm Nay                    │
+│                                                              │
+│ ┌──────────┐ ┌───────────┐ ┌────────────┐ ┌────────┐       │
+│ │ An Toàn  │ │ Cân Bằng● │ │ Tăng Trưởng │ │ Đầu Cơ │       │
+│ └──────────┘ └───────────┘ └────────────┘ └────────┘       │
+│                                                              │
+│ 📅 Cập nhật: 14:32 13/03/2026 · Dữ liệu TCBS realtime     │
+│ ────────────────────────────────────────────────────────────  │
+│                                                              │
+│ ┌─ #1 ─────────────────────────────────────────────────────┐ │
+│ │ FPT  •  FPT Corporation                    ★ Score: 85  │ │
+│ │ 85,200₫  +2.3%↑                                         │ │
+│ │                                                          │ │
+│ │ ┌──────────────┐  🎯 Mục tiêu: 98,000₫ (+15.0%)       │ │
+│ │ │  MUA MẠNH    │  📥 Vào lệnh: 83,000₫ - 86,000₫      │ │
+│ │ │              │  ⚡ Rủi ro: THẤP                       │ │
+│ │ └──────────────┘                                        │ │
+│ │                                                          │ │
+│ │ P/E: 18.5x  │  ROE: 22.1%  │  Growth: +25.3%          │ │
+│ │                                                          │ │
+│ │ "Tăng trưởng DT 25% YoY vượt trội ngành CN, MACD       │ │
+│ │  bullish cross, P/E 18.5x hợp lý so ngành 22x..."      │ │
+│ └──────────────────────────────────────────────────────────┘ │
+│                                                              │
+│ ┌─ #2 VNM ──────────┐  ┌─ #3 TCB ──────────┐  ...         │
+│ └────────────────────┘  └────────────────────┘              │
+│                                                              │
+│ ⚠️ Chỉ mang tính tham khảo, không phải lời khuyên đầu tư  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Data flow**: `useSWR(/api/predict?style=${style}, { refreshInterval: 1800000 })`
+
+**Skeleton**: 3 animate-pulse cards khi loading
+
+---
+
+### THAY ĐỔI 7 — Component Hồ Sơ Tài Chính
+
+#### [NEW] `components/analysis/CompanyProfile.tsx`
+
+**Props**: `{ symbol: string }`
+
+**Data flow**: `useSWR(/api/company?symbol=${symbol})`
+
+**3 sections**:
+
+**Section A — 4 Overview Cards**:
+```
+┌─ Vốn hóa ─────┐ ┌─ P/E ───────────┐ ┌─ ROE ──────────┐ ┌─ TCBS ─────────┐
+│ 125,000 tỷ     │ │ 18.5x           │ │ 22.1%          │ │ ★★★★☆ 4/5     │
+│ Large Cap      │ │ Ngành CN: 22x   │ │ > 15% = Tốt    │ │ Khuyến nghị:   │
+│                │ │ → Dưới TB ngành  │ │                │ │ MUA            │
+└────────────────┘ └─────────────────┘ └────────────────┘ └────────────────┘
+```
+
+**Section B — Canvas Bar Chart**: 4 năm (revenue bars + netIncome bars + growth line overlay)
+
+**Section C — Bảng Chi Tiết Tài Chính**:
+```
+│ Chỉ số            │  2022   │  2023   │  2024   │  2025   │
+│ Doanh thu (tỷ)    │ 38,000  │ 45,000  │ 52,000  │ ...     │
+│ Lợi nhuận (tỷ)    │  5,200  │  6,400  │  7,800  │ ...     │
+│ EPS (₫)           │  4,200  │  5,100  │  6,200  │ ...     │
+│ P/E               │  15.2x  │  17.8x  │  18.5x  │ ...     │
+│ ROE (%)           │  18.5   │  20.2   │  22.1   │ ...     │
+│ ROA (%)           │   8.2   │   9.1   │  10.3   │ ...     │
+│ D/E               │  0.65   │  0.72   │  0.68   │ ...     │
+│ Cổ tức (%)        │   2.5   │   2.8   │   3.0   │ ...     │
+│ TT Doanh thu (%)  │ +18.2   │ +18.4   │ +15.6   │ ...     │ cells xanh/đỏ
+│ TT Lợi nhuận (%)  │ +22.1   │ +23.1   │ +21.9   │ ...     │
+```
+
+---
+
+### THAY ĐỔI 8 — Cập Nhật MarketOverview
+
+#### [MODIFY] [components/dashboard/MarketOverview.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/dashboard/MarketOverview.tsx)
+
+**Thay đổi cụ thể**:
+
+| Hiện tại | Sẽ thay bằng |
+|----------|-------------|
+| [fetch('/api/quote?symbol=VCB')](file:///c:/Users/culua/Downloads/D_ToolStock/components/news/NewsFeed.tsx#10-15) | [fetch('/api/market-index')](file:///c:/Users/culua/Downloads/D_ToolStock/components/news/NewsFeed.tsx#10-15) |
+| Label "VN-Index (VCB proxy)" | Label "VN-Index" |
+| Card Tâm lý: `55%` cứng | Tính từ `breadth.advancing / total * 100` |
+| Card AI: "chờ phân tích" cứng | Đếm MUA/GIỮ/BÁN từ [getAnalyses()](file:///c:/Users/culua/Downloads/D_ToolStock/lib/storage.ts#266-282) trong ngày |
+
+---
+
+### THAY ĐỔI 9 — Sparkline trong WatchlistTable
+
+#### [MODIFY] [components/dashboard/WatchlistTable.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/dashboard/WatchlistTable.tsx)
+
+**Thêm cột mới** giữa "KL" và nút "Phân tích":
+
+```typescript
+// Inline component mới
+function Sparkline({ symbol }: { symbol: string }) {
+  const { data } = useSWR<HistoryData>(
+    `/api/history?symbol=${symbol}&days=7`,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 300000 }
+  )
+  if (!data?.candles?.length) return <span className="text-muted text-xs">---</span>
+
+  const prices = data.candles.map(c => c.close)
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  const range = max - min || 1
+  const w = 60, h = 24
+  const trend = prices[prices.length - 1] >= prices[0]
+
+  const points = prices.map((p, i) => {
+    const x = (i / Math.max(prices.length - 1, 1)) * w
+    const y = h - ((p - min) / range) * (h - 4) - 2
+    return `${x},${y}`
+  }).join(' ')
+
+  return (
+    <svg width={w} height={h} className="inline-block">
+      <polyline points={points} fill="none"
+        stroke={trend ? '#00d4aa' : '#f43f5e'} strokeWidth="1.5" />
+    </svg>
+  )
+}
+```
+
+**Thêm header**: `<th className="...">7 ngày</th>`  
+**Thêm cell**: `<td><Sparkline symbol={symbol} /></td>`
+
+---
+
+### THAY ĐỔI 10 — Tích Hợp Vào page.tsx
+
+#### [MODIFY] [app/page.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/app/page.tsx)
+
+**Thay đổi 1**: Import thêm 2 components:
+```typescript
+import StockPredictions from '@/components/dashboard/StockPredictions'
+import CompanyProfile from '@/components/analysis/CompanyProfile'
+```
+
+**Thay đổi 2**: Thêm section StockPredictions sau MarketOverview (dòng ~187):
+```tsx
+{/* ── AI Dự Đoán ── */}
+<section className="max-w-7xl mx-auto px-4 pb-12">
+  <StockPredictions />
+</section>
+```
+
+**Thay đổi 3**: Thêm CompanyProfile sau AnalysisResult (dòng ~243):
+```tsx
+{analysisState.status === 'done' && (
+  <div className="space-y-4">
+    <AnalysisResult ... />
+    <CompanyProfile symbol={analysisState.symbol} />
+  </div>
+)}
+```
+
+---
+
+## 2. TÓM TẮT TOÀN BỘ THAY ĐỔI
+
+| # | Action | File | Mô tả ngắn |
+|---|--------|------|-------------|
+| 1 | 🆕 NEW | `app/api/market-index/route.ts` | VN-Index/HNX-Index thật từ TCBS |
+| 2 | 🆕 NEW | `app/api/predict/route.ts` | AI dự đoán TOP 5-8 mã nên đầu tư |
+| 3 | 🆕 NEW | `app/api/company/route.ts` | Hồ sơ tài chính chi tiết 4 năm |
+| 4 | 🆕 NEW | `components/dashboard/StockPredictions.tsx` | UI danh sách dự đoán + 4 phong cách |
+| 5 | 🆕 NEW | `components/analysis/CompanyProfile.tsx` | Bảng + biểu đồ tài chính 4 năm |
+| 6 | ✏️ MODIFY | [types/index.ts](file:///c:/Users/culua/Downloads/D_ToolStock/types/index.ts) | +3 interfaces: Prediction, Company, MarketIndex |
+| 7 | ✏️ MODIFY | [lib/claude.ts](file:///c:/Users/culua/Downloads/D_ToolStock/lib/claude.ts) | +`predictStocks()` function |
+| 8 | ✏️ MODIFY | [components/dashboard/MarketOverview.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/dashboard/MarketOverview.tsx) | VN-Index thật + sentiment + AI counts |
+| 9 | ✏️ MODIFY | [components/dashboard/WatchlistTable.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/components/dashboard/WatchlistTable.tsx) | +sparkline SVG 7 ngày |
+| 10 | ✏️ MODIFY | [app/page.tsx](file:///c:/Users/culua/Downloads/D_ToolStock/app/page.tsx) | +2 sections: StockPredictions + CompanyProfile |
+
+**Tổng**: 5 file mới + 5 file sửa đổi = **10 thay đổi**
+
+---
+
+## 3. VERIFICATION PLAN
+
+### 3.1 Build Check
+```bash
+npx next build
+# Kỳ vọng: exit code 0, "Compiled successfully", 0 errors TypeScript
+```
+
+### 3.2 Browser Testing
+Khởi động: `npm run dev` → http://localhost:3000
+
+| # | Test Case | Kỳ Vọng |
+|---|-----------|---------|
+| T1 | Trang chủ load | VN-Index card hiển thị giá trị thực (≠ giá VCB) |
+| T2 | Card Tâm lý TT | Hiển thị % dựa trên số mã tăng/giảm thật |
+| T3 | Section AI Dự Đoán | 4 tab phong cách, click chuyển → load data mới |
+| T4 | Dự đoán: tab "An Toàn" | Hiển thị 5-8 mã blue-chip, ROE > 15% |
+| T5 | Dự đoán: tab "Đầu Cơ" | Hiển thị mã RSI thấp, tiềm năng phục hồi |
+| T6 | Watchlist: cột 7 ngày | Mỗi mã có SVG sparkline xanh/đỏ |
+| T7 | Phân tích FPT | Input "FPT" → loading 5 bước → kết quả AI |
+| T8 | After phân tích | CompanyProfile hiện bảng 4 năm + biểu đồ |
+| T9 | Ticker bar | Chạy ngang liên tục với giá xanh/đỏ thật |
+| T10 | Mobile responsive | Hamburger menu, cards stack vertical |

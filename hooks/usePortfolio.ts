@@ -120,5 +120,26 @@ export function usePortfolio() {
     [balance.cash, holdings, reload]
   )
 
-  return { holdings, trades, balance, isLoading, buy, sell, reload }
+  const editHolding = useCallback(
+    async (symbol: string, qty: number, avgCost: number) => {
+      await upsertHolding({
+        symbol,
+        qty,
+        avg_cost: avgCost,
+        total_cost: avgCost * qty,
+      })
+      await reload()
+    },
+    [reload]
+  )
+
+  const deleteHolding = useCallback(
+    async (symbol: string) => {
+      await removeHolding(symbol)
+      await reload()
+    },
+    [reload]
+  )
+
+  return { holdings, trades, balance, isLoading, buy, sell, editHolding, deleteHolding, reload }
 }

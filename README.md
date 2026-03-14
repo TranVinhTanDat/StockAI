@@ -145,9 +145,13 @@ ALTER TABLE analyses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE balance ENABLE ROW LEVEL SECURITY;
 
--- Policies (lặp cho từng table)
-CREATE POLICY "Users can CRUD own data" ON watchlist
-  FOR ALL USING (user_id = current_setting('request.headers')::json->>'x-user-id');
+-- Policies (app dùng localStorage user_id, không dùng Supabase Auth)
+CREATE POLICY "Allow all" ON watchlist FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON portfolio FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON trades FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON analyses FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON alerts FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON balance FOR ALL USING (true) WITH CHECK (true);
 ```
 
 ---
