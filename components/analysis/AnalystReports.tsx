@@ -92,9 +92,7 @@ export default function AnalystReports({ symbol }: Props) {
   const [showAll, setShowAll] = useState(false)
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, AIAnalysis | null>>({})
   const [loadingAI, setLoadingAI] = useState<Record<string, boolean>>({})
-  const [pdfModal, setPdfModal] = useState<PdfModal>({
-    open: false, loading: false, url: '', title: '', error: '',
-  })
+  const [pdfLoadingId, setPdfLoadingId] = useState<string | null>(null)
 
   const analyzeReport = async (report: AnalystReport) => {
     if (aiAnalyses[report.id] || loadingAI[report.id]) return
@@ -134,23 +132,18 @@ export default function AnalystReports({ symbol }: Props) {
 
   const openPdf = async (report: AnalystReport, e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!report.url) return
-    setPdfModal({ open: true, loading: true, url: '', title: report.title, error: '' })
+    if (!report.url || pdfLoadingId === report.id) return
+    setPdfLoadingId(report.id)
     try {
       const res = await fetch(`/api/report-pdf?url=${encodeURIComponent(report.url)}`)
       const data = await res.json()
-      if (data.pdfUrl) {
-        setPdfModal({ open: true, loading: false, url: data.pdfUrl, title: report.title, error: '' })
-      } else {
-        // Fallback: use original URL directly
-        setPdfModal({ open: true, loading: false, url: report.url, title: report.title, error: '' })
-      }
+      window.open(data.pdfUrl || report.url, '_blank', 'noopener,noreferrer')
     } catch {
-      setPdfModal({ open: true, loading: false, url: report.url, title: report.title, error: '' })
+      window.open(report.url, '_blank', 'noopener,noreferrer')
+    } finally {
+      setPdfLoadingId(null)
     }
   }
-
-  const closePdf = () => setPdfModal(p => ({ ...p, open: false }))
 
   if (isLoading) {
     return (
@@ -262,9 +255,12 @@ export default function AnalystReports({ symbol }: Props) {
                           </a>
                           <button
                             onClick={(e) => openPdf(r, e)}
-                            className="inline-flex items-center gap-1.5 text-xs bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg transition-colors"
+                            disabled={pdfLoadingId === r.id}
+                            className="inline-flex items-center gap-1.5 text-xs bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
                           >
-                            <File className="w-3.5 h-3.5" />
+                            {pdfLoadingId === r.id
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <File className="w-3.5 h-3.5" />}
                             Xem PDF
                           </button>
                         </>
@@ -285,7 +281,7 @@ export default function AnalystReports({ symbol }: Props) {
                     {isLoadingAI && (
                       <div className="mx-4 mb-4 bg-bg/40 rounded-lg p-4 flex items-center gap-3">
                         <Loader2 className="w-5 h-5 text-accent animate-spin flex-shrink-0" />
-                        <p className="text-xs text-muted">Claude Sonnet 4.6 đang đọc và phân tích báo cáo...</p>
+                        <p className="text-xs text-muted">StockAI đang đọc và phân tích báo cáo...</p>
                       </div>
                     )}
 
@@ -391,60 +387,6 @@ export default function AnalystReports({ symbol }: Props) {
         )}
       </div>
 
-      {/* PDF Viewer Modal */}
-      {pdfModal.open && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black/90">
-          {/* Modal toolbar */}
-          <div className="flex items-center justify-between px-4 py-3 bg-surface border-b border-border flex-shrink-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <File className="w-4 h-4 text-blue-400 flex-shrink-0" />
-              <p className="text-sm font-medium text-gray-200 truncate">
-                {pdfModal.title || 'Báo cáo phân tích'}
-              </p>
-            </div>
-            <div className="flex items-center gap-3 flex-shrink-0 ml-3">
-              {pdfModal.url && !pdfModal.loading && (
-                <a
-                  href={pdfModal.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-accent hover:underline"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Mở tab mới
-                </a>
-              )}
-              <button
-                onClick={closePdf}
-                className="text-muted hover:text-gray-100 transition-colors p-1 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-
-          {/* PDF content */}
-          <div className="flex-1 bg-gray-900 min-h-0">
-            {pdfModal.loading ? (
-              <div className="flex items-center justify-center h-full gap-3">
-                <Loader2 className="w-6 h-6 text-accent animate-spin" />
-                <p className="text-muted text-sm">Đang tải PDF...</p>
-              </div>
-            ) : pdfModal.url ? (
-              <iframe
-                src={pdfModal.url}
-                className="w-full h-full border-0"
-                title={pdfModal.title}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full gap-3 text-muted">
-                <File className="w-10 h-10 opacity-30" />
-                <p className="text-sm">Không thể tải file PDF</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </>
   )
 }

@@ -82,7 +82,7 @@ export default function AppShell({
           </div>
           <div className="min-w-0">
             <div className="text-sm font-bold text-gray-100 leading-tight">StockAI VN</div>
-            <div className="text-[10px] text-muted leading-tight">Claude AI · VPS · Vietcap</div>
+            <div className="text-[10px] text-muted leading-tight">AI · VPS · Vietcap</div>
           </div>
         </div>
 
@@ -132,6 +132,16 @@ export default function AppShell({
             </>
           )}
         </nav>
+
+        {/* Credit */}
+        <div className="px-5 py-2 flex-shrink-0">
+          <p className="text-[10px] text-muted/40 text-center tracking-wide">
+            Designed by{' '}
+            <span className="text-accent/60 font-semibold" style={{ fontStyle: 'italic' }}>
+              Trần Đạt
+            </span>
+          </p>
+        </div>
 
         {/* Sidebar footer — auth section (always visible) */}
         <div className="px-3 py-3 border-t border-border/40 flex-shrink-0">
@@ -346,6 +356,15 @@ export default function AppShell({
                 </button>
               </>
             )}
+
+            {/* Credit */}
+            <div className="border-t border-border/40 my-1" />
+            <p className="text-[11px] text-muted/40 text-center py-2 tracking-wide">
+              Designed by{' '}
+              <span className="text-accent/60 font-semibold" style={{ fontStyle: 'italic' }}>
+                Trần Đạt
+              </span>
+            </p>
 
             {/* Auth section */}
             <div className="border-t border-border/40 my-1" />

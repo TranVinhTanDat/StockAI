@@ -7,7 +7,7 @@ import {
   X, Globe, ExternalLink, TrendingUp, TrendingDown,
   BarChart2, Newspaper, Building2, Users, PieChart,
   Calendar, BookOpen, Briefcase, ChevronRight,
-  Sparkles, AlertCircle, Zap, RefreshCw, History,
+  Sparkles, AlertCircle, Zap, RefreshCw, History, FileText, Loader2,
 } from 'lucide-react'
 import type { StockBoard } from '@/lib/priceboard-data'
 import type { AnalysisResult as AnalysisResultType, QuoteData } from '@/types'
@@ -110,13 +110,29 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 
 // ─── Report Analysis ──────────────────────────────────────────────────────────
 
-interface ReportAnalysis { summary: string; keyPoints: string[]; recommendation: string; sentiment: string; riskFactors: string[]; catalysts: string[]; conclusion: string }
+interface ReportAnalysis { summary: string; keyPoints: string[]; recommendation: string; sentiment: string; riskFactors: string[]; catalysts: string[]; conclusion: string; readPdf?: boolean; hasFullContent?: boolean; targetPrice?: number }
 
 function ReportCard({ report }: { report: CompanyDetail['analystReports'][0] }) {
   const [analysis, setAnalysis] = useState<ReportAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [expanded, setExpanded] = useState(false)
+  const [pdfLoading, setPdfLoading] = useState(false)
+
+  const openPdf = async () => {
+    if (!report.url || pdfLoading) return
+    setPdfLoading(true)
+    try {
+      const res = await fetch(`/api/report-pdf?url=${encodeURIComponent(report.url)}`)
+      const data = await res.json()
+      const pdfUrl = data.pdfUrl || report.url
+      window.open(pdfUrl, '_blank', 'noopener,noreferrer')
+    } catch {
+      window.open(report.url, '_blank', 'noopener,noreferrer')
+    } finally {
+      setPdfLoading(false)
+    }
+  }
 
   const analyze = async () => {
     setLoading(true); setError('')
@@ -155,6 +171,17 @@ function ReportCard({ report }: { report: CompanyDetail['analystReports'][0] }) 
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
+          {/* View PDF directly */}
+          {report.url && (
+            <button onClick={openPdf} disabled={pdfLoading}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 text-xs font-medium hover:bg-blue-500/20 transition-colors disabled:opacity-50 border border-blue-500/20"
+              title="Xem file PDF">
+              {pdfLoading
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <FileText className="w-3 h-3" />}
+              <span className="hidden sm:inline">PDF</span>
+            </button>
+          )}
           {/* Search for report online */}
           <a href={`https://www.google.com/search?q=${encodeURIComponent(report.title + ' ' + report.source + ' pdf')}`}
             target="_blank" rel="noopener noreferrer"
@@ -165,8 +192,8 @@ function ReportCard({ report }: { report: CompanyDetail['analystReports'][0] }) 
           </a>
           <button onClick={analyze} disabled={loading}
             className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-accent/10 text-accent text-xs font-medium hover:bg-accent/20 transition-colors disabled:opacity-50">
-            <Sparkles className="w-3 h-3" />
-            {loading ? 'Đang...' : analysis ? 'Lại' : 'AI'}
+            {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+            {loading ? 'Đang...' : analysis ? 'Phân tích lại' : 'Phân tích AI'}
           </button>
         </div>
       </div>
@@ -194,13 +221,34 @@ function ReportCard({ report }: { report: CompanyDetail['analystReports'][0] }) 
 
       {analysis && (
         <div className="space-y-3 border-t border-border/40 pt-3">
-          {analysis.recommendation && (
-            <span className={`text-sm font-bold ${recColor}`}>{analysis.recommendation}</span>
-          )}
+          {/* Header: recommendation + badges */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {analysis.recommendation && (
+              <span className={`text-sm font-bold ${recColor}`}>{analysis.recommendation}</span>
+            )}
+            {analysis.targetPrice && analysis.targetPrice > 0 && (
+              <span className="text-xs text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded">
+                TP: {(analysis.targetPrice * 1000).toLocaleString('vi-VN')}₫
+              </span>
+            )}
+            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+              analysis.sentiment === 'TÍCH CỰC' ? 'text-green-400 bg-green-400/10' :
+              analysis.sentiment === 'TIÊU CỰC' ? 'text-red-400 bg-red-400/10' : 'text-yellow-400 bg-yellow-400/10'
+            }`}>{analysis.sentiment}</span>
+            {analysis.readPdf && (
+              <span className="text-[10px] text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded flex items-center gap-1">
+                <FileText className="w-2.5 h-2.5" /> Đọc PDF thật
+              </span>
+            )}
+          </div>
+
+          {/* Summary */}
           <p className="text-xs text-gray-300 leading-relaxed">{analysis.summary}</p>
+
+          {/* Key points */}
           {analysis.keyPoints?.length > 0 && (
             <div className="space-y-1">
-              <p className="text-[10px] uppercase tracking-wider text-muted font-semibold">Điểm chính</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted font-semibold">Điểm phân tích</p>
               {analysis.keyPoints.map((pt, i) => (
                 <div key={i} className="flex items-start gap-1.5 text-xs text-gray-400">
                   <ChevronRight className="w-3 h-3 text-accent flex-shrink-0 mt-0.5" />
@@ -209,20 +257,26 @@ function ReportCard({ report }: { report: CompanyDetail['analystReports'][0] }) 
               ))}
             </div>
           )}
-          {analysis.catalysts?.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-[10px] uppercase tracking-wider text-green-400 font-semibold">Động lực tăng</p>
-              {analysis.catalysts.map((c, i) => <p key={i} className="text-xs text-gray-400">• {c}</p>)}
-            </div>
-          )}
-          {analysis.riskFactors?.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-[10px] uppercase tracking-wider text-red-400 font-semibold">Rủi ro</p>
-              {analysis.riskFactors.map((r, i) => <p key={i} className="text-xs text-gray-400">• {r}</p>)}
-            </div>
-          )}
+
+          {/* Catalysts & Risks side by side */}
+          <div className="grid grid-cols-2 gap-3">
+            {analysis.catalysts?.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-[10px] uppercase tracking-wider text-green-400 font-semibold">Động lực tăng</p>
+                {analysis.catalysts.map((c, i) => <p key={i} className="text-xs text-gray-400">• {c}</p>)}
+              </div>
+            )}
+            {analysis.riskFactors?.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-[10px] uppercase tracking-wider text-red-400 font-semibold">Rủi ro</p>
+                {analysis.riskFactors.map((r, i) => <p key={i} className="text-xs text-gray-400">• {r}</p>)}
+              </div>
+            )}
+          </div>
+
+          {/* Conclusion */}
           {analysis.conclusion && (
-            <div className="bg-accent/5 rounded-lg p-2.5">
+            <div className="bg-accent/5 rounded-lg p-2.5 border-l-2 border-accent/30">
               <p className="text-xs text-accent leading-relaxed">{analysis.conclusion}</p>
             </div>
           )}
@@ -537,7 +591,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
                     Phân tích AI cho {stock.sym}
                   </h3>
                   <p className="text-sm text-muted mb-6 max-w-sm leading-relaxed">
-                    Claude AI sẽ phân tích kỹ thuật, cơ bản và tâm lý thị trường,
+                    StockAI sẽ phân tích kỹ thuật, cơ bản và tâm lý thị trường,
                     đưa ra khuyến nghị mua/bán với mức độ tin cậy.
                   </p>
                   {aiError && (
@@ -559,7 +613,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
               {aiLoading && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <div className="animate-spin w-10 h-10 border-2 border-accent border-t-transparent rounded-full mb-4" />
-                  <p className="text-sm text-muted">Claude AI đang phân tích {stock.sym}...</p>
+                  <p className="text-sm text-muted">StockAI đang phân tích {stock.sym}...</p>
                   <p className="text-xs text-muted/60 mt-1">Thường mất 10-20 giây</p>
                 </div>
               )}
@@ -915,7 +969,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
             <div className="p-5 space-y-3">
               {detail?.analystReports?.length ? (
                 <p className="text-[10px] text-muted/60 leading-relaxed">
-                  Nội dung trích từ CafeF · Nhấn &quot;Tìm&quot; để tìm kiếm file PDF gốc trên Google · Nhấn &quot;AI&quot; để phân tích nội dung bằng Claude
+                  Nội dung trích từ CafeF · Nhấn &quot;PDF&quot; để mở file PDF gốc · Nhấn &quot;Tìm&quot; để tìm trên Google · Nhấn &quot;AI&quot; để phân tích bằng StockAI
                 </p>
               ) : null}
               {!detail ? (

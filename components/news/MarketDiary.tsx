@@ -159,7 +159,7 @@ export default function MarketDiary() {
                 />
               ))}
             </div>
-            <p className="text-xs text-muted">Claude Haiku đang phân tích thị trường...</p>
+            <p className="text-xs text-muted">StockAI đang phân tích thị trường...</p>
           </div>
         )}
 

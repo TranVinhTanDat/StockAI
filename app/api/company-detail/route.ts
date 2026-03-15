@@ -398,8 +398,8 @@ async function getAnalystReports(symbol: string) {
         url: pdfUrl || (r.LinkDetail ? `https://cafef.vn${r.LinkDetail}` : ''),
         recommendation: r.ReportType || r.Recommendation || '',
         targetPrice: Number(r.TargetPrice || r.GiaMucTieu || 0),
-        // Full stripped body for inline preview (up to 2000 chars)
-        summary: r.Body ? stripHtml(r.Body).slice(0, 2000) : (r.ShortContent || r.Summary || '').slice(0, 2000),
+        // Use ShortContent (clean web excerpt) — Body contains PDF-extracted text with broken font encoding
+        summary: stripHtml(r.ShortContent || r.Summary || '').slice(0, 500),
       }
     }).filter((r: { title: string }) => r.title)
   } catch { return [] }

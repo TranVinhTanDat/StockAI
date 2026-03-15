@@ -10,9 +10,13 @@ export async function GET(request: NextRequest) {
   const url = request.nextUrl.searchParams.get('url')
   if (!url) return NextResponse.json({ error: 'Missing url' }, { status: 400 })
 
-  // Already a direct PDF link
+  // Already a direct PDF link — but cafef.vn/Images/... serves 404, real CDN is cafefnew.mediacdn.vn
   if (/\.pdf(\?.*)?$/i.test(url)) {
-    return NextResponse.json({ pdfUrl: url })
+    const pdfUrl = url.replace(
+      /^https?:\/\/cafef\.vn\//i,
+      'https://cafefnew.mediacdn.vn/'
+    )
+    return NextResponse.json({ pdfUrl })
   }
 
   try {

@@ -282,7 +282,7 @@ export default function StockPredictions() {
       {error && !isLoading && (
         <div className="card-glass p-8 text-center">
           <Sparkles className="w-8 h-8 text-muted mx-auto mb-3 opacity-50" />
-          <p className="text-muted text-sm">Phân tích thất bại. Kiểm tra Claude API key.</p>
+          <p className="text-muted text-sm">Phân tích thất bại. Vui lòng thử lại.</p>
           <button onClick={handleReanalyze} className="mt-3 text-xs text-accent hover:underline">Thử lại</button>
         </div>
       )}

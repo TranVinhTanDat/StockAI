@@ -100,7 +100,7 @@ export default function AISummary({ news }: AISummaryProps) {
       {error && (
         <div className="px-4 pb-4">
           <p className="text-xs text-danger">
-            {error.includes('key') ? 'Cần Claude API key để sử dụng tính năng này' : error}
+            {error.includes('key') ? 'Tính năng AI chưa được cấu hình' : error}
           </p>
         </div>
       )}

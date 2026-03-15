@@ -34,7 +34,7 @@ const LOADING_STEPS = [
   'Phân tích tài chính ROE/ROA/P/E từ Simplize...',
   'Đọc tin tức mới nhất từng mã...',
   'Lấy bối cảnh VN-Index...',
-  'Claude Opus 4 đang phân tích sâu...',
+  'StockAI đang phân tích sâu...',
 ]
 
 function ActionIcon({ action }: { action: string }) {
