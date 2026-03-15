@@ -442,18 +442,35 @@ interface PredictStock {
   price: number
   changePct: number
   industry: string
+  // Technical
+  rsi: number
+  macdSignal: string
+  macdHistogram: number
+  aboveSMA20: boolean
+  aboveSMA50: boolean
+  bbSignal: string
+  volumeSignal: string
+  adx: number
+  adxTrend: string
+  trend30d: number
+  momentum1M: number
+  momentum3M: number
+  volume: number
+  // Fundamental
   pe: number
   eps: number
   roe: number
+  roa: number
+  pb: number
   revenueGrowth: number
   profitGrowth: number
   debtEquity: number
   dividendYield: number
-  rsi: number
-  aboveSMA20: boolean
-  aboveSMA50: boolean
-  trend30d: number
-  volume: number
+  // Foreign investor flows
+  foreignBuyVol: number
+  foreignSellVol: number
+  foreignNetVol: number
+  foreignRoom?: number
 }
 
 export type InvestmentStyle = 'longterm' | 'dca' | 'swing' | 'dividend' | 'etf'
@@ -461,6 +478,7 @@ export type InvestmentStyle = 'longterm' | 'dca' | 'swing' | 'dividend' | 'etf'
 interface PredictContext {
   style: InvestmentStyle
   stocks: PredictStock[]
+  vnIndex?: { trend30d: number; currentLevel: number; rsi: number }
 }
 
 const STYLE_DESCRIPTIONS: Record<string, string> = {
@@ -498,20 +516,28 @@ export async function predictStocks(
   const styleDesc = STYLE_DESCRIPTIONS[ctx.style] || STYLE_DESCRIPTIONS.balanced
   const timestamp = new Date().toLocaleString('vi-VN')
 
+  const vnBlock = ctx.vnIndex
+    ? `\n▌ BỐI CẢNH THỊ TRƯỜNG (VN-Index):\nVN-Index: ${ctx.vnIndex.currentLevel.toLocaleString('vi-VN')} điểm | Xu hướng 30D: ${ctx.vnIndex.trend30d >= 0 ? '+' : ''}${ctx.vnIndex.trend30d.toFixed(1)}% | RSI: ${ctx.vnIndex.rsi} (${ctx.vnIndex.rsi > 70 ? 'Quá mua — thận trọng' : ctx.vnIndex.rsi < 30 ? 'Quá bán — có thể phục hồi' : 'Trung lập'})\n`
+    : ''
+
   const tableRows = ctx.stocks
-    .map(
-      (s, i) =>
-        `${i + 1}. [${s.symbol}] ${s.industry}
-   Giá: ${s.price}₫ (${s.changePct > 0 ? '+' : ''}${s.changePct.toFixed(1)}% hôm nay, xu hướng 30D: ${s.trend30d > 0 ? '+' : ''}${s.trend30d.toFixed(1)}%)
-   Kỹ thuật: RSI=${s.rsi.toFixed(0)} | ${s.aboveSMA20 ? 'TRÊN' : 'DƯỚI'} SMA20 | ${s.aboveSMA50 ? 'TRÊN' : 'DƯỚI'} SMA50 | KL=${s.volume.toLocaleString()}
-   Cơ bản: P/E=${s.pe.toFixed(1)}x | EPS=${s.eps}₫ | ROE=${s.roe.toFixed(1)}% | LN_Growth=${s.profitGrowth > 0 ? '+' : ''}${s.profitGrowth.toFixed(1)}% | DT_Growth=${s.revenueGrowth > 0 ? '+' : ''}${s.revenueGrowth.toFixed(1)}% | D/E=${s.debtEquity.toFixed(2)} | Cổ_tức=${s.dividendYield.toFixed(1)}%`
-    )
+    .map((s, i) => {
+      const foreignNet = s.foreignNetVol
+      const foreignStr = (s.foreignBuyVol > 0 || s.foreignSellVol > 0)
+        ? `\n   Dòng NN: Mua=${s.foreignBuyVol.toLocaleString('vi-VN')} | Bán=${s.foreignSellVol.toLocaleString('vi-VN')} | Net=${foreignNet >= 0 ? '+' : ''}${foreignNet.toLocaleString('vi-VN')}${s.foreignRoom !== undefined ? ` | Room: ${s.foreignRoom.toFixed(1)}%` : ''}`
+        : ''
+      return `${i + 1}. [${s.symbol}] ${s.industry}
+   Giá: ${s.price.toLocaleString('vi-VN')}₫ (${s.changePct > 0 ? '+' : ''}${s.changePct.toFixed(1)}% hôm nay, Trend30D: ${s.trend30d >= 0 ? '+' : ''}${s.trend30d.toFixed(1)}%)
+   Kỹ thuật: RSI=${s.rsi} | ADX=${s.adx} (${s.adxTrend}) | MACD=${s.macdSignal} hist=${s.macdHistogram} | ${s.aboveSMA20 ? '↑SMA20' : '↓SMA20'} | ${s.aboveSMA50 ? '↑SMA50' : '↓SMA50'} | BB: ${s.bbSignal} | Vol: ${s.volumeSignal}
+   Momentum: 1T=${s.momentum1M >= 0 ? '+' : ''}${s.momentum1M}% | 3T=${s.momentum3M >= 0 ? '+' : ''}${s.momentum3M}% | KL=${s.volume.toLocaleString('vi-VN')}
+   Cơ bản: P/E=${s.pe.toFixed(1)}x | P/B=${s.pb.toFixed(2)}x | EPS=${s.eps.toLocaleString('vi-VN')}₫ | ROE=${s.roe.toFixed(1)}% | ROA=${s.roa.toFixed(1)}% | LN_Growth=${s.profitGrowth >= 0 ? '+' : ''}${s.profitGrowth.toFixed(1)}% | DT_Growth=${s.revenueGrowth >= 0 ? '+' : ''}${s.revenueGrowth.toFixed(1)}% | D/E=${s.debtEquity.toFixed(2)} | Cổ_tức=${s.dividendYield.toFixed(1)}%${foreignStr}`
+    })
     .join('\n')
 
   const prompt = `PHÂN TÍCH CHUYÊN SÂU ${ctx.stocks.length} MÃ CỔ PHIẾU VIỆT NAM (${timestamp})
-
+${vnBlock}
 ═══════════════════════════════════════════
-DỮ LIỆU THỰC TẾ TỪNG MÃ:
+DỮ LIỆU THỰC TẾ TỪNG MÃ (90 ngày lịch sử):
 ═══════════════════════════════════════════
 ${tableRows}
 
@@ -521,17 +547,21 @@ ${styleDesc}
 ═══════════════════════════════════════════
 
 NHIỆM VỤ: Với vai trò chuyên gia quản lý quỹ CFA, hãy:
-1. Phân tích từng mã dựa trên dữ liệu KỸ THUẬT (RSI, SMA, xu hướng) và CƠ BẢN (P/E, ROE, tăng trưởng, cổ tức) thực tế ở trên
-2. Chọn TOP 5-7 mã PHÙ HỢP NHẤT cho phong cách đầu tư này
-3. Với mỗi mã được chọn: giải thích cụ thể TẠI SAO phù hợp dựa trên các con số thực tế
-4. Xếp hạng từ phù hợp nhất → ít phù hợp nhất
-5. Định giá target price dựa trên PE ngành, tăng trưởng dự phóng và kỹ thuật
+1. Phân tích từng mã dựa trên dữ liệu KỸ THUẬT (ADX xu hướng, RSI, MACD, BB, momentum) và CƠ BẢN (P/E, P/B, ROE, ROA, tăng trưởng) thực tế ở trên
+2. Xét tác động dòng tiền nước ngoài (NN mua/bán ròng) — tín hiệu quan trọng nhất TTCK VN
+3. Chọn TOP 5-7 mã PHÙ HỢP NHẤT cho phong cách đầu tư này
+4. Với mỗi mã: giải thích cụ thể TẠI SAO phù hợp dựa trên các con số thực tế
+5. Xếp hạng từ phù hợp nhất → ít phù hợp nhất
+6. Định giá target price dựa trên PE ngành, tăng trưởng dự phóng và kỹ thuật
 
 PHÂN TÍCH PHẢI BAO GỒM:
-- Phân tích kỹ thuật: xu hướng, RSI, SMA, momentum
-- Phân tích cơ bản: định giá P/E, tăng trưởng, ROE, sức khỏe tài chính
-- Đánh giá phù hợp với phong cách đầu tư
-- Rủi ro chính cần lưu ý
+- ADX: xu hướng mạnh/sideway? RSI/MACD có đáng tin không?
+- MACD histogram: đang tăng hay giảm? momentum
+- BB: giá đang overbought/oversold/trong dải?
+- Momentum 1T/3T: ngắn hạn vs dài hạn khớp nhau không?
+- Dòng NN: smart money đang mua hay bán mã này?
+- Bối cảnh VN-Index: thị trường chung hỗ trợ hay cản trở?
+- Cơ bản: P/E+P/B định giá hợp lý? ROE+ROA so ngành? Tăng trưởng bền vững?
 
 PHẢI dùng đúng tên field: "pe", "roe", "growth" trong keyMetrics.
 

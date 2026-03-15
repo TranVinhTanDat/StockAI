@@ -23,6 +23,9 @@ export const metadata: Metadata = {
   description:
     'Ứng dụng phân tích chứng khoán Việt Nam với AI. Khuyến nghị MUA/BÁN cụ thể, dữ liệu thật từ TCBS.',
   keywords: 'chứng khoán, phân tích kỹ thuật, AI, VN-Index, cổ phiếu',
+  manifest: '/manifest.json',
+  icons: { icon: '/logo.svg', apple: '/logo.svg' },
+  themeColor: '#00d4aa',
 }
 
 export default function RootLayout({

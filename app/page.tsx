@@ -1,5 +1,7 @@
 'use client'
 
+const ALLOW_REGISTRATION = process.env.NEXT_PUBLIC_ALLOW_REGISTRATION !== 'false'
+
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 
@@ -91,8 +93,19 @@ export default function Home() {
   const contentRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<HTMLDivElement>(null)
 
-  const { holdings, balance, buy, sell, editHolding, deleteHolding, setCash } = usePortfolio()
-  const { checkAlerts } = useAlerts()
+  const { holdings, balance, buy, sell, editHolding, deleteHolding, setCash, reload: reloadPortfolio } = usePortfolio()
+  const { checkAlerts, reload: reloadAlerts } = useAlerts()
+
+  // Reload all user-specific data when auth state changes (login / logout)
+  const prevUserIdRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    const uid = user?.id
+    if (uid !== prevUserIdRef.current) {
+      prevUserIdRef.current = uid
+      reloadPortfolio()
+      reloadAlerts()
+    }
+  }, [user?.id, reloadPortfolio, reloadAlerts])
 
   const holdingSymbols = useMemo(() => holdings.map(h => h.symbol), [holdings])
   const { quotes: portfolioPrices } = useMultiQuote(holdingSymbols)
@@ -288,12 +301,12 @@ export default function Home() {
             </div>
           </div>
 
-          <StockPredictions />
+          <StockPredictions key={user?.id ?? 'anon'} />
 
           <div>
             <SectionTitle icon={TrendingUp} title="Bảng Giá Thị Trường" />
             <div className="mt-4">
-              <WatchlistTable onAnalyze={sym => { setPendingSymbol(sym); handleAnalyze(sym) }} />
+              <WatchlistTable key={user?.id ?? 'anon'} onAnalyze={sym => { setPendingSymbol(sym); handleAnalyze(sym) }} />
             </div>
           </div>
         </SectionWrap>
@@ -320,14 +333,14 @@ export default function Home() {
                   onClick={() => setShowLogin(true)}
                   className="px-4 py-2 rounded-lg bg-accent text-bg text-sm font-semibold hover:bg-accent/90 transition-colors shadow shadow-accent/20"
                 >
-                  Đăng nhập / Đăng ký miễn phí
+                  {ALLOW_REGISTRATION ? 'Đăng nhập / Đăng ký miễn phí' : 'Đăng nhập'}
                 </button>
               </div>
             </div>
           )}
 
           <AnalysisInput
-            onAnalyze={handleAnalyze}
+            onAnalyze={(sym) => handleAnalyze(sym, true)}
             isLoading={analysisState.status === 'loading'}
             initialSymbol={pendingSymbol || undefined}
           />
@@ -369,15 +382,11 @@ export default function Home() {
             </div>
           )}
 
-          <div className="relative">
-            <AnalysisHistory onSelect={handleSelectHistory} />
-            <a
-              href="/analysis-history"
-              className="absolute top-3 right-4 text-xs text-accent hover:underline flex items-center gap-1"
-            >
-              Xem tất cả →
-            </a>
-          </div>
+          <AnalysisHistory
+            key={`${user?.id ?? 'anon'}-${analysisState.status === 'done' ? analysisState.symbol : ''}`}
+            symbol={analysisState.status === 'done' ? analysisState.symbol : undefined}
+            onSelect={handleSelectHistory}
+          />
 
           {/* Chart */}
           <div ref={chartRef}>
@@ -396,7 +405,7 @@ export default function Home() {
         <SectionWrap>
           <SectionTitle icon={History} title="Lịch Sử Phân Tích AI" />
           <p className="text-sm text-muted">Các phân tích gần đây được lưu từ trang Phân Tích AI. Nhấn vào để xem lại kết quả.</p>
-          <AnalysisHistory onSelect={handleSelectHistory} />
+          <AnalysisHistory key={user?.id ?? 'anon'} onSelect={handleSelectHistory} />
         </SectionWrap>
       </div>
 

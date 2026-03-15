@@ -285,9 +285,10 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
 
   // ── AI Analysis ──────────────────────────────────────────────────────────────
 
-  const runAnalysis = useCallback(async () => {
+  const runAnalysis = useCallback(async (forceRefresh = false) => {
     setAiLoading(true)
     setAiError('')
+    if (forceRefresh) setAiResult(null)
     try {
       // Fetch history + indicators
       const histRes = await fetch(`/api/history?symbol=${stock.sym}&days=90`)
@@ -346,6 +347,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
           indicators: histData.indicators,
           fundamental,
           news,
+          forceRefresh,
         }),
       })
       const data = await res.json()
@@ -545,7 +547,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
                     </div>
                   )}
                   <button
-                    onClick={runAnalysis}
+                    onClick={() => runAnalysis()}
                     className="flex items-center gap-2 px-6 py-3 bg-accent text-bg rounded-xl text-sm font-semibold hover:bg-accent/90 transition-colors"
                   >
                     <Zap className="w-4 h-4" />
@@ -569,7 +571,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
                       Kết quả phân tích AI · Giá hiện tại: <span className="text-gray-300 font-mono">{fmtP(stock.price)}</span>
                     </p>
                     <button
-                      onClick={runAnalysis}
+                      onClick={() => runAnalysis(true)}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-accent transition-colors"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
@@ -580,7 +582,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
                     result={aiResult}
                     quote={quoteForResult}
                     symbol={stock.sym}
-                    onReanalyze={runAnalysis}
+                    onReanalyze={() => runAnalysis(true)}
                     onViewChart={() => setTab('chart')}
                   />
                 </div>

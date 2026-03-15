@@ -1,5 +1,5 @@
 -- ============================================================
--- StockAI VN — Supabase Schema
+-- StockAI VN — Supabase Schema (v2 — synced with codebase)
 -- Chạy toàn bộ file này trong: Supabase > SQL Editor > New query
 -- ============================================================
 
@@ -10,20 +10,10 @@ CREATE TABLE IF NOT EXISTS public.app_users (
   email         TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user')),
+  is_active     BOOLEAN NOT NULL DEFAULT true,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
--- Index for fast username lookup
 CREATE INDEX IF NOT EXISTS idx_app_users_username ON public.app_users(username);
-
--- ── Profiles (linked to auth.users) ─────────────────────────
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  email       TEXT NOT NULL,
-  full_name   TEXT,
-  role        TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user')),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
 
 -- ── Watchlist ─────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.watchlist (
@@ -75,8 +65,8 @@ CREATE TABLE IF NOT EXISTS public.analyses (
   symbol          TEXT NOT NULL,
   recommendation  TEXT NOT NULL,
   confidence      NUMERIC NOT NULL,
-  target_price    NUMERIC NOT NULL,
-  stop_loss       NUMERIC NOT NULL,
+  target_price    NUMERIC,
+  stop_loss       NUMERIC,
   full_result     JSONB NOT NULL,
   analyzed_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -93,86 +83,71 @@ CREATE TABLE IF NOT EXISTS public.alerts (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- ── Analysis Cache (shared, no user restriction) ──────────────
+-- ── Analysis Cache (shared server-side cache) ─────────────────
+-- NOTE: column 'data' (not 'result'), 'expires_at' required — matches analyze/route.ts
 CREATE TABLE IF NOT EXISTS public.analysis_cache (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  symbol      TEXT NOT NULL UNIQUE,
-  result      JSONB NOT NULL,
+  symbol      TEXT NOT NULL,
+  data        JSONB NOT NULL,
+  expires_at  TIMESTAMPTZ NOT NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- ============================================================
--- Row Level Security
--- ============================================================
+-- ── Optimize Results ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.optimize_results (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID NOT NULL,
+  result      JSONB NOT NULL,
+  analyzed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
-ALTER TABLE public.profiles        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.watchlist       ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.portfolio       ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.trades          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.balance         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.analyses        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.alerts          ENABLE ROW LEVEL SECURITY;
--- analysis_cache: NO RLS — shared cache, accessible server-side only
+-- ── Predictions ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.predictions (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID NOT NULL,
+  style        TEXT NOT NULL,
+  predictions  JSONB NOT NULL,
+  predicted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, style)
+);
 
--- Drop existing policies to avoid conflicts on re-run
-DROP POLICY IF EXISTS "users_own_profile"    ON public.profiles;
-DROP POLICY IF EXISTS "users_own_watchlist"  ON public.watchlist;
-DROP POLICY IF EXISTS "users_own_portfolio"  ON public.portfolio;
-DROP POLICY IF EXISTS "users_own_trades"     ON public.trades;
-DROP POLICY IF EXISTS "users_own_balance"    ON public.balance;
-DROP POLICY IF EXISTS "users_own_analyses"   ON public.analyses;
-DROP POLICY IF EXISTS "users_own_alerts"     ON public.alerts;
-
--- Each user can only read/write their own data
-CREATE POLICY "users_own_profile"   ON public.profiles   FOR ALL USING (auth.uid() = id);
-CREATE POLICY "users_own_watchlist" ON public.watchlist  FOR ALL USING (auth.uid() = user_id);
-CREATE POLICY "users_own_portfolio" ON public.portfolio  FOR ALL USING (auth.uid() = user_id);
-CREATE POLICY "users_own_trades"    ON public.trades     FOR ALL USING (auth.uid() = user_id);
-CREATE POLICY "users_own_balance"   ON public.balance    FOR ALL USING (auth.uid() = user_id);
-CREATE POLICY "users_own_analyses"  ON public.analyses   FOR ALL USING (auth.uid() = user_id);
-CREATE POLICY "users_own_alerts"    ON public.alerts     FOR ALL USING (auth.uid() = user_id);
+-- ── Push Subscriptions (Web Push API) ────────────────────────
+CREATE TABLE IF NOT EXISTS public.push_subscriptions (
+  endpoint     TEXT PRIMARY KEY,
+  subscription JSONB NOT NULL,
+  user_id      UUID REFERENCES public.app_users(id) ON DELETE SET NULL,
+  anonymous_id TEXT,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- ============================================================
--- Auto-create profile when user signs up
+-- RLS: DISABLED — App uses service_role key on server.
+-- Custom JWT auth is NOT Supabase Auth → auth.uid() = NULL → RLS blocks.
+-- All writes go through API routes with service_role key.
 -- ============================================================
-
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO public.profiles (id, email, full_name, role)
-  VALUES (
-    new.id,
-    new.email,
-    new.raw_user_meta_data->>'full_name',
-    'user'
-  )
-  ON CONFLICT (id) DO NOTHING;
-  RETURN new;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+ALTER TABLE public.app_users          DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.watchlist          DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.portfolio          DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.trades             DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.balance            DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.analyses           DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.alerts             DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.analysis_cache     DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.optimize_results   DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.predictions        DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.push_subscriptions DISABLE ROW LEVEL SECURITY;
 
 -- ============================================================
--- Safe column migrations (add missing columns if table already exists)
+-- Indexes
 -- ============================================================
-
-ALTER TABLE public.alerts ADD COLUMN IF NOT EXISTS is_active     BOOLEAN    NOT NULL DEFAULT true;
-ALTER TABLE public.alerts ADD COLUMN IF NOT EXISTS triggered_at  TIMESTAMPTZ;
-ALTER TABLE public.alerts ADD COLUMN IF NOT EXISTS created_at    TIMESTAMPTZ NOT NULL DEFAULT now();
-ALTER TABLE public.alerts ADD COLUMN IF NOT EXISTS condition     TEXT;
-ALTER TABLE public.alerts ADD COLUMN IF NOT EXISTS target_price  NUMERIC;
-
--- ============================================================
--- Indexes for performance
--- ============================================================
-
-CREATE INDEX IF NOT EXISTS idx_watchlist_user   ON public.watchlist(user_id);
-CREATE INDEX IF NOT EXISTS idx_portfolio_user   ON public.portfolio(user_id);
-CREATE INDEX IF NOT EXISTS idx_trades_user      ON public.trades(user_id, traded_at DESC);
-CREATE INDEX IF NOT EXISTS idx_analyses_user    ON public.analyses(user_id, analyzed_at DESC);
-CREATE INDEX IF NOT EXISTS idx_alerts_user      ON public.alerts(user_id);
-CREATE INDEX IF NOT EXISTS idx_cache_symbol     ON public.analysis_cache(symbol);
+CREATE INDEX IF NOT EXISTS idx_watchlist_user    ON public.watchlist(user_id);
+CREATE INDEX IF NOT EXISTS idx_portfolio_user    ON public.portfolio(user_id);
+CREATE INDEX IF NOT EXISTS idx_trades_user       ON public.trades(user_id, traded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analyses_user     ON public.analyses(user_id, analyzed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_user       ON public.alerts(user_id);
+CREATE INDEX IF NOT EXISTS idx_cache_symbol      ON public.analysis_cache(symbol);
+CREATE INDEX IF NOT EXISTS idx_cache_expires     ON public.analysis_cache(expires_at);
+CREATE INDEX IF NOT EXISTS idx_optimize_user     ON public.optimize_results(user_id);
+CREATE INDEX IF NOT EXISTS idx_predictions_user  ON public.predictions(user_id);
+CREATE INDEX IF NOT EXISTS idx_push_user         ON public.push_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_push_anonymous    ON public.push_subscriptions(anonymous_id);

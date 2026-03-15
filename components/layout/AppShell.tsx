@@ -174,45 +174,52 @@ export default function AppShell({
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Mobile top bar */}
-        <header className="md:hidden flex items-center h-12 px-4 border-b border-border/40 bg-surface flex-shrink-0 gap-2">
-          <div className="flex items-center gap-2 flex-shrink-0">
+        <header className="md:hidden flex items-center h-12 px-3 border-b border-border/40 bg-surface flex-shrink-0 gap-2">
+          {/* Logo — left */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <div className="w-7 h-7 rounded-lg bg-accent/15 flex items-center justify-center">
               <TrendingUp className="w-3.5 h-3.5 text-accent" />
             </div>
             <span className="text-sm font-bold text-gray-100">StockAI VN</span>
           </div>
+
+          {/* Current section — center, fills remaining space */}
           {current && (
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-accent ml-3">
-              <current.icon className="w-3.5 h-3.5" />
-              <span>{current.label}</span>
+            <div className="flex items-center gap-1 text-[11px] font-semibold text-accent/80 flex-1 min-w-0 justify-center">
+              <current.icon className="w-3 h-3 flex-shrink-0" />
+              <span className="truncate">{current.label}</span>
             </div>
           )}
-          {/* Auth button */}
-          {userName ? (
-            <button
-              onClick={onLogout}
-              title="Đăng xuất"
-              className="ml-auto flex items-center justify-center w-8 h-8 rounded-full bg-accent/20 border border-accent/30 flex-shrink-0"
+
+          {/* Right actions — icon-only, always same width */}
+          <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto">
+            {/* Bảng Giá */}
+            <Link
+              href="/priceboard"
+              title="Bảng Giá Live"
+              className="w-8 h-8 flex items-center justify-center rounded-lg bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
             >
-              <span className="text-accent text-xs font-bold">{userName.charAt(0).toUpperCase()}</span>
-            </button>
-          ) : isAuthEnabled ? (
-            <button
-              onClick={onLoginClick}
-              className="ml-auto flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-accent/10 text-accent text-xs font-semibold border border-accent/20 flex-shrink-0"
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              <span>Đăng nhập</span>
-            </button>
-          ) : null}
-          {/* Bảng Giá shortcut */}
-          <Link
-            href="/priceboard"
-            className={`${!userName && !isAuthEnabled ? 'ml-auto' : ''} flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-accent/10 text-accent text-xs font-semibold flex-shrink-0`}
-          >
-            <BarChart2 className="w-3.5 h-3.5" />
-            <span>Bảng Giá</span>
-          </Link>
+              <BarChart2 className="w-4 h-4" />
+            </Link>
+            {/* Auth */}
+            {userName ? (
+              <button
+                onClick={onLogout}
+                title={`Đăng xuất (${userName})`}
+                className="w-8 h-8 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center flex-shrink-0"
+              >
+                <span className="text-accent text-xs font-bold">{userName.charAt(0).toUpperCase()}</span>
+              </button>
+            ) : isAuthEnabled ? (
+              <button
+                onClick={onLoginClick}
+                title="Đăng nhập"
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors flex-shrink-0"
+              >
+                <LogIn className="w-4 h-4" />
+              </button>
+            ) : null}
+          </div>
         </header>
 
         {/* Market Ticker (sticky) */}

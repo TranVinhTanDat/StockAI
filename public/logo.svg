@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Background -->
+  <rect width="192" height="192" rx="40" fill="#0b0f1a"/>
+
+  <!-- Candlestick bars -->
+  <!-- Bar 1 (green) -->
+  <rect x="22" y="108" width="14" height="40" rx="2" fill="#1a2336"/>
+  <rect x="27" y="100" width="4" height="56" rx="1" fill="#00d4aa" opacity="0.4"/>
+  <rect x="22" y="112" width="14" height="28" rx="2" fill="#00d4aa"/>
+
+  <!-- Bar 2 (red) -->
+  <rect x="46" y="90" width="14" height="50" rx="2" fill="#1a2336"/>
+  <rect x="51" y="82" width="4" height="66" rx="1" fill="#f43f5e" opacity="0.4"/>
+  <rect x="46" y="96" width="14" height="38" rx="2" fill="#f43f5e"/>
+
+  <!-- Bar 3 (green) -->
+  <rect x="70" y="76" width="14" height="48" rx="2" fill="#1a2336"/>
+  <rect x="75" y="68" width="4" height="64" rx="1" fill="#00d4aa" opacity="0.4"/>
+  <rect x="70" y="80" width="14" height="36" rx="2" fill="#00d4aa"/>
+
+  <!-- Bar 4 (green) -->
+  <rect x="94" y="60" width="14" height="52" rx="2" fill="#1a2336"/>
+  <rect x="99" y="52" width="4" height="68" rx="1" fill="#00d4aa" opacity="0.4"/>
+  <rect x="94" y="64" width="14" height="40" rx="2" fill="#00d4aa"/>
+
+  <!-- Trend line (rising) -->
+  <polyline
+    points="29,118 53,100 77,86 101,72 130,52"
+    stroke="#00d4aa"
+    stroke-width="3"
+    fill="none"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    opacity="0.8"
+  />
+
+  <!-- Arrow head at trend end -->
+  <polyline
+    points="118,45 130,52 123,66"
+    stroke="#00d4aa"
+    stroke-width="3"
+    fill="none"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <!-- AI sparkle / star -->
+  <circle cx="152" cy="48" r="16" fill="#00d4aa" opacity="0.12"/>
+  <!-- sparkle lines -->
+  <line x1="152" y1="36" x2="152" y2="60" stroke="#00d4aa" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="140" y1="48" x2="164" y2="48" stroke="#00d4aa" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="144" y1="40" x2="160" y2="56" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+  <line x1="160" y1="40" x2="144" y2="56" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+
+  <!-- Bottom label -->
+  <text x="96" y="175" font-family="Arial, sans-serif" font-size="16" font-weight="bold"
+        fill="#00d4aa" text-anchor="middle" letter-spacing="2">StockAI</text>
+</svg>

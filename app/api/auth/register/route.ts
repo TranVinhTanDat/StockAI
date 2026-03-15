@@ -3,6 +3,9 @@ import { createClient } from '@supabase/supabase-js'
 import bcrypt from 'bcryptjs'
 import { signToken } from '@/lib/jwt'
 
+// Set ALLOW_REGISTRATION=false in .env to disable public self-registration
+const ALLOW_REGISTRATION = process.env.ALLOW_REGISTRATION !== 'false'
+
 function getAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -15,6 +18,14 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(request: NextRequest) {
   try {
+    // Block registration if disabled by admin
+    if (!ALLOW_REGISTRATION) {
+      return NextResponse.json(
+        { error: 'Đăng ký tài khoản hiện tạm thời không khả dụng. Liên hệ admin để được cấp tài khoản.' },
+        { status: 403 }
+      )
+    }
+
     const { username, email, password } = await request.json()
 
     if (!username || !email || !password) {

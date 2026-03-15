@@ -6,6 +6,10 @@ import type {
   Alert,
   Balance,
   AnalysisResult,
+  SavedPrediction,
+  PredictionItem,
+  OptimizeResult,
+  SavedOptimizeResult,
 } from '@/types'
 import { generateId, getUserId } from './utils'
 
@@ -410,4 +414,111 @@ export async function deleteAlert(id: string): Promise<void> {
     getLocalKey('stockai_alerts'),
     alerts.filter((a) => a.id !== id)
   )
+}
+
+// ─── Expose scoped key helper (for analysisCache.ts) ─────────────────────────
+export function getScopedStorageKey(base: string): string {
+  return getLocalKey(base)
+}
+
+// ─── Optimize Result Cache ────────────────────────────────
+
+export async function getOptimizeResult(): Promise<SavedOptimizeResult | null> {
+  const userId = getEffectiveUserId()
+  if (shouldUseSupabase()) {
+    const sb = getSupabase()
+    if (sb) {
+      const { data, error } = await sb
+        .from('optimize_results')
+        .select('*')
+        .eq('user_id', userId)
+        .order('analyzed_at', { ascending: false })
+        .limit(1)
+        .single()
+      if (!error && data) return data as SavedOptimizeResult
+    }
+  }
+  const saved = getLocal<SavedOptimizeResult | null>(getLocalKey('stockai_optimize_result'), null)
+  return saved
+}
+
+export async function saveOptimizeResult(result: OptimizeResult): Promise<void> {
+  const userId = getEffectiveUserId()
+  const entry: SavedOptimizeResult = {
+    id: generateId(),
+    user_id: userId,
+    result,
+    analyzed_at: new Date().toISOString(),
+  }
+  if (shouldUseSupabase()) {
+    const sb = getSupabase()
+    if (sb) {
+      await sb.from('optimize_results').delete().eq('user_id', userId)
+      const { error } = await sb.from('optimize_results').insert(entry)
+      if (!error) return
+    }
+  }
+  setLocal(getLocalKey('stockai_optimize_result'), entry)
+}
+
+// ─── Predictions ──────────────────────────────────────────
+
+export async function getAllPredictions(): Promise<SavedPrediction[]> {
+  const userId = getEffectiveUserId()
+  if (shouldUseSupabase()) {
+    const sb = getSupabase()
+    if (sb) {
+      const { data, error } = await sb
+        .from('predictions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('predicted_at', { ascending: false })
+      if (!error && data) return data as SavedPrediction[]
+    }
+  }
+  return getLocal<SavedPrediction[]>(getLocalKey('stockai_predictions'), [])
+}
+
+export async function getPredictions(style: string): Promise<SavedPrediction | null> {
+  const userId = getEffectiveUserId()
+  if (shouldUseSupabase()) {
+    const sb = getSupabase()
+    if (sb) {
+      const { data, error } = await sb
+        .from('predictions')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('style', style)
+        .order('predicted_at', { ascending: false })
+        .limit(1)
+        .single()
+      if (!error && data) return data as SavedPrediction
+    }
+  }
+  const all = getLocal<SavedPrediction[]>(getLocalKey('stockai_predictions'), [])
+  return all.find((p) => p.style === style) ?? null
+}
+
+export async function savePredictions(style: string, predictions: PredictionItem[]): Promise<void> {
+  const userId = getEffectiveUserId()
+  const entry: SavedPrediction = {
+    id: generateId(),
+    user_id: userId,
+    style,
+    predictions,
+    predicted_at: new Date().toISOString(),
+  }
+  if (shouldUseSupabase()) {
+    const sb = getSupabase()
+    if (sb) {
+      await sb.from('predictions').delete().eq('user_id', userId).eq('style', style)
+      const { error } = await sb.from('predictions').insert(entry)
+      if (!error) return
+    }
+  }
+  const all = getLocal<SavedPrediction[]>(getLocalKey('stockai_predictions'), [])
+  const filtered = all.filter((p) => p.style !== style)
+  filtered.unshift(entry)
+  if (filtered.length > 10) filtered.splice(10)
+  setLocal(getLocalKey('stockai_predictions'), filtered)
 }

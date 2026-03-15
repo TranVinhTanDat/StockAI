@@ -163,10 +163,28 @@ export interface ExchangeRate {
   updatedAt: string
 }
 
+export interface OptimizeStockRec {
+  symbol: string
+  action: string
+  reason: string
+  riskLevel?: string
+  catalyst?: string
+}
+
 export interface OptimizeResult {
   analysis: string
+  marketContext?: string
+  stockRecommendations?: OptimizeStockRec[]
   suggestions: string[]
   rebalancePlan: string
+  riskWarnings?: string[]
+}
+
+export interface SavedOptimizeResult {
+  id: string
+  user_id: string
+  result: OptimizeResult
+  analyzed_at: string
 }
 
 export interface IndustryMap {
@@ -230,4 +248,12 @@ export interface MarketIndexData {
   hnxindex: { value: number; change: number; changePct: number; volume: number }
   breadth: { advancing: number; declining: number; unchanged: number }
   updatedAt: string
+}
+
+export interface SavedPrediction {
+  id: string
+  user_id: string
+  style: string
+  predictions: PredictionItem[]
+  predicted_at: string
 }

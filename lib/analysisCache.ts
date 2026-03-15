@@ -1,8 +1,14 @@
 import type { AnalysisResult, QuoteData } from '@/types'
+import { getScopedStorageKey } from './storage'
 
 /** Cache TTL: 4 hours — covers one full trading session */
 const CACHE_TTL_MS = 4 * 60 * 60 * 1000
 const KEY_PREFIX = 'sai_ac_'
+
+function getKey(symbol: string): string {
+  // User-scoped so different users don't share analysis cache
+  return getScopedStorageKey(`${KEY_PREFIX}${symbol.toUpperCase()}`)
+}
 
 export interface CachedAnalysisEntry {
   symbol: string
@@ -15,11 +21,11 @@ export interface CachedAnalysisEntry {
 export function getCachedAnalysis(symbol: string): CachedAnalysisEntry | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = localStorage.getItem(`${KEY_PREFIX}${symbol.toUpperCase()}`)
+    const raw = localStorage.getItem(getKey(symbol))
     if (!raw) return null
     const entry: CachedAnalysisEntry = JSON.parse(raw)
     if (Date.now() > new Date(entry.expiresAt).getTime()) {
-      localStorage.removeItem(`${KEY_PREFIX}${symbol.toUpperCase()}`)
+      localStorage.removeItem(getKey(symbol))
       return null
     }
     return entry
@@ -43,7 +49,7 @@ export function setCachedAnalysis(
       cachedAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + CACHE_TTL_MS).toISOString(),
     }
-    localStorage.setItem(`${KEY_PREFIX}${symbol.toUpperCase()}`, JSON.stringify(entry))
+    localStorage.setItem(getKey(symbol), JSON.stringify(entry))
   } catch {
     // localStorage quota exceeded — silently ignore
   }
@@ -51,7 +57,7 @@ export function setCachedAnalysis(
 
 export function clearCachedAnalysis(symbol: string): void {
   if (typeof window === 'undefined') return
-  localStorage.removeItem(`${KEY_PREFIX}${symbol.toUpperCase()}`)
+  localStorage.removeItem(getKey(symbol))
 }
 
 /** Returns human-readable cache age: "vừa xong", "15 phút trước", "2 giờ trước" */

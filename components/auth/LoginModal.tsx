@@ -4,6 +4,9 @@ import { useState } from 'react'
 import { X, User, Lock, Mail, LogIn, UserPlus, Loader2, Clock } from 'lucide-react'
 import { useAuthContext } from './AuthContext'
 
+// When NEXT_PUBLIC_ALLOW_REGISTRATION=false, hide the signup tab
+const ALLOW_REGISTRATION = process.env.NEXT_PUBLIC_ALLOW_REGISTRATION !== 'false'
+
 interface LoginModalProps {
   onClose: () => void
 }
@@ -64,7 +67,7 @@ export default function LoginModal({ onClose }: LoginModalProps) {
           </button>
         </div>
 
-        {/* Tabs */}
+        {/* Tabs — hide signup tab when registration is disabled */}
         <div className="flex border-b border-border/40">
           <button
             onClick={() => { setMode('signin'); setError('') }}
@@ -74,14 +77,16 @@ export default function LoginModal({ onClose }: LoginModalProps) {
           >
             <LogIn className="w-3.5 h-3.5" /> Đăng nhập
           </button>
-          <button
-            onClick={() => { setMode('signup'); setError('') }}
-            className={`flex-1 py-2.5 text-xs font-medium border-b-2 transition-colors flex items-center justify-center gap-1.5 ${
-              mode === 'signup' ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-gray-200'
-            }`}
-          >
-            <UserPlus className="w-3.5 h-3.5" /> Đăng ký
-          </button>
+          {ALLOW_REGISTRATION && (
+            <button
+              onClick={() => { setMode('signup'); setError('') }}
+              className={`flex-1 py-2.5 text-xs font-medium border-b-2 transition-colors flex items-center justify-center gap-1.5 ${
+                mode === 'signup' ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-gray-200'
+              }`}
+            >
+              <UserPlus className="w-3.5 h-3.5" /> Đăng ký
+            </button>
+          )}
         </div>
 
         {/* Form */}
