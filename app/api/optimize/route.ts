@@ -7,11 +7,14 @@ import { calcRSI, calcMACD, calcSMA, calcBB, calcADX } from '@/lib/indicators'
 
 export const maxDuration = 60
 
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL
+  || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+
 // Fetch latest news headlines for a symbol
 async function fetchNewsHeadlines(symbol: string): Promise<string[]> {
   try {
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/news?symbol=${symbol}`,
+      `${BASE_URL}/api/news?symbol=${symbol}`,
       { next: { revalidate: 3600 } }
     )
     if (!res.ok) return []

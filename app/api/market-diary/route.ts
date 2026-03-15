@@ -3,14 +3,19 @@ import Anthropic from '@anthropic-ai/sdk'
 
 const client = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY })
 
+export const maxDuration = 45
+
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL
+  || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+
 export async function GET() {
   try {
     // Fetch market data in parallel
     const [marketRes, newsRes] = await Promise.all([
-      fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/market-index`, {
+      fetch(`${BASE_URL}/api/market-index`, {
         next: { revalidate: 300 },
       }).catch(() => null),
-      fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/news`, {
+      fetch(`${BASE_URL}/api/news`, {
         next: { revalidate: 300 },
       }).catch(() => null),
     ])
