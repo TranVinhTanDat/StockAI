@@ -10,6 +10,25 @@ export const maxDuration = 60
 
 const VALID_STYLES: InvestmentStyle[] = ['longterm', 'dca', 'swing', 'dividend', 'etf']
 
+// Symbol universe riêng cho từng phong cách — đa dạng hơn danh sách chung
+const STYLE_SYMBOLS: Record<InvestmentStyle, string[]> = {
+  // Dài hạn: bluechip tăng trưởng bền vững, ROE cao, lợi thế cạnh tranh
+  longterm: ['FPT', 'VNM', 'VCB', 'BID', 'CTG', 'HPG', 'GAS', 'MSN', 'MWG',
+             'REE', 'PNJ', 'ACB', 'TCB', 'VHM', 'VIC', 'SAB', 'DGC', 'VPB'],
+  // DCA: ổn định, thanh khoản cao, biến động thấp-trung bình
+  dca:      ['VCB', 'BID', 'CTG', 'ACB', 'TCB', 'MBB', 'FPT', 'VNM', 'GAS',
+             'HPG', 'MWG', 'PNJ', 'REE', 'MSN', 'VHM', 'HDB', 'VCI', 'NVL'],
+  // Lướt sóng: biến động cao, thanh khoản tốt, có momentum kỹ thuật rõ
+  swing:    ['HPG', 'HSG', 'NKG', 'FPT', 'TCB', 'VHM', 'MWG', 'PDR', 'DIG',
+             'NLG', 'KDH', 'VIC', 'PLX', 'VNM', 'HDB', 'DXG', 'BCM', 'VPB'],
+  // Cổ tức: lịch sử trả cổ tức đều, yield cao, cashflow ổn định
+  dividend: ['VCB', 'BID', 'CTG', 'ACB', 'MBB', 'GAS', 'VNM', 'PNJ', 'REE',
+             'FPT', 'HPG', 'TCB', 'BVH', 'SAB', 'HDB', 'VCI', 'EVF', 'VPB'],
+  // ETF/Chỉ số: vốn hóa lớn, đại diện VN30, thanh khoản cao nhất thị trường
+  etf:      ['VCB', 'BID', 'CTG', 'HPG', 'VNM', 'GAS', 'FPT', 'VIC', 'VHM',
+             'MSN', 'MWG', 'TCB', 'ACB', 'MBB', 'PLX', 'SAB', 'VPB', 'HDB'],
+}
+
 // Fetch Simplize for ROA/PB
 async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; pb: number }> {
   try {
@@ -67,7 +86,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const symbols = POPULAR_SYMBOLS.slice(0, 15)
+    const symbols = STYLE_SYMBOLS[style] ?? POPULAR_SYMBOLS.slice(0, 18)
 
     // Fetch VN-Index once + all stock data in parallel
     const [vnIndex, ...stockResults] = await Promise.all([

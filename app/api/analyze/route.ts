@@ -188,6 +188,19 @@ export async function POST(request: NextRequest) {
     const foreignNetVol = foreignBuyVol - foreignSellVol
     const foreignRoom = quote?.foreignRoom
 
+    // Support / Resistance từ dữ liệu nến thực (20 phiên mạnh + 10 phiên gần)
+    let support = 0, resistance = 0, support2 = 0, resistance2 = 0
+    if (highsArr.length >= 10 && lowsArr.length >= 10) {
+      const last20H = highsArr.slice(-20)
+      const last20L = lowsArr.slice(-20)
+      const last10H = highsArr.slice(-10)
+      const last10L = lowsArr.slice(-10)
+      resistance  = Math.round(Math.max(...last20H))
+      support     = Math.round(Math.min(...last20L))
+      resistance2 = Math.round(Math.max(...last10H))
+      support2    = Math.round(Math.min(...last10L))
+    }
+
     const topNews = (news || []).slice(0, 5).map((n: { title: string; sentiment: number }) => ({
       title: n.title,
       sentiment: n.sentiment || 0,
@@ -234,8 +247,6 @@ export async function POST(request: NextRequest) {
       profitGrowth: fundamental?.profitGrowth || 0,
       debtEquity: fundamental?.debtEquity || 0,
       dividendYield: fundamental?.dividendYield || 0,
-      tcbsRating: fundamental?.tcbsRating || 0,
-      tcbsRecommend: fundamental?.tcbsRecommend || 'N/A',
       topNews,
       avgSentiment,
       vnIndex,
@@ -251,6 +262,10 @@ export async function POST(request: NextRequest) {
       foreignSellVol,
       foreignNetVol,
       foreignRoom,
+      support,
+      resistance,
+      support2,
+      resistance2,
     })
 
     if (noHolding) await saveCachedResult(symbol, result)

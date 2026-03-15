@@ -120,8 +120,6 @@ interface AnalysisContext {
   profitGrowth: number
   debtEquity: number
   dividendYield: number
-  tcbsRating: number
-  tcbsRecommend: string
   topNews: Array<{ title: string; sentiment: number }>
   avgSentiment: number
   currentHolding?: CurrentHolding | null
@@ -138,6 +136,11 @@ interface AnalysisContext {
   foreignSellVol?: number
   foreignNetVol?: number
   foreignRoom?: number
+  // Support/Resistance từ dữ liệu nến thực tế
+  support?: number
+  resistance?: number
+  support2?: number
+  resistance2?: number
 }
 
 export async function analyzeStock(
@@ -186,8 +189,22 @@ NN mua: ${buy.toLocaleString('vi-VN')} CP | NN bán: ${sell.toLocaleString('vi-V
 ${parts.join(' | ')}${w52Str}`
   })()
 
+  // Format helper: show N/A for zero/missing fundamental data
+  const fmt0 = (v: number, suffix: string, decimals = 1) =>
+    v !== 0 ? v.toFixed(decimals) + suffix : 'N/A'
+  const fmtGrowth = (v: number) =>
+    v !== 0 ? (v >= 0 ? '+' : '') + v.toFixed(1) + '%' : 'N/A'
+
+  // Support/Resistance block from actual candle data
+  const srBlock = (ctx.support && ctx.resistance)
+    ? `\n▌ VÙNG HỖ TRỢ/KHÁNG CỰ (20 phiên — dùng để xác định entryZone/targetPrice/stopLoss):
+Kháng cự: ${ctx.resistance2 ? ctx.resistance2.toLocaleString('vi-VN') + '₫ (gần)  → ' : ''}${ctx.resistance.toLocaleString('vi-VN')}₫ (mạnh)
+Hỗ trợ:   ${ctx.support2 ? ctx.support2.toLocaleString('vi-VN') + '₫ (gần)  → ' : ''}${ctx.support.toLocaleString('vi-VN')}₫ (mạnh)
+→ entryZone phải nằm trong khoảng hỗ trợ gần~mạnh, stopLoss dưới hỗ trợ mạnh, target gần kháng cự`
+    : ''
+
   const prompt = `PHÂN TÍCH CHUYÊN SÂU CỔ PHIẾU ${ctx.symbol} — ${new Date().toLocaleDateString('vi-VN')}
-${vnIndexBlock}${foreignBlock}${momentumBlock}
+${vnIndexBlock}${foreignBlock}${momentumBlock}${srBlock}
 
 ▌ KỸ THUẬT (90 ngày — dữ liệu thực):
 Giá: ${ctx.price.toLocaleString('vi-VN')}₫ | Hôm nay: ${ctx.changePct > 0 ? '+' : ''}${ctx.changePct.toFixed(2)}%
@@ -201,10 +218,10 @@ BB(20,2): Upper=${ctx.bbUpper.toLocaleString('vi-VN')} Mid=${ctx.bbMid.toLocaleS
 Khối lượng: ${ctx.volumeSignal || 'Bình thường'}
 
 ▌ CƠ BẢN (số liệu mới nhất từ Simplize + báo cáo tài chính):
-P/E: ${ctx.pe.toFixed(1)}x | P/B: ${(ctx.pb ?? 0).toFixed(2)}x | EPS: ${ctx.eps.toLocaleString('vi-VN')}₫
-ROE: ${ctx.roe.toFixed(1)}% | ROA: ${(ctx.roa ?? 0).toFixed(1)}%
-Tăng trưởng DT: ${ctx.revenueGrowth.toFixed(1)}% | Tăng trưởng LN: ${ctx.profitGrowth.toFixed(1)}%
-Nợ/Vốn chủ: ${ctx.debtEquity.toFixed(2)} | Cổ tức: ${ctx.dividendYield.toFixed(1)}%
+P/E: ${fmt0(ctx.pe, 'x')} | P/B: ${fmt0(ctx.pb ?? 0, 'x', 2)} | EPS: ${ctx.eps > 0 ? ctx.eps.toLocaleString('vi-VN') + '₫' : 'N/A'}
+ROE: ${fmt0(ctx.roe, '%')} | ROA: ${fmt0(ctx.roa ?? 0, '%')}
+Tăng trưởng DT: ${fmtGrowth(ctx.revenueGrowth)} | Tăng trưởng LN: ${fmtGrowth(ctx.profitGrowth)}
+Nợ/Vốn chủ: ${ctx.debtEquity > 0 ? ctx.debtEquity.toFixed(2) : 'N/A'} | Cổ tức: ${fmt0(ctx.dividendYield, '%')}
 
 ▌ TIN TỨC & TÂM LÝ (7 ngày gần nhất):
 ${newsText || 'Không có tin nổi bật'}
@@ -247,9 +264,9 @@ Trả về JSON trong thẻ <result>:
 
   const response = await client.messages.create({
     model: 'claude-opus-4-6',
-    max_tokens: 2048,
+    max_tokens: 3500,
     system:
-      'Bạn là chuyên gia phân tích chứng khoán CFA Level 3, 20 năm kinh nghiệm thị trường Việt Nam. Phân tích sâu, khách quan, dựa hoàn toàn trên số liệu thực tế được cung cấp. Không được bịa đặt số liệu. QUAN TRỌNG: Chỉ trả về JSON hợp lệ trong thẻ <result>, không có text nào khác.',
+      'Bạn là chuyên gia phân tích chứng khoán CFA Level 3, 20 năm kinh nghiệm thị trường Việt Nam. Phân tích sâu, khách quan, dựa hoàn toàn trên số liệu thực tế được cung cấp. Không được bịa đặt số liệu. Khi fundamental data = N/A, không suy diễn từ giá trị đó. QUAN TRỌNG: Chỉ trả về JSON hợp lệ trong thẻ <result>, không có text nào khác.',
     messages: [{ role: 'user', content: prompt }],
   })
 
@@ -365,7 +382,7 @@ export async function optimizePortfolio(ctx: OptimizeContext): Promise<OptimizeR
     return `━━ [${h.symbol}] ${h.industry} ━━ ${h.weight.toFixed(1)}% danh mục
   Vị thế: ${h.qty.toLocaleString()} CP | Giá vốn: ${h.avgCost.toLocaleString()}đ → Hiện: ${h.currentPrice.toLocaleString()}đ | L/L: ${pnlSign}${h.pnlPct.toFixed(1)}%
   Kỹ thuật: RSI=${h.rsi} (${rsiLabel}) | ADX=${h.adx??0} (${h.adxTrend??'N/A'}) | MACD=${h.macdSignal}${h.macdHistogram ? ` hist=${h.macdHistogram}` : ''} | ${h.aboveSMA20 ? '↑SMA20' : '↓SMA20'} | ${h.aboveSMA50 ? '↑SMA50' : '↓SMA50'} | BB: ${h.bbSignal||'N/A'} | Vol: ${h.volumeSignal||'N/A'}
-  Momentum: Trend90D: ${trendSign}${h.trend30d.toFixed(1)}%${momentum1Mstr}${momentum3Mstr}
+  Momentum: Trend30D: ${trendSign}${h.trend30d.toFixed(1)}%${momentum1Mstr}${momentum3Mstr}
   Cơ bản: P/E=${h.pe.toFixed(1)}x | P/B=${(h.pb??0).toFixed(2)}x | ROE=${h.roe.toFixed(1)}% | ROA=${(h.roa??0).toFixed(1)}% | Nợ/Vốn=${h.debtEquity.toFixed(2)} | Cổ tức=${h.dividendYield.toFixed(1)}%${foreignBlock}${newsBlock}`
   }).join('\n\n')
 
