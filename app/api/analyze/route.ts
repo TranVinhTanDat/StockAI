@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { analyzeStock } from '@/lib/claude'
 import { createClient } from '@supabase/supabase-js'
 import { verifyToken } from '@/lib/jwt'
+import { calcRSI } from '@/lib/indicators'
 
 function getServerSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -36,6 +37,39 @@ async function saveCachedResult(symbol: string, result: unknown) {
   await sb.from('analysis_cache').insert({ symbol, data: result, expires_at: expiresAt })
 }
 
+// Fetch Simplize for ROA/ROE/PB (more accurate than CafeF)
+async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; pb: number }> {
+  try {
+    const res = await fetch(`https://api.simplize.vn/api/company/summary/${symbol}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://simplize.vn/' },
+    })
+    if (!res.ok) return { roa: 0, pb: 0 }
+    const d = await res.json()
+    const s = d?.data || d
+    return { roa: s?.roa || 0, pb: s?.pbRatio || 0 }
+  } catch { return { roa: 0, pb: 0 } }
+}
+
+// Fetch VN-Index 30-day trend for market context
+async function fetchVNIndexContext(): Promise<{ trend30d: number; currentLevel: number; rsi: number }> {
+  try {
+    const to = Math.floor(Date.now() / 1000)
+    const from = to - 35 * 86400
+    const res = await fetch(
+      `https://histdatafeed.vps.com.vn/tradingview/history?symbol=VNINDEX&resolution=D&from=${from}&to=${to}`
+    )
+    if (!res.ok) return { trend30d: 0, currentLevel: 0, rsi: 50 }
+    const d = await res.json()
+    if (!d.c || d.c.length < 5) return { trend30d: 0, currentLevel: 0, rsi: 50 }
+    const closes: number[] = d.c
+    const first = closes[0], last = closes[closes.length - 1]
+    const trend30d = first > 0 ? ((last - first) / first) * 100 : 0
+    const rsiArr = calcRSI(closes, 14).filter((v: number) => !isNaN(v))
+    const rsi = rsiArr.length > 0 ? Math.round(rsiArr[rsiArr.length - 1]) : 50
+    return { trend30d: Math.round(trend30d * 10) / 10, currentLevel: Math.round(last), rsi }
+  } catch { return { trend30d: 0, currentLevel: 0, rsi: 50 } }
+}
+
 export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
@@ -58,7 +92,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { symbol, quote, indicators, fundamental, news, currentHolding, forceRefresh } = body
+    const { symbol, quote, indicators, volumes, fundamental, news, currentHolding, forceRefresh } = body
 
     if (!symbol) {
       return NextResponse.json(
@@ -91,10 +125,31 @@ export async function POST(request: NextRequest) {
     )
 
     const latestRsi = rsiValues.length > 0 ? rsiValues[rsiValues.length - 1] : 50
-    const latestMacd = macdValues.length > 0 ? macdValues[macdValues.length - 1] : { macd: 0, signal: 0 }
+    const latestMacd = macdValues.length > 0 ? macdValues[macdValues.length - 1] : { macd: 0, signal: 0, histogram: 0 }
     const latestBb = bbValues.length > 0 ? bbValues[bbValues.length - 1] : { upper: 0, middle: 0, lower: 0 }
     const latestSma20 = sma20Values.length > 0 ? sma20Values[sma20Values.length - 1] : quote?.price || 0
     const latestSma50 = sma50Values.length > 0 ? sma50Values[sma50Values.length - 1] : quote?.price || 0
+
+    // Compute BB signal label
+    const price = quote?.price || 0
+    let bbSignal = 'Inside BB'
+    if (latestBb.upper > 0) {
+      if (price >= latestBb.upper * 0.98) bbSignal = 'Overbought (trên BB trên)'
+      else if (price <= latestBb.lower * 1.02) bbSignal = 'Oversold (dưới BB dưới)'
+    }
+
+    // Compute MACD histogram
+    const macdHistogram = latestMacd.histogram ?? (latestMacd.macd - latestMacd.signal)
+
+    // Compute volume trend (5D vs 20D avg)
+    let volumeSignal = 'Bình thường'
+    const volArr: number[] = Array.isArray(volumes) ? volumes.filter((v: number) => !isNaN(v) && v > 0) : []
+    if (volArr.length >= 20) {
+      const avg20 = volArr.slice(-20).reduce((a, b) => a + b, 0) / 20
+      const avg5 = volArr.slice(-5).reduce((a, b) => a + b, 0) / 5
+      if (avg5 > avg20 * 1.5) volumeSignal = 'Cao bất thường (momentum mạnh)'
+      else if (avg5 < avg20 * 0.5) volumeSignal = 'Thấp bất thường (thiếu xác nhận)'
+    }
 
     const topNews = (news || []).slice(0, 5).map((n: { title: string; sentiment: number }) => ({
       title: n.title,
@@ -111,9 +166,15 @@ export async function POST(request: NextRequest) {
     const cached = !forceRefresh && await getCachedResult(symbol, noHolding)
     if (cached) return NextResponse.json({ ...cached, _cached: true })
 
+    // Fetch enrichment data in parallel (Simplize + VN-Index)
+    const [simplize, vnIndex] = await Promise.all([
+      fetchSimplizeSummary(symbol),
+      fetchVNIndexContext(),
+    ])
+
     const result = await analyzeStock({
       symbol,
-      price: quote?.price || 0,
+      price,
       currentHolding: currentHolding || null,
       changePct: quote?.changePct || 0,
       sma20: latestSma20,
@@ -121,12 +182,17 @@ export async function POST(request: NextRequest) {
       rsi: latestRsi,
       macd: latestMacd.macd,
       signal: latestMacd.signal,
+      macdHistogram,
       bbUpper: latestBb.upper,
       bbMid: latestBb.middle,
       bbLower: latestBb.lower,
+      bbSignal,
+      volumeSignal,
       pe: fundamental?.pe || 0,
       eps: fundamental?.eps || 0,
       roe: fundamental?.roe || 0,
+      roa: simplize.roa,
+      pb: simplize.pb,
       revenueGrowth: fundamental?.revenueGrowth || 0,
       profitGrowth: fundamental?.profitGrowth || 0,
       debtEquity: fundamental?.debtEquity || 0,
@@ -135,6 +201,7 @@ export async function POST(request: NextRequest) {
       tcbsRecommend: fundamental?.tcbsRecommend || 'N/A',
       topNews,
       avgSentiment,
+      vnIndex,
     })
 
     if (noHolding) await saveCachedResult(symbol, result)

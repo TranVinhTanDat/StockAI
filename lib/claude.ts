@@ -105,12 +105,17 @@ interface AnalysisContext {
   rsi: number
   macd: number
   signal: number
+  macdHistogram?: number
   bbUpper: number
   bbMid: number
   bbLower: number
+  bbSignal?: string
+  volumeSignal?: string
   pe: number
   eps: number
   roe: number
+  roa?: number
+  pb?: number
   revenueGrowth: number
   profitGrowth: number
   debtEquity: number
@@ -120,6 +125,7 @@ interface AnalysisContext {
   topNews: Array<{ title: string; sentiment: number }>
   avgSentiment: number
   currentHolding?: CurrentHolding | null
+  vnIndex?: { trend30d: number; currentLevel: number; rsi: number }
 }
 
 export async function analyzeStock(
@@ -129,48 +135,53 @@ export async function analyzeStock(
 
   const bbPosition =
     ctx.bbUpper !== ctx.bbLower
-      ? (
-          ((ctx.price - ctx.bbLower) / (ctx.bbUpper - ctx.bbLower)) *
-          100
-        ).toFixed(0)
+      ? (((ctx.price - ctx.bbLower) / (ctx.bbUpper - ctx.bbLower)) * 100).toFixed(0)
       : '50'
 
   const newsText = ctx.topNews
-    .map(
-      (n, i) =>
-        `${i + 1}. ${n.title} [${n.sentiment > 0 ? '+' : ''}${n.sentiment}]`
-    )
+    .map((n, i) => `${i + 1}. ${n.title} [${n.sentiment > 0 ? '+' : ''}${n.sentiment}]`)
     .join('\n')
 
-  const prompt = `Phân tích cổ phiếu ${ctx.symbol}:
+  const vnIndexBlock = ctx.vnIndex
+    ? `\n▌ BỐI CẢNH THỊ TRƯỜNG (VN-Index):\nVN-Index: ${ctx.vnIndex.currentLevel.toLocaleString('vi-VN')} điểm | Xu hướng 30D: ${ctx.vnIndex.trend30d >= 0 ? '+' : ''}${ctx.vnIndex.trend30d.toFixed(1)}% | RSI: ${ctx.vnIndex.rsi} (${ctx.vnIndex.rsi > 70 ? 'Quá mua — thị trường có thể điều chỉnh' : ctx.vnIndex.rsi < 30 ? 'Quá bán — có thể phục hồi' : 'Trung lập'})\n→ Xét tác động xu hướng thị trường chung lên mã ${ctx.symbol}`
+    : ''
 
-GIÁ & KỸ THUẬT:
-Giá: ${ctx.price}₫ | Thay đổi: ${ctx.changePct > 0 ? '+' : ''}${ctx.changePct.toFixed(2)}%
-SMA20: ${ctx.sma20} | SMA50: ${ctx.sma50}
+  const prompt = `PHÂN TÍCH CHUYÊN SÂU CỔ PHIẾU ${ctx.symbol} — ${new Date().toLocaleDateString('vi-VN')}
+${vnIndexBlock}
+▌ GIÁ & KỸ THUẬT (90 ngày):
+Giá: ${ctx.price.toLocaleString('vi-VN')}₫ | Thay đổi hôm nay: ${ctx.changePct > 0 ? '+' : ''}${ctx.changePct.toFixed(2)}%
+SMA20: ${ctx.sma20.toLocaleString('vi-VN')} | SMA50: ${ctx.sma50.toLocaleString('vi-VN')}
 → Giá ${ctx.price > ctx.sma20 ? 'TRÊN' : 'DƯỚI'} SMA20, ${ctx.price > ctx.sma50 ? 'TRÊN' : 'DƯỚI'} SMA50
-RSI(14): ${ctx.rsi.toFixed(1)}
-→ ${ctx.rsi > 70 ? 'QUÁ MUA' : ctx.rsi < 30 ? 'QUÁ BÁN' : 'TRUNG LẬP'}
-MACD: ${ctx.macd.toFixed(2)} | Signal: ${ctx.signal.toFixed(2)}
-→ ${ctx.macd > ctx.signal ? 'BULLISH' : 'BEARISH'} cross
-BB: Upper=${ctx.bbUpper} Mid=${ctx.bbMid} Lower=${ctx.bbLower}
-→ Giá ở ${bbPosition}% dải BB
+RSI(14): ${ctx.rsi.toFixed(1)} → ${ctx.rsi > 70 ? '⚠ QUÁ MUA' : ctx.rsi < 30 ? '🔻 QUÁ BÁN' : 'TRUNG LẬP'}
+MACD: ${ctx.macd.toFixed(2)} | Signal: ${ctx.signal.toFixed(2)}${ctx.macdHistogram !== undefined ? ` | Histogram: ${ctx.macdHistogram.toFixed(2)}` : ''}
+→ ${ctx.macd > ctx.signal ? 'BULLISH cross (momentum tăng)' : 'BEARISH cross (momentum giảm)'}
+BB(20,2): Upper=${ctx.bbUpper.toLocaleString('vi-VN')} Mid=${ctx.bbMid.toLocaleString('vi-VN')} Lower=${ctx.bbLower.toLocaleString('vi-VN')}
+→ Giá ở ${bbPosition}% dải BB | Trạng thái: ${ctx.bbSignal || 'Inside BB'}
+Khối lượng giao dịch: ${ctx.volumeSignal || 'Bình thường'}
 
-CƠ BẢN (năm gần nhất):
-P/E: ${ctx.pe.toFixed(1)} | EPS: ${ctx.eps}₫ | ROE: ${ctx.roe.toFixed(1)}%
-Tăng trưởng DT: ${ctx.revenueGrowth.toFixed(1)}% | LN: ${ctx.profitGrowth.toFixed(1)}%
-Debt/Equity: ${ctx.debtEquity.toFixed(2)} | Cổ tức: ${ctx.dividendYield.toFixed(1)}%
-TCBS Rating: ${ctx.tcbsRating}/5 (${ctx.tcbsRecommend})
+▌ CƠ BẢN (số liệu mới nhất):
+P/E: ${ctx.pe.toFixed(1)}x | P/B: ${(ctx.pb ?? 0).toFixed(2)}x | EPS: ${ctx.eps.toLocaleString('vi-VN')}₫
+ROE: ${ctx.roe.toFixed(1)}% | ROA: ${(ctx.roa ?? 0).toFixed(1)}%
+Tăng trưởng DT: ${ctx.revenueGrowth.toFixed(1)}% | Tăng trưởng LN: ${ctx.profitGrowth.toFixed(1)}%
+Nợ/Vốn chủ: ${ctx.debtEquity.toFixed(2)} | Cổ tức: ${ctx.dividendYield.toFixed(1)}%
 
-TIN TỨC 7 NGÀY:
+▌ TIN TỨC & TÂM LÝ (7 ngày):
 ${newsText || 'Không có tin nổi bật'}
-Sentiment TB: ${ctx.avgSentiment.toFixed(0)}/100
+Sentiment trung bình: ${ctx.avgSentiment.toFixed(0)}/100
 ${ctx.currentHolding ? `
-DANH MỤC NHÀ ĐẦU TƯ (QUAN TRỌNG — phải đề cập trong field "action"):
-Đang nắm giữ: ${ctx.currentHolding.qty.toLocaleString()} CP
-Giá vốn TB: ${ctx.currentHolding.avgCost.toLocaleString()}₫
-Tổng đầu tư: ${ctx.currentHolding.totalCost.toLocaleString()}₫
+▌ VỊ THẾ TRONG DANH MỤC (QUAN TRỌNG — phải đề cập rõ trong field "action"):
+Đang nắm giữ: ${ctx.currentHolding.qty.toLocaleString('vi-VN')} CP
+Giá vốn TB: ${ctx.currentHolding.avgCost.toLocaleString('vi-VN')}₫
+Tổng đầu tư: ${ctx.currentHolding.totalCost.toLocaleString('vi-VN')}₫
 Lãi/lỗ chưa thực hiện: ${ctx.price > 0 ? ((ctx.price - ctx.currentHolding.avgCost) / ctx.currentHolding.avgCost * 100).toFixed(1) : 0}%
-→ Field "action" BẮT BUỘC phải bắt đầu bằng: "Trong danh mục của bạn, tôi thấy bạn đang nắm giữ ${ctx.currentHolding.qty.toLocaleString()} CP ${ctx.symbol} với [lãi/lỗ X%]..." rồi mới đưa ra khuyến nghị cụ thể: nên chốt lời một phần, giữ nguyên, hay tăng thêm vị thế.` : ''}
+→ Field "action" BẮT BUỘC mở đầu: "Trong danh mục của bạn, bạn đang nắm giữ ${ctx.currentHolding.qty.toLocaleString('vi-VN')} CP ${ctx.symbol} với [lãi/lỗ X%]..." sau đó khuyến nghị cụ thể: chốt lời một phần / giữ / tăng vị thế / cắt lỗ.` : ''}
+▌ YÊU CẦU PHÂN TÍCH:
+1. Kỹ thuật: xu hướng hiện tại (RSI, MACD histogram, BB, SMA), momentum và tín hiệu đảo chiều
+2. Cơ bản: định giá P/E + P/B so với ngành, khả năng sinh lời (ROE + ROA), chất lượng tăng trưởng
+3. Tâm lý: sentiment tin tức, tác động thị trường chung (VN-Index)
+4. Rủi ro: cụ thể, có số liệu
+5. Hành động: mức giá vào/ra cụ thể, xét vị thế hiện tại nếu có
+
 Trả về JSON trong thẻ <result>:
 <result>
 {
@@ -183,21 +194,21 @@ Trả về JSON trong thẻ <result>:
   "technicalScore": 8,
   "fundamentalScore": 7,
   "sentimentScore": 6,
-  "technical": "80 từ phân tích kỹ thuật",
-  "fundamental": "80 từ phân tích cơ bản",
-  "sentiment": "50 từ nhận định tâm lý",
-  "pros": ["lý do 1", "lý do 2", "lý do 3"],
-  "risks": ["rủi ro 1", "rủi ro 2"],
-  "action": "40 từ hành động cụ thể nên làm ngay",
-  "nextReview": "điều kiện hoặc thời điểm xem lại"
+  "technical": "90 từ: phân tích RSI/MACD/BB/SMA/volume — xu hướng và momentum cụ thể",
+  "fundamental": "90 từ: P/E+P/B so ngành, ROE+ROA, tăng trưởng bền vững, sức khỏe tài chính",
+  "sentiment": "60 từ: tâm lý tin tức, VN-Index tác động, dòng tiền thị trường",
+  "pros": ["lý do 1 (có số liệu)", "lý do 2", "lý do 3"],
+  "risks": ["rủi ro 1 (có số liệu)", "rủi ro 2"],
+  "action": "50 từ: hành động cụ thể với mức giá — mua/bán/giữ, vùng giá vào, target, stop loss, xét vị thế hiện tại nếu có",
+  "nextReview": "điều kiện kỹ thuật hoặc sự kiện cần theo dõi để xem lại"
 }
 </result>`
 
   const response = await client.messages.create({
     model: 'claude-opus-4-6',
-    max_tokens: 1500,
+    max_tokens: 2048,
     system:
-      'Bạn là chuyên gia phân tích chứng khoán CFA chuyên thị trường Việt Nam, 20 năm kinh nghiệm. Phân tích khách quan dựa trên số liệu thực tế. QUAN TRỌNG: Chỉ được trả về một JSON object hợp lệ, bắt đầu bằng { và kết thúc bằng }. Không được có bất kỳ text, markdown hay giải thích nào ngoài JSON.',
+      'Bạn là chuyên gia phân tích chứng khoán CFA Level 3, 20 năm kinh nghiệm thị trường Việt Nam. Phân tích sâu, khách quan, dựa hoàn toàn trên số liệu thực tế được cung cấp. Không được bịa đặt số liệu. QUAN TRỌNG: Chỉ trả về JSON hợp lệ trong thẻ <result>, không có text nào khác.',
     messages: [{ role: 'user', content: prompt }],
   })
 

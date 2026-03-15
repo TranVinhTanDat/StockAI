@@ -155,7 +155,7 @@ export default function Home() {
         'Content-Type': 'application/json',
         ...(storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {}),
       },
-      body: JSON.stringify({ symbol: upper, quote, indicators: history.indicators, fundamental, news: news.slice(0, 5), currentHolding: holdingsForSymbol || null, forceRefresh }),
+      body: JSON.stringify({ symbol: upper, quote, indicators: history.indicators, volumes: history.candles.map((c: { volume: number }) => c.volume), fundamental, news: news.slice(0, 5), currentHolding: holdingsForSymbol || null, forceRefresh }),
     })
     if (!analyzeRes.ok) {
       const err = await analyzeRes.json()
