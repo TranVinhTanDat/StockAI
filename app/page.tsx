@@ -155,7 +155,15 @@ export default function Home() {
         'Content-Type': 'application/json',
         ...(storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {}),
       },
-      body: JSON.stringify({ symbol: upper, quote, indicators: history.indicators, volumes: history.candles.map((c: { volume: number }) => c.volume), fundamental, news: news.slice(0, 5), currentHolding: holdingsForSymbol || null, forceRefresh }),
+      body: JSON.stringify({
+        symbol: upper, quote, indicators: history.indicators,
+        highs: history.candles.map((c: { high: number }) => c.high),
+        lows: history.candles.map((c: { low: number }) => c.low),
+        closes: history.candles.map((c: { close: number }) => c.close),
+        volumes: history.candles.map((c: { volume: number }) => c.volume),
+        fundamental, news: news.slice(0, 5),
+        currentHolding: holdingsForSymbol || null, forceRefresh,
+      }),
     })
     if (!analyzeRes.ok) {
       const err = await analyzeRes.json()

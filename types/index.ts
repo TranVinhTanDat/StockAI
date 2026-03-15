@@ -11,6 +11,10 @@ export interface QuoteData {
   exchange: string
   industry: string
   timestamp: string
+  // Foreign investor flows (from VPS)
+  foreignBuyVol?: number
+  foreignSellVol?: number
+  foreignRoom?: number   // remaining foreign ownership room (%)
 }
 
 export interface CandleData {

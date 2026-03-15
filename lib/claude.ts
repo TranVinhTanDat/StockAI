@@ -126,6 +126,18 @@ interface AnalysisContext {
   avgSentiment: number
   currentHolding?: CurrentHolding | null
   vnIndex?: { trend30d: number; currentLevel: number; rsi: number }
+  adx?: number
+  adxTrend?: string
+  momentum1W?: number
+  momentum1M?: number
+  momentum3M?: number
+  w52position?: number
+  w52high?: number
+  w52low?: number
+  foreignBuyVol?: number
+  foreignSellVol?: number
+  foreignNetVol?: number
+  foreignRoom?: number
 }
 
 export async function analyzeStock(
@@ -146,26 +158,55 @@ export async function analyzeStock(
     ? `\n▌ BỐI CẢNH THỊ TRƯỜNG (VN-Index):\nVN-Index: ${ctx.vnIndex.currentLevel.toLocaleString('vi-VN')} điểm | Xu hướng 30D: ${ctx.vnIndex.trend30d >= 0 ? '+' : ''}${ctx.vnIndex.trend30d.toFixed(1)}% | RSI: ${ctx.vnIndex.rsi} (${ctx.vnIndex.rsi > 70 ? 'Quá mua — thị trường có thể điều chỉnh' : ctx.vnIndex.rsi < 30 ? 'Quá bán — có thể phục hồi' : 'Trung lập'})\n→ Xét tác động xu hướng thị trường chung lên mã ${ctx.symbol}`
     : ''
 
+  // Foreign flow block
+  const foreignBlock = (() => {
+    const net = ctx.foreignNetVol ?? 0
+    const buy = ctx.foreignBuyVol ?? 0
+    const sell = ctx.foreignSellVol ?? 0
+    if (buy === 0 && sell === 0) return ''
+    const netLabel = net > 0 ? `MUA RÒNG +${net.toLocaleString('vi-VN')}` : net < 0 ? `BÁN RÒNG ${net.toLocaleString('vi-VN')}` : 'Cân bằng'
+    const roomStr = ctx.foreignRoom !== undefined ? ` | Room NN còn: ${ctx.foreignRoom.toFixed(1)}%` : ''
+    return `\n▌ DÒNG TIỀN NGOẠI (hôm nay — tín hiệu quan trọng nhất TTCK VN):
+NN mua: ${buy.toLocaleString('vi-VN')} CP | NN bán: ${sell.toLocaleString('vi-VN')} CP | Net: ${netLabel}${roomStr}`
+  })()
+
+  // Momentum block
+  const momentumBlock = (() => {
+    const w1 = ctx.momentum1W, m1 = ctx.momentum1M, m3 = ctx.momentum3M
+    const w52 = ctx.w52position
+    const parts: string[] = []
+    if (w1 !== undefined) parts.push(`1 tuần: ${w1 >= 0 ? '+' : ''}${w1}%`)
+    if (m1 !== undefined) parts.push(`1 tháng: ${m1 >= 0 ? '+' : ''}${m1}%`)
+    if (m3 !== undefined) parts.push(`3 tháng: ${m3 >= 0 ? '+' : ''}${m3}%`)
+    if (parts.length === 0) return ''
+    const w52Str = w52 !== undefined
+      ? `\n52W: Low=${ctx.w52low?.toLocaleString('vi-VN')}₫ / High=${ctx.w52high?.toLocaleString('vi-VN')}₫ → Giá hiện tại ở ${w52}% vùng 52 tuần`
+      : ''
+    return `\n▌ MOMENTUM ĐA KHUNG THỜI GIAN:
+${parts.join(' | ')}${w52Str}`
+  })()
+
   const prompt = `PHÂN TÍCH CHUYÊN SÂU CỔ PHIẾU ${ctx.symbol} — ${new Date().toLocaleDateString('vi-VN')}
-${vnIndexBlock}
-▌ GIÁ & KỸ THUẬT (90 ngày):
-Giá: ${ctx.price.toLocaleString('vi-VN')}₫ | Thay đổi hôm nay: ${ctx.changePct > 0 ? '+' : ''}${ctx.changePct.toFixed(2)}%
+${vnIndexBlock}${foreignBlock}${momentumBlock}
+
+▌ KỸ THUẬT (90 ngày — dữ liệu thực):
+Giá: ${ctx.price.toLocaleString('vi-VN')}₫ | Hôm nay: ${ctx.changePct > 0 ? '+' : ''}${ctx.changePct.toFixed(2)}%
 SMA20: ${ctx.sma20.toLocaleString('vi-VN')} | SMA50: ${ctx.sma50.toLocaleString('vi-VN')}
 → Giá ${ctx.price > ctx.sma20 ? 'TRÊN' : 'DƯỚI'} SMA20, ${ctx.price > ctx.sma50 ? 'TRÊN' : 'DƯỚI'} SMA50
 RSI(14): ${ctx.rsi.toFixed(1)} → ${ctx.rsi > 70 ? '⚠ QUÁ MUA' : ctx.rsi < 30 ? '🔻 QUÁ BÁN' : 'TRUNG LẬP'}
-MACD: ${ctx.macd.toFixed(2)} | Signal: ${ctx.signal.toFixed(2)}${ctx.macdHistogram !== undefined ? ` | Histogram: ${ctx.macdHistogram.toFixed(2)}` : ''}
-→ ${ctx.macd > ctx.signal ? 'BULLISH cross (momentum tăng)' : 'BEARISH cross (momentum giảm)'}
+ADX(14): ${ctx.adx ?? 0} → ${ctx.adxTrend ?? 'N/A'} (>25=trend mạnh, <20=sideway)
+MACD: ${ctx.macd.toFixed(2)} | Signal: ${ctx.signal.toFixed(2)}${ctx.macdHistogram !== undefined ? ` | Histogram: ${ctx.macdHistogram.toFixed(2)} (${ctx.macdHistogram > 0 ? 'tăng' : 'giảm'})` : ''}
 BB(20,2): Upper=${ctx.bbUpper.toLocaleString('vi-VN')} Mid=${ctx.bbMid.toLocaleString('vi-VN')} Lower=${ctx.bbLower.toLocaleString('vi-VN')}
-→ Giá ở ${bbPosition}% dải BB | Trạng thái: ${ctx.bbSignal || 'Inside BB'}
-Khối lượng giao dịch: ${ctx.volumeSignal || 'Bình thường'}
+→ Giá ở ${bbPosition}% dải BB | ${ctx.bbSignal || 'Inside BB'}
+Khối lượng: ${ctx.volumeSignal || 'Bình thường'}
 
-▌ CƠ BẢN (số liệu mới nhất):
+▌ CƠ BẢN (số liệu mới nhất từ Simplize + báo cáo tài chính):
 P/E: ${ctx.pe.toFixed(1)}x | P/B: ${(ctx.pb ?? 0).toFixed(2)}x | EPS: ${ctx.eps.toLocaleString('vi-VN')}₫
 ROE: ${ctx.roe.toFixed(1)}% | ROA: ${(ctx.roa ?? 0).toFixed(1)}%
 Tăng trưởng DT: ${ctx.revenueGrowth.toFixed(1)}% | Tăng trưởng LN: ${ctx.profitGrowth.toFixed(1)}%
 Nợ/Vốn chủ: ${ctx.debtEquity.toFixed(2)} | Cổ tức: ${ctx.dividendYield.toFixed(1)}%
 
-▌ TIN TỨC & TÂM LÝ (7 ngày):
+▌ TIN TỨC & TÂM LÝ (7 ngày gần nhất):
 ${newsText || 'Không có tin nổi bật'}
 Sentiment trung bình: ${ctx.avgSentiment.toFixed(0)}/100
 ${ctx.currentHolding ? `
@@ -174,13 +215,13 @@ ${ctx.currentHolding ? `
 Giá vốn TB: ${ctx.currentHolding.avgCost.toLocaleString('vi-VN')}₫
 Tổng đầu tư: ${ctx.currentHolding.totalCost.toLocaleString('vi-VN')}₫
 Lãi/lỗ chưa thực hiện: ${ctx.price > 0 ? ((ctx.price - ctx.currentHolding.avgCost) / ctx.currentHolding.avgCost * 100).toFixed(1) : 0}%
-→ Field "action" BẮT BUỘC mở đầu: "Trong danh mục của bạn, bạn đang nắm giữ ${ctx.currentHolding.qty.toLocaleString('vi-VN')} CP ${ctx.symbol} với [lãi/lỗ X%]..." sau đó khuyến nghị cụ thể: chốt lời một phần / giữ / tăng vị thế / cắt lỗ.` : ''}
-▌ YÊU CẦU PHÂN TÍCH:
-1. Kỹ thuật: xu hướng hiện tại (RSI, MACD histogram, BB, SMA), momentum và tín hiệu đảo chiều
-2. Cơ bản: định giá P/E + P/B so với ngành, khả năng sinh lời (ROE + ROA), chất lượng tăng trưởng
-3. Tâm lý: sentiment tin tức, tác động thị trường chung (VN-Index)
-4. Rủi ro: cụ thể, có số liệu
-5. Hành động: mức giá vào/ra cụ thể, xét vị thế hiện tại nếu có
+→ Field "action" BẮT BUỘC mở đầu: "Trong danh mục của bạn, bạn đang nắm giữ ${ctx.currentHolding.qty.toLocaleString('vi-VN')} CP ${ctx.symbol} với [lãi/lỗ X%]..." rồi khuyến nghị cụ thể dựa trên tất cả dữ liệu trên.` : ''}
+▌ YÊU CẦU PHÂN TÍCH — PHẢI DỰA TRÊN SỐ LIỆU THỰC TẾ TRÊN:
+1. Kỹ thuật: ADX (xu hướng mạnh/sideway?), RSI, MACD histogram tăng/giảm, BB, momentum đa khung
+2. Dòng tiền: NN đang mua hay bán ròng? Ảnh hưởng thế nào?
+3. Cơ bản: P/E + P/B định giá hợp lý/đắt/rẻ? ROE/ROA so ngành? Tăng trưởng bền vững?
+4. Thị trường: VN-Index context, tương quan với mã
+5. Hành động cụ thể: vùng giá vào/ra, target, stop loss, xét vị thế nếu có
 
 Trả về JSON trong thẻ <result>:
 <result>
@@ -194,13 +235,13 @@ Trả về JSON trong thẻ <result>:
   "technicalScore": 8,
   "fundamentalScore": 7,
   "sentimentScore": 6,
-  "technical": "90 từ: phân tích RSI/MACD/BB/SMA/volume — xu hướng và momentum cụ thể",
-  "fundamental": "90 từ: P/E+P/B so ngành, ROE+ROA, tăng trưởng bền vững, sức khỏe tài chính",
-  "sentiment": "60 từ: tâm lý tin tức, VN-Index tác động, dòng tiền thị trường",
-  "pros": ["lý do 1 (có số liệu)", "lý do 2", "lý do 3"],
+  "technical": "90 từ: ADX xu hướng mạnh/yếu, RSI, MACD histogram, BB position, volume, momentum đa khung",
+  "fundamental": "90 từ: định giá P/E+P/B so ngành, ROE+ROA, tăng trưởng, sức khỏe tài chính",
+  "sentiment": "70 từ: dòng tiền NN (mua/bán ròng tác động), tin tức, VN-Index bối cảnh",
+  "pros": ["lý do 1 (có số liệu cụ thể)", "lý do 2", "lý do 3"],
   "risks": ["rủi ro 1 (có số liệu)", "rủi ro 2"],
-  "action": "50 từ: hành động cụ thể với mức giá — mua/bán/giữ, vùng giá vào, target, stop loss, xét vị thế hiện tại nếu có",
-  "nextReview": "điều kiện kỹ thuật hoặc sự kiện cần theo dõi để xem lại"
+  "action": "60 từ: hành động ngay với giá cụ thể — vùng mua/bán, target, stop loss, xét vị thế và dòng tiền NN",
+  "nextReview": "điều kiện kỹ thuật hoặc sự kiện cụ thể cần theo dõi"
 }
 </result>`
 
@@ -237,6 +278,10 @@ interface StockDetail {
   aboveSMA50: boolean
   bbSignal?: string
   volumeSignal?: string
+  adx?: number
+  adxTrend?: string
+  momentum1M?: number
+  momentum3M?: number
   // Fundamental
   pe: number
   pb?: number
@@ -245,6 +290,11 @@ interface StockDetail {
   profitGrowth: number
   debtEquity: number
   dividendYield: number
+  // Foreign flows
+  foreignNetVol?: number
+  foreignBuyVol?: number
+  foreignSellVol?: number
+  foreignRoom?: number
   // News
   recentNews?: string[]
 }
@@ -306,10 +356,17 @@ export async function optimizePortfolio(ctx: OptimizeContext): Promise<OptimizeR
     const newsBlock = h.recentNews && h.recentNews.length > 0
       ? `\n  Tin tức: ${h.recentNews.slice(0, 2).map(n => `"${n.slice(0, 80)}"`).join(' | ')}`
       : ''
+    const foreignNet = h.foreignNetVol ?? 0
+    const foreignBlock = (h.foreignBuyVol || h.foreignSellVol)
+      ? `\n  Dòng NN hôm nay: Mua=${(h.foreignBuyVol??0).toLocaleString()} | Bán=${(h.foreignSellVol??0).toLocaleString()} | Net=${foreignNet >= 0 ? '+' : ''}${foreignNet.toLocaleString()}${h.foreignRoom !== undefined ? ` | Room: ${h.foreignRoom.toFixed(1)}%` : ''}`
+      : ''
+    const momentum1Mstr = h.momentum1M !== undefined ? ` | 1T: ${h.momentum1M >= 0 ? '+' : ''}${h.momentum1M}%` : ''
+    const momentum3Mstr = h.momentum3M !== undefined ? ` | 3T: ${h.momentum3M >= 0 ? '+' : ''}${h.momentum3M}%` : ''
     return `━━ [${h.symbol}] ${h.industry} ━━ ${h.weight.toFixed(1)}% danh mục
   Vị thế: ${h.qty.toLocaleString()} CP | Giá vốn: ${h.avgCost.toLocaleString()}đ → Hiện: ${h.currentPrice.toLocaleString()}đ | L/L: ${pnlSign}${h.pnlPct.toFixed(1)}%
-  Kỹ thuật (90 ngày): RSI=${h.rsi} (${rsiLabel}) | MACD=${h.macdSignal}${h.macdHistogram ? ` hist=${h.macdHistogram}` : ''} | ${h.aboveSMA20 ? '↑SMA20' : '↓SMA20'} | ${h.aboveSMA50 ? '↑SMA50' : '↓SMA50'} | BB: ${h.bbSignal || 'N/A'} | Vol: ${h.volumeSignal || 'N/A'} | Trend90D: ${trendSign}${h.trend30d.toFixed(1)}%
-  Cơ bản: P/E=${h.pe.toFixed(1)}x | P/B=${(h.pb ?? 0).toFixed(2)}x | ROE=${h.roe.toFixed(1)}% | ROA=${(h.roa ?? 0).toFixed(1)}% | Nợ/Vốn=${h.debtEquity.toFixed(2)} | Cổ tức=${h.dividendYield.toFixed(1)}%${newsBlock}`
+  Kỹ thuật: RSI=${h.rsi} (${rsiLabel}) | ADX=${h.adx??0} (${h.adxTrend??'N/A'}) | MACD=${h.macdSignal}${h.macdHistogram ? ` hist=${h.macdHistogram}` : ''} | ${h.aboveSMA20 ? '↑SMA20' : '↓SMA20'} | ${h.aboveSMA50 ? '↑SMA50' : '↓SMA50'} | BB: ${h.bbSignal||'N/A'} | Vol: ${h.volumeSignal||'N/A'}
+  Momentum: Trend90D: ${trendSign}${h.trend30d.toFixed(1)}%${momentum1Mstr}${momentum3Mstr}
+  Cơ bản: P/E=${h.pe.toFixed(1)}x | P/B=${(h.pb??0).toFixed(2)}x | ROE=${h.roe.toFixed(1)}% | ROA=${(h.roa??0).toFixed(1)}% | Nợ/Vốn=${h.debtEquity.toFixed(2)} | Cổ tức=${h.dividendYield.toFixed(1)}%${foreignBlock}${newsBlock}`
   }).join('\n\n')
 
   const prompt = `PHÂN TÍCH DANH MỤC ĐẦU TƯ TOÀN DIỆN — ${today}
@@ -325,14 +382,13 @@ Phân bổ ngành: ${sectorText}
 ▌ CHI TIẾT TỪNG MÃ (dữ liệu 90 ngày + real-time):
 ${holdingsText}
 
-▌ YÊU CẦU PHÂN TÍCH:
-Với tư cách chuyên gia CFA, hãy phân tích toàn diện:
-1. Tình trạng kỹ thuật từng mã: xu hướng, momentum, tín hiệu mua/bán
-2. Sức khỏe tài chính: định giá (P/E, P/B so với ngành), khả năng sinh lợi (ROE, ROA), đòn bẩy
-3. Rủi ro tập trung ngành và mã cụ thể
-4. Tác động tin tức gần đây
-5. Bối cảnh thị trường VN-Index lên danh mục
-6. Chiến lược tái cơ cấu tối ưu hóa lợi nhuận/rủi ro
+▌ YÊU CẦU PHÂN TÍCH — DỰA HOÀN TOÀN VÀO SỐ LIỆU THỰC TẾ TRÊN:
+1. Kỹ thuật từng mã: ADX (xu hướng mạnh/sideway?), RSI, MACD, BB, momentum 1-3 tháng
+2. Dòng tiền ngoại: NN đang mua/bán ròng mã nào? Tín hiệu gì? Room còn bao nhiêu?
+3. Cơ bản: P/E + P/B định giá hợp lý không? ROE + ROA so ngành? Tăng trưởng bền vững?
+4. Rủi ro tập trung ngành, mã đơn lẻ, tương quan
+5. Bối cảnh VN-Index: bull/bear market, nên phòng thủ hay tấn công?
+6. Chiến lược tái cơ cấu cụ thể: mã nào tăng/giảm tỷ trọng, tại sao, mức giá
 
 Trả về JSON trong thẻ <result>:
 <result>

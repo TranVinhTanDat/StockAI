@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { analyzeStock } from '@/lib/claude'
 import { createClient } from '@supabase/supabase-js'
 import { verifyToken } from '@/lib/jwt'
-import { calcRSI } from '@/lib/indicators'
+import { calcRSI, calcADX } from '@/lib/indicators'
 
 function getServerSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { symbol, quote, indicators, volumes, fundamental, news, currentHolding, forceRefresh } = body
+    const { symbol, quote, indicators, highs, lows, closes, volumes, fundamental, news, currentHolding, forceRefresh } = body
 
     if (!symbol) {
       return NextResponse.json(
@@ -151,6 +151,43 @@ export async function POST(request: NextRequest) {
       else if (avg5 < avg20 * 0.5) volumeSignal = 'Thấp bất thường (thiếu xác nhận)'
     }
 
+    // ADX (trend strength) from highs/lows/closes
+    const closesArr: number[] = Array.isArray(closes) ? closes.filter((v: number) => !isNaN(v)) : []
+    const highsArr: number[] = Array.isArray(highs) ? highs.filter((v: number) => !isNaN(v)) : []
+    const lowsArr: number[] = Array.isArray(lows) ? lows.filter((v: number) => !isNaN(v)) : []
+    let adxValue = 0
+    let adxTrend = 'Không rõ xu hướng'
+    if (highsArr.length >= 28 && lowsArr.length >= 28 && closesArr.length >= 28) {
+      const adxArr = calcADX(highsArr, lowsArr, closesArr, 14).filter((v: number) => !isNaN(v))
+      if (adxArr.length > 0) {
+        adxValue = Math.round(adxArr[adxArr.length - 1])
+        adxTrend = adxValue >= 25 ? 'Xu hướng MẠNH' : adxValue >= 15 ? 'Xu hướng YẾU' : 'SIDEWAY (không có xu hướng)'
+      }
+    }
+
+    // Multi-timeframe momentum from closes
+    let momentum1W = 0, momentum1M = 0, momentum3M = 0
+    if (closesArr.length >= 5) {
+      const last = closesArr[closesArr.length - 1]
+      const w1 = closesArr[Math.max(0, closesArr.length - 6)]
+      const m1 = closesArr[Math.max(0, closesArr.length - 23)]
+      const m3 = closesArr[Math.max(0, closesArr.length - 65)]
+      if (w1 > 0) momentum1W = Math.round(((last - w1) / w1) * 1000) / 10
+      if (m1 > 0) momentum1M = Math.round(((last - m1) / m1) * 1000) / 10
+      if (m3 > 0) momentum3M = Math.round(((last - m3) / m3) * 1000) / 10
+    }
+
+    // 52-week position (0=at 52w low, 100=at 52w high)
+    const w52high = quote?.high52w || 0
+    const w52low = quote?.low52w || 0
+    const w52position = w52high > w52low ? Math.round(((price - w52low) / (w52high - w52low)) * 100) : 50
+
+    // Foreign investor flows
+    const foreignBuyVol = quote?.foreignBuyVol || 0
+    const foreignSellVol = quote?.foreignSellVol || 0
+    const foreignNetVol = foreignBuyVol - foreignSellVol
+    const foreignRoom = quote?.foreignRoom
+
     const topNews = (news || []).slice(0, 5).map((n: { title: string; sentiment: number }) => ({
       title: n.title,
       sentiment: n.sentiment || 0,
@@ -202,6 +239,18 @@ export async function POST(request: NextRequest) {
       topNews,
       avgSentiment,
       vnIndex,
+      adx: adxValue,
+      adxTrend,
+      momentum1W,
+      momentum1M,
+      momentum3M,
+      w52position,
+      w52high,
+      w52low,
+      foreignBuyVol,
+      foreignSellVol,
+      foreignNetVol,
+      foreignRoom,
     })
 
     if (noHolding) await saveCachedResult(symbol, result)

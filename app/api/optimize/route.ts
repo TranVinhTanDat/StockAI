@@ -3,7 +3,7 @@ import { optimizePortfolio } from '@/lib/claude'
 import { requireAuth } from '@/lib/requireAuth'
 import { INDUSTRY_MAP } from '@/lib/utils'
 import { fetchHistory } from '@/lib/tcbs'
-import { calcRSI, calcMACD, calcSMA, calcBB } from '@/lib/indicators'
+import { calcRSI, calcMACD, calcSMA, calcBB, calcADX } from '@/lib/indicators'
 
 export const maxDuration = 60
 
@@ -38,6 +38,22 @@ async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe:
       pb: s?.pbRatio || 0,
     }
   } catch { return { roa: 0, roe: 0, pe: 0, pb: 0 } }
+}
+
+// Fetch foreign investor flows for a symbol (lightweight VPS quote fetch)
+async function fetchForeignFlow(symbol: string): Promise<{ buyVol: number; sellVol: number; netVol: number; room?: number }> {
+  try {
+    const res = await fetch(`https://bgapidatafeed.vps.com.vn/getliststockdata/${symbol.toUpperCase()}`, {
+      next: { revalidate: 300 },
+    })
+    if (!res.ok) return { buyVol: 0, sellVol: 0, netVol: 0 }
+    const json = await res.json()
+    const q = Array.isArray(json) ? json[0] : json
+    if (!q) return { buyVol: 0, sellVol: 0, netVol: 0 }
+    const buy = q.fBVol || 0
+    const sell = q.fSVol || 0
+    return { buyVol: buy, sellVol: sell, netVol: buy - sell, room: typeof q.fRoom === 'number' ? q.fRoom : undefined }
+  } catch { return { buyVol: 0, sellVol: 0, netVol: 0 } }
 }
 
 // Fetch VN-Index 30-day trend for market context
@@ -102,8 +118,12 @@ export async function POST(request: NextRequest) {
             trend30d: 0,
             aboveSMA20: false,
             aboveSMA50: false,
-            bbSignal: 'Neutral' as string,   // Above upper / Near lower / Inside
-            volumeSignal: 'Normal' as string, // High / Low / Normal
+            bbSignal: 'Neutral' as string,
+            volumeSignal: 'Normal' as string,
+            adx: 0,
+            adxTrend: 'Không rõ' as string,
+            momentum1M: 0,
+            momentum3M: 0,
             // Fundamental
             pe: 0,
             pb: 0,
@@ -112,15 +132,21 @@ export async function POST(request: NextRequest) {
             profitGrowth: 0,
             debtEquity: 0,
             dividendYield: 0,
+            // Foreign flow
+            foreignNetVol: 0,
+            foreignBuyVol: 0,
+            foreignSellVol: 0,
+            foreignRoom: undefined as number | undefined,
             // News
             recentNews: [] as string[],
           }
 
           // Fetch all data in parallel
-          const [histResult, simplizeResult, newsResult] = await Promise.allSettled([
+          const [histResult, simplizeResult, newsResult, foreignResult] = await Promise.allSettled([
             fetchHistory(h.symbol, 90),
             fetchSimplizeSummary(h.symbol),
             fetchNewsHeadlines(h.symbol),
+            fetchForeignFlow(h.symbol),
           ])
 
           // Technical analysis from 90-day history
@@ -172,6 +198,29 @@ export async function POST(request: NextRequest) {
             if (closes.length >= 2) {
               base.trend30d = Math.round(((closes[closes.length - 1] - closes[0]) / closes[0]) * 1000) / 10
             }
+
+            // ADX (trend strength)
+            if (candles.length >= 28) {
+              const hArr = candles.map((c: { high: number }) => c.high)
+              const lArr = candles.map((c: { low: number }) => c.low)
+              const adxArr = calcADX(hArr, lArr, closes, 14).filter((v: number) => !isNaN(v))
+              if (adxArr.length > 0) {
+                const adxVal = Math.round(adxArr[adxArr.length - 1])
+                base.adx = adxVal
+                base.adxTrend = adxVal >= 25 ? 'Xu hướng MẠNH' : adxVal >= 15 ? 'Xu hướng YẾU' : 'SIDEWAY'
+              }
+            }
+
+            // Momentum 1M and 3M
+            const lastC = closes[closes.length - 1]
+            if (closes.length >= 23) {
+              const c1m = closes[Math.max(0, closes.length - 23)]
+              if (c1m > 0) base.momentum1M = Math.round(((lastC - c1m) / c1m) * 1000) / 10
+            }
+            if (closes.length >= 65) {
+              const c3m = closes[Math.max(0, closes.length - 65)]
+              if (c3m > 0) base.momentum3M = Math.round(((lastC - c3m) / c3m) * 1000) / 10
+            }
           }
 
           // Simplize fundamental data (more accurate ROA/ROE)
@@ -186,6 +235,15 @@ export async function POST(request: NextRequest) {
           // Recent news
           if (newsResult.status === 'fulfilled') {
             base.recentNews = newsResult.value
+          }
+
+          // Foreign investor flows
+          if (foreignResult.status === 'fulfilled') {
+            const f = foreignResult.value
+            base.foreignBuyVol = f.buyVol
+            base.foreignSellVol = f.sellVol
+            base.foreignNetVol = f.netVol
+            base.foreignRoom = f.room
           }
 
           return base

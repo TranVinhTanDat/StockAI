@@ -92,6 +92,10 @@ export async function fetchQuote(symbol: string): Promise<QuoteData> {
     exchange: EXCHANGE_MAP[q.marketId] || 'HOSE',
     industry: '',
     timestamp: new Date().toISOString(),
+    // Foreign investor flows from VPS
+    foreignBuyVol: q.fBVol || 0,
+    foreignSellVol: q.fSVol || 0,
+    foreignRoom: typeof q.fRoom === 'number' ? q.fRoom : undefined,
   }
 }
 

@@ -1,5 +1,61 @@
 import type { MACDPoint, BBPoint } from '@/types'
 
+// ADX — Average Directional Index (trend strength)
+// Returns array of ADX values (NaN until sufficient data). period=14 standard.
+export function calcADX(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 14
+): number[] {
+  const n = Math.min(highs.length, lows.length, closes.length)
+  const result = new Array(n).fill(NaN) as number[]
+  if (n < 2 * period) return result
+
+  const tr: number[] = []
+  const pdm: number[] = []
+  const mdm: number[] = []
+  for (let i = 1; i < n; i++) {
+    const h = highs[i], l = lows[i], pc = closes[i - 1]
+    tr.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)))
+    const up = h - highs[i - 1]
+    const dn = lows[i - 1] - l
+    pdm.push(up > dn && up > 0 ? up : 0)
+    mdm.push(dn > up && dn > 0 ? dn : 0)
+  }
+  if (tr.length < period) return result
+
+  let satr = tr.slice(0, period).reduce((a, b) => a + b, 0)
+  let spdm = pdm.slice(0, period).reduce((a, b) => a + b, 0)
+  let smdm = mdm.slice(0, period).reduce((a, b) => a + b, 0)
+
+  const dx: number[] = []
+  const pushDX = () => {
+    const pdi = satr > 0 ? 100 * spdm / satr : 0
+    const mdi = satr > 0 ? 100 * smdm / satr : 0
+    const s = pdi + mdi
+    dx.push(s > 0 ? 100 * Math.abs(pdi - mdi) / s : 0)
+  }
+  pushDX()
+  for (let i = period; i < tr.length; i++) {
+    satr = satr - satr / period + tr[i]
+    spdm = spdm - spdm / period + pdm[i]
+    smdm = smdm - smdm / period + mdm[i]
+    pushDX()
+  }
+  if (dx.length < period) return result
+
+  let adx = dx.slice(0, period).reduce((a, b) => a + b, 0) / period
+  let ri = 2 * period
+  if (ri < n) result[ri] = adx
+  for (let i = period; i < dx.length; i++) {
+    adx = (adx * (period - 1) + dx[i]) / period
+    ri++
+    if (ri < n) result[ri] = adx
+  }
+  return result
+}
+
 export function calcSMA(data: number[], period: number): number[] {
   const result: number[] = []
   for (let i = 0; i < data.length; i++) {
