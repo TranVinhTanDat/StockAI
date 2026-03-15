@@ -4,6 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import type { AnalystReport } from '@/app/api/analyst-reports/route'
 import { FileText, ExternalLink, ChevronRight, ChevronDown, X, Bot, Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { getClientToken } from '@/lib/requireAuth'
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => {
@@ -85,9 +86,13 @@ export default function AnalystReports({ symbol }: Props) {
     if (aiAnalyses[report.id] || loadingAI[report.id]) return
     setLoadingAI(prev => ({ ...prev, [report.id]: true }))
     try {
+      const token = getClientToken()
       const res = await fetch('/api/report-analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           url: report.url,
           title: report.title,

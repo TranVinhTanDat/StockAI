@@ -48,7 +48,7 @@ async function fetchBreadth(): Promise<{
   declining: number
   unchanged: number
 }> {
-  const symbols = POPULAR_SYMBOLS.slice(0, 10)
+  const symbols = POPULAR_SYMBOLS // use all ~20 popular symbols for better breadth sample
   const results = await Promise.allSettled(
     symbols.map((s) => fetchQuote(s))
   )

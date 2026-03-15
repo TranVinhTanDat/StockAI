@@ -6,10 +6,18 @@ import {
   formatVND,
   getRecommendationBg,
 } from '@/lib/utils'
-import { Target, Sparkles, AlertTriangle, TrendingUp, Shield, Zap, Flame, RefreshCw, Database } from 'lucide-react'
+import type { InvestmentStyle } from '@/lib/claude'
+import { Target, Sparkles, AlertTriangle, TrendingUp, Shield, Zap, Coins, BarChart3, RefreshCw, Database } from 'lucide-react'
+import { getClientToken } from '@/lib/requireAuth'
 
-const CACHE_TTL = 6 * 60 * 60 * 1000 // 6 hours
-const cacheKey = (style: string) => `sai_predict_${style}`
+const CACHE_TTL_MS: Record<string, number> = {
+  swing: 2 * 60 * 60 * 1000,
+  dca: 12 * 60 * 60 * 1000,
+  longterm: 12 * 60 * 60 * 1000,
+  dividend: 12 * 60 * 60 * 1000,
+  etf: 6 * 60 * 60 * 1000,
+}
+const cacheKey = (style: string) => `sai_predict_v2_${style}`
 
 interface CachedPredictions {
   data: PredictionItem[]
@@ -33,20 +41,22 @@ function loadCache(style: string): CachedPredictions | null {
 
 function saveCache(style: string, data: PredictionItem[]) {
   try {
+    const ttl = CACHE_TTL_MS[style] ?? 6 * 60 * 60 * 1000
     const entry: CachedPredictions = {
       data,
       cachedAt: new Date().toISOString(),
-      expires: Date.now() + CACHE_TTL,
+      expires: Date.now() + ttl,
     }
     localStorage.setItem(cacheKey(style), JSON.stringify(entry))
   } catch {}
 }
 
-const STYLES = [
-  { key: 'safe' as const, label: 'An Toàn', icon: Shield, desc: 'Blue-chip, cổ tức cao' },
-  { key: 'balanced' as const, label: 'Cân Bằng', icon: TrendingUp, desc: 'Tăng trưởng ổn định' },
-  { key: 'growth' as const, label: 'Tăng Trưởng', icon: Zap, desc: 'Momentum mạnh' },
-  { key: 'speculative' as const, label: 'Đầu Cơ', icon: Flame, desc: 'Phục hồi tiềm năng' },
+const STYLES: { key: InvestmentStyle; label: string; icon: React.ComponentType<{ className?: string }>; desc: string; color: string }[] = [
+  { key: 'longterm', label: 'Dài Hạn', icon: TrendingUp, desc: 'Buy & Hold 3-5 năm', color: 'text-accent' },
+  { key: 'dca',      label: 'DCA',      icon: RefreshCw,  desc: 'Bình quân giá vốn',   color: 'text-blue-400' },
+  { key: 'swing',    label: 'Lướt Sóng', icon: Zap,       desc: '1-4 tuần',             color: 'text-gold' },
+  { key: 'dividend', label: 'Cổ Tức',   icon: Coins,      desc: 'Thu nhập thụ động',    color: 'text-emerald-400' },
+  { key: 'etf',      label: 'VN30 Style', icon: BarChart3, desc: 'Blue-chip chỉ số',    color: 'text-purple-400' },
 ]
 
 const RISK_COLORS: Record<string, string> = {
@@ -56,7 +66,7 @@ const RISK_COLORS: Record<string, string> = {
 }
 
 export default function StockPredictions() {
-  const [style, setStyle] = useState<'safe' | 'balanced' | 'growth' | 'speculative'>('balanced')
+  const [style, setStyle] = useState<InvestmentStyle>('longterm')
   const [predictions, setPredictions] = useState<PredictionItem[] | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(false)
@@ -82,7 +92,10 @@ export default function StockPredictions() {
     setCachedAt(null)
 
     try {
-      const res = await fetch(`/api/predict?style=${s}`)
+      const token = getClientToken()
+      const res = await fetch(`/api/predict?style=${s}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data: PredictionItem[] = await res.json()
       saveCache(s, data)
@@ -135,22 +148,45 @@ export default function StockPredictions() {
       <div className="flex flex-wrap gap-2">
         {STYLES.map((s) => {
           const Icon = s.icon
+          const isActive = style === s.key
           return (
             <button
               key={s.key}
               onClick={() => setStyle(s.key)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                style === s.key
-                  ? 'bg-accent text-bg shadow-lg shadow-accent/20'
-                  : 'bg-surface2 text-muted hover:text-gray-100 hover:bg-surface2/80'
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
+                isActive
+                  ? 'bg-accent/15 text-accent border border-accent/40 shadow shadow-accent/10'
+                  : 'bg-surface2 text-muted border border-transparent hover:text-gray-100 hover:bg-surface2/80'
               }`}
             >
-              <Icon className="w-4 h-4" />
-              <span>{s.label}</span>
+              <Icon className={`w-4 h-4 ${isActive ? 'text-accent' : s.color}`} />
+              <div className="text-left">
+                <div className="leading-tight">{s.label}</div>
+                <div className="text-[10px] opacity-60 leading-tight hidden sm:block">{s.desc}</div>
+              </div>
             </button>
           )
         })}
       </div>
+
+      {/* Active style description */}
+      {(() => {
+        const active = STYLES.find(s => s.key === style)
+        if (!active) return null
+        const Icon = active.icon
+        return (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface2/60 border border-border/30 text-xs text-muted">
+            <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${active.color}`} />
+            <span>
+              {style === 'longterm' && 'Tìm cổ phiếu có nền tảng cơ bản tốt để nắm giữ 3-5 năm'}
+              {style === 'dca' && 'Tìm mã ổn định, xu hướng dài hạn tích cực, phù hợp mua đều đặn hàng tháng'}
+              {style === 'swing' && 'Tìm mã có tín hiệu kỹ thuật ngắn hạn hấp dẫn, tiềm năng tăng 1-4 tuần'}
+              {style === 'dividend' && 'Tìm mã cổ tức cao (>4%), cashflow ổn định, thu nhập thụ động bền vững'}
+              {style === 'etf' && 'Tìm cổ phiếu trụ cột VN30 — blue-chip vốn hóa lớn, thanh khoản cao'}
+            </span>
+          </div>
+        )
+      })()}
 
       {/* Loading skeleton */}
       {isLoading && (

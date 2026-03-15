@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Be_Vietnam_Pro, Playfair_Display } from 'next/font/google'
 import './globals.css'
+import { AuthProvider } from '@/components/auth/AuthContext'
 
 const beVietnamPro = Be_Vietnam_Pro({
   subsets: ['vietnamese', 'latin'],
@@ -35,7 +36,7 @@ export default function RootLayout({
       className={`${beVietnamPro.variable} ${playfairDisplay.variable} dark`}
     >
       <body className="font-sans antialiased min-h-screen bg-bg text-gray-100">
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   )

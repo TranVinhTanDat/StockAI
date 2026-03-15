@@ -5,9 +5,10 @@ import type { HistoryData } from '@/types'
 
 interface CandlestickChartProps {
   symbol: string
+  isVisible?: boolean
 }
 
-export default function CandlestickChart({ symbol }: CandlestickChartProps) {
+export default function CandlestickChart({ symbol, isVisible = true }: CandlestickChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<ReturnType<typeof import('lightweight-charts').createChart> | null>(null)
   const resizeHandlerRef = useRef<(() => void) | null>(null)
@@ -22,12 +23,23 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
   const [showSMA50, setShowSMA50] = useState(true)
   const [showBB, setShowBB] = useState(false)
   const [activePane, setActivePane] = useState<'volume' | 'rsi' | 'macd'>('volume')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
+  const [isCustom, setIsCustom] = useState(false)
+
+  // Build API URL
+  const historyUrl = (() => {
+    if (isCustom && customFrom && customTo) {
+      return `/api/history?symbol=${symbol}&from=${customFrom}&to=${customTo}`
+    }
+    return `/api/history?symbol=${symbol}&days=${days}`
+  })()
 
   useEffect(() => {
     if (!symbol) return
     let cancelled = false
     setLoading(true)
-    fetch(`/api/history?symbol=${symbol}&days=${days}`)
+    fetch(historyUrl)
       .then((r) => {
         if (!r.ok) throw new Error('Fetch failed')
         return r.json()
@@ -36,7 +48,7 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
       .catch(() => { if (!cancelled) setData(null) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [symbol, days])
+  }, [symbol, historyUrl])
 
   // ── Draw sub-pane canvas (synced to visible range) ──────────────────────────
   const drawSubCanvas = useCallback(() => {
@@ -221,6 +233,8 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
   // ── Build main Lightweight Chart ────────────────────────────────────────────
   useEffect(() => {
     if (!data?.candles?.length || !chartContainerRef.current) return
+    // Don't create chart while section is hidden (container.clientWidth = 0)
+    if (!isVisible) return
 
     if (resizeHandlerRef.current) {
       window.removeEventListener('resize', resizeHandlerRef.current)
@@ -239,7 +253,7 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
       if (!container) return
 
       const chart = createChart(container, {
-        width: container.clientWidth,
+        autoSize: true,
         height: 400,
         layout: {
           background: { color: '#131929' },
@@ -322,13 +336,9 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
         }
       })
 
-      // Resize handler
+      // Resize sub-canvas on window resize (chart itself handles resize via autoSize)
       const handleResize = () => {
-        const el = chartContainerRef.current
-        if (el && chartRef.current) {
-          chartRef.current.applyOptions({ width: el.clientWidth })
-          drawSubCanvasRef.current?.()
-        }
+        drawSubCanvasRef.current?.()
       }
       resizeHandlerRef.current = handleResize
       window.addEventListener('resize', handleResize)
@@ -346,14 +356,14 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
         chartRef.current = null
       }
     }
-  }, [data, showSMA20, showSMA50, showBB])
+  }, [data, showSMA20, showSMA50, showBB, isVisible])
 
   return (
     <div className="card-glass overflow-hidden">
       {/* Controls */}
       <div className="p-4 border-b border-border flex flex-wrap items-center gap-2">
         <h3 className="font-semibold mr-4">Biểu Đồ {symbol}</h3>
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-wrap">
           {[
             { label: '1T', value: 30 },
             { label: '3T', value: 90 },
@@ -362,9 +372,9 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
           ].map((opt) => (
             <button
               key={opt.value}
-              onClick={() => setDays(opt.value)}
+              onClick={() => { setDays(opt.value); setIsCustom(false) }}
               className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                days === opt.value
+                !isCustom && days === opt.value
                   ? 'bg-accent text-bg'
                   : 'bg-surface2 text-muted hover:text-gray-100'
               }`}
@@ -372,7 +382,34 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
               {opt.label}
             </button>
           ))}
+          <button
+            onClick={() => setIsCustom(v => !v)}
+            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+              isCustom ? 'bg-accent text-bg' : 'bg-surface2 text-muted hover:text-gray-100'
+            }`}
+          >
+            Tùy chỉnh
+          </button>
         </div>
+
+        {/* Custom date range */}
+        {isCustom && (
+          <div className="flex items-center gap-1.5 text-xs">
+            <input
+              type="date"
+              value={customFrom}
+              onChange={e => setCustomFrom(e.target.value)}
+              className="bg-surface2 border border-border/60 rounded px-2 py-1 text-gray-200 text-xs focus:outline-none focus:border-accent"
+            />
+            <span className="text-muted">→</span>
+            <input
+              type="date"
+              value={customTo}
+              onChange={e => setCustomTo(e.target.value)}
+              className="bg-surface2 border border-border/60 rounded px-2 py-1 text-gray-200 text-xs focus:outline-none focus:border-accent"
+            />
+          </div>
+        )}
         <div className="flex gap-1 ml-auto">
           {[
             { label: 'SMA20', active: showSMA20, toggle: () => setShowSMA20(!showSMA20), color: '#f5a623' },
@@ -393,14 +430,15 @@ export default function CandlestickChart({ symbol }: CandlestickChartProps) {
         </div>
       </div>
 
-      {/* Main chart */}
-      {loading ? (
-        <div className="h-[400px] flex items-center justify-center">
-          <div className="animate-spin w-8 h-8 border-2 border-accent border-t-transparent rounded-full" />
-        </div>
-      ) : (
-        <div ref={chartContainerRef} className="w-full" />
-      )}
+      {/* Main chart — container always in DOM so autoSize can detect visibility changes */}
+      <div className="relative">
+        {loading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface/60" style={{ height: 400 }}>
+            <div className="animate-spin w-8 h-8 border-2 border-accent border-t-transparent rounded-full" />
+          </div>
+        )}
+        <div ref={chartContainerRef} className="w-full" style={{ height: 400 }} />
+      </div>
 
       {/* Sub-pane tabs + canvas */}
       <div className="border-t border-border">

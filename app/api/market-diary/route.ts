@@ -16,9 +16,9 @@ export async function GET() {
     ])
 
     const market = marketRes?.ok ? await marketRes.json() : null
-    const newsItems: Array<{ title: string; sentiment: number }> = newsRes?.ok
-      ? (await newsRes.json()).slice(0, 8)
-      : []
+    const newsRaw = newsRes?.ok ? await newsRes.json() : null
+    const newsArr = Array.isArray(newsRaw) ? newsRaw : (Array.isArray(newsRaw?.items) ? newsRaw.items : [])
+    const newsItems: Array<{ title: string; sentiment: number }> = newsArr.slice(0, 8)
 
     const today = new Date().toLocaleDateString('vi-VN', {
       weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric',

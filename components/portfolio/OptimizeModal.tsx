@@ -2,22 +2,67 @@
 
 import { useState } from 'react'
 import type { PortfolioHolding } from '@/types'
-import { Bot, X, Loader2 } from 'lucide-react'
+import { Bot, X, Loader2, TrendingUp, TrendingDown, Minus, AlertTriangle, Zap, BarChart2 } from 'lucide-react'
+import { formatVND } from '@/lib/utils'
+import { getClientToken } from '@/lib/requireAuth'
 
 interface OptimizeModalProps {
   holdings: PortfolioHolding[]
   prices: Record<string, number>
+  cash?: number
+}
+
+interface StockRec {
+  symbol: string
+  action: string
+  reason: string
+  riskLevel?: string
+  catalyst?: string
 }
 
 interface OptimizeResult {
   analysis: string
+  marketContext?: string
   suggestions: string[]
   rebalancePlan: string
+  stockRecommendations?: StockRec[]
+  riskWarnings?: string[]
 }
 
-export default function OptimizeModal({ holdings, prices }: OptimizeModalProps) {
+const ACTION_STYLE: Record<string, string> = {
+  'MUA THÊM':           'bg-accent/15 text-accent border border-accent/30',
+  'GIỮ':                'bg-blue-500/15 text-blue-400 border border-blue-500/30',
+  'CHỐT LỜI':           'bg-gold/15 text-gold border border-gold/30',
+  'CHỐT LỜI MỘT PHẦN': 'bg-gold/15 text-gold border border-gold/30',
+  'CẮT LỖ':             'bg-orange-500/15 text-orange-400 border border-orange-500/30',
+  'BÁN TOÀN BỘ':        'bg-danger/15 text-danger border border-danger/30',
+}
+
+const RISK_STYLE: Record<string, string> = {
+  'Thấp':      'text-green-400',
+  'Trung bình':'text-yellow-400',
+  'Cao':       'text-red-400',
+}
+
+const LOADING_STEPS = [
+  'Đang lấy dữ liệu giá 90 ngày...',
+  'Tính RSI, MACD, Bollinger Bands...',
+  'Phân tích tài chính ROE/ROA/P/E từ Simplize...',
+  'Đọc tin tức mới nhất từng mã...',
+  'Lấy bối cảnh VN-Index...',
+  'Claude Opus 4 đang phân tích sâu...',
+]
+
+function ActionIcon({ action }: { action: string }) {
+  if (action.includes('MUA')) return <TrendingUp className="w-3.5 h-3.5" />
+  if (action.includes('BÁN') || action.includes('CẮT')) return <TrendingDown className="w-3.5 h-3.5" />
+  return <Minus className="w-3.5 h-3.5" />
+}
+
+export default function OptimizeModal({ holdings, prices, cash = 0 }: OptimizeModalProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [loadStep, setLoadStep] = useState(0)
   const [result, setResult] = useState<OptimizeResult | null>(null)
   const [error, setError] = useState('')
 
@@ -26,6 +71,12 @@ export default function OptimizeModal({ holdings, prices }: OptimizeModalProps) 
     setLoading(true)
     setError('')
     setResult(null)
+    setLoadStep(0)
+
+    // Animate loading steps
+    const stepInterval = setInterval(() => {
+      setLoadStep(s => (s < LOADING_STEPS.length - 1 ? s + 1 : s))
+    }, 2200)
 
     const holdingsWithPrice = holdings.map((h) => ({
       symbol: h.symbol,
@@ -35,17 +86,22 @@ export default function OptimizeModal({ holdings, prices }: OptimizeModalProps) 
     }))
 
     try {
+      const token = getClientToken()
       const res = await fetch('/api/optimize', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ holdings: holdingsWithPrice }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ holdings: holdingsWithPrice, cash }),
       })
-      if (!res.ok) throw new Error('Optimization failed')
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Lỗi phân tích AI')
       setResult(data)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Lỗi')
+      setError(e instanceof Error ? e.message : 'Lỗi không xác định')
     } finally {
+      clearInterval(stepInterval)
       setLoading(false)
     }
   }
@@ -58,59 +114,165 @@ export default function OptimizeModal({ holdings, prices }: OptimizeModalProps) 
         className="btn-primary flex items-center gap-2 disabled:opacity-50"
       >
         <Bot className="w-4 h-4" />
-        AI Tối Ưu Danh Mục
+        AI Phân Tích Danh Mục
       </button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="card-glass w-full max-w-2xl max-h-[80vh] overflow-y-auto">
-            <div className="p-6 border-b border-border flex items-center justify-between">
+          <div className="card-glass w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="p-5 border-b border-border flex items-center justify-between sticky top-0 bg-surface z-10">
               <h3 className="font-semibold flex items-center gap-2">
                 <Bot className="w-5 h-5 text-accent" />
-                AI Phân Tích Danh Mục
+                AI Phân Tích Danh Mục Toàn Diện
+                <span className="text-[10px] text-accent/60 font-normal bg-accent/10 px-1.5 py-0.5 rounded">claude-opus-4-6</span>
               </h3>
-              <button
-                onClick={() => setOpen(false)}
-                className="text-muted hover:text-gray-100 transition-colors"
-              >
+              <button onClick={() => setOpen(false)} className="text-muted hover:text-gray-100 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6">
+            <div className="p-5 space-y-5">
+              {/* Loading */}
               {loading && (
-                <div className="flex flex-col items-center gap-3 py-8">
-                  <Loader2 className="w-8 h-8 text-accent animate-spin" />
-                  <p className="text-muted text-sm">AI đang phân tích danh mục...</p>
+                <div className="flex flex-col items-center gap-4 py-10">
+                  <Loader2 className="w-10 h-10 text-accent animate-spin" />
+                  <div className="text-center">
+                    <p className="text-sm text-gray-300 font-medium mb-1">{LOADING_STEPS[loadStep]}</p>
+                    <p className="text-xs text-muted/60">Phân tích {holdings.length} mã · RSI + MACD + BB + ROA/ROE + Tin tức + VN-Index</p>
+                  </div>
+                  <div className="flex gap-1.5">
+                    {LOADING_STEPS.map((_, i) => (
+                      <div key={i} className={`w-1.5 h-1.5 rounded-full transition-colors ${i <= loadStep ? 'bg-accent' : 'bg-surface2'}`} />
+                    ))}
+                  </div>
                 </div>
               )}
 
+              {/* Error */}
               {error && (
-                <div className="text-danger text-sm text-center py-4">{error}</div>
+                <div className="bg-danger/10 border border-danger/30 rounded-xl p-4 text-center space-y-2">
+                  <p className="text-danger text-sm font-medium">Không thể phân tích danh mục</p>
+                  <p className="text-xs text-muted">{error}</p>
+                  <button onClick={handleOptimize}
+                    className="mt-2 text-xs px-3 py-1.5 bg-surface2 hover:bg-border text-gray-300 rounded-lg transition-colors">
+                    Thử lại
+                  </button>
+                </div>
               )}
 
               {result && (
-                <div className="space-y-6">
+                <div className="space-y-5">
+                  {/* Context bar */}
+                  <div className="flex gap-3 flex-wrap text-xs text-muted bg-surface2 rounded-lg px-4 py-2.5">
+                    <span>CP: <span className="text-gray-200 font-medium">
+                      {formatVND(holdings.reduce((s, h) => s + h.qty * (prices[h.symbol] || h.avg_cost), 0))}
+                    </span></span>
+                    <span>·</span>
+                    <span>Tiền mặt: <span className="text-gray-200 font-medium">{formatVND(cash)}</span></span>
+                    <span>·</span>
+                    <span>{holdings.length} mã · Dữ liệu 90 ngày</span>
+                  </div>
+
+                  {/* Market context */}
+                  {result.marketContext && (
+                    <div className="bg-blue-500/8 border border-blue-500/20 rounded-xl p-4">
+                      <h4 className="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <BarChart2 className="w-3.5 h-3.5" /> Bối Cảnh Thị Trường
+                      </h4>
+                      <p className="text-sm text-gray-300 leading-relaxed">{result.marketContext}</p>
+                    </div>
+                  )}
+
+                  {/* Risk warnings */}
+                  {result.riskWarnings && result.riskWarnings.length > 0 && (
+                    <div className="bg-orange-500/8 border border-orange-500/25 rounded-xl p-4">
+                      <h4 className="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Cảnh Báo Rủi Ro
+                      </h4>
+                      <ul className="space-y-1.5">
+                        {result.riskWarnings.map((w, i) => (
+                          <li key={i} className="flex items-start gap-2 text-xs text-orange-300/90">
+                            <span className="text-orange-400 flex-shrink-0 mt-0.5">⚠</span>
+                            {w}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Overall analysis */}
                   <div>
-                    <h4 className="text-sm font-semibold text-accent mb-2">Nhận Xét Tổng Quan</h4>
+                    <h4 className="text-xs font-semibold text-accent uppercase tracking-wider mb-2">Nhận Xét Tổng Quan</h4>
                     <p className="text-sm text-gray-300 leading-relaxed">{result.analysis}</p>
                   </div>
 
+                  {/* Per-stock recommendations */}
+                  {result.stockRecommendations && result.stockRecommendations.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-gold uppercase tracking-wider mb-3">Khuyến Nghị Từng Mã</h4>
+                      <div className="space-y-2.5">
+                        {result.stockRecommendations.map((rec) => {
+                          const style = ACTION_STYLE[rec.action] || 'bg-surface2 text-muted border border-border'
+                          const currentPrice = prices[rec.symbol] || 0
+                          const holding = holdings.find(h => h.symbol === rec.symbol)
+                          const pnlPct = holding && currentPrice > 0
+                            ? ((currentPrice - holding.avg_cost) / holding.avg_cost) * 100 : null
+                          const riskCls = RISK_STYLE[rec.riskLevel || ''] || 'text-muted'
+                          return (
+                            <div key={rec.symbol} className="bg-surface2/60 rounded-xl p-3.5 space-y-2">
+                              <div className="flex items-center gap-3">
+                                <div className="flex flex-col items-center min-w-[52px]">
+                                  <span className="font-bold text-sm text-gray-100">{rec.symbol}</span>
+                                  {pnlPct !== null && (
+                                    <span className={`text-[10px] font-medium ${pnlPct >= 0 ? 'text-accent' : 'text-danger'}`}>
+                                      {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex-1 flex items-center gap-2 flex-wrap">
+                                  <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${style}`}>
+                                    <ActionIcon action={rec.action} />
+                                    {rec.action}
+                                  </span>
+                                  {rec.riskLevel && (
+                                    <span className={`text-[10px] font-medium ${riskCls}`}>
+                                      Rủi ro: {rec.riskLevel}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-xs text-gray-400 leading-relaxed">{rec.reason}</p>
+                              {rec.catalyst && (
+                                <div className="flex items-start gap-1.5 text-[11px] text-accent/80 bg-accent/5 rounded-lg px-2.5 py-1.5">
+                                  <Zap className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                                  <span>{rec.catalyst}</span>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Suggestions */}
                   <div>
-                    <h4 className="text-sm font-semibold text-gold mb-2">Gợi Ý</h4>
-                    <ul className="space-y-2">
+                    <h4 className="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-2">Gợi Ý Điều Chỉnh</h4>
+                    <ul className="space-y-1.5">
                       {result.suggestions.map((s, i) => (
                         <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
-                          <span className="text-accent mt-0.5 flex-shrink-0">→</span>
+                          <span className="text-accent mt-0.5 flex-shrink-0 font-bold">{i + 1}.</span>
                           {s}
                         </li>
                       ))}
                     </ul>
                   </div>
 
+                  {/* Rebalance plan */}
                   <div>
-                    <h4 className="text-sm font-semibold text-blue-400 mb-2">Kế Hoạch Tái Cơ Cấu</h4>
-                    <p className="text-sm text-gray-300 leading-relaxed bg-surface2 rounded-lg p-4">
+                    <h4 className="text-xs font-semibold text-purple-400 uppercase tracking-wider mb-2">Kế Hoạch Tái Cơ Cấu</h4>
+                    <p className="text-sm text-gray-300 leading-relaxed bg-surface2 rounded-lg p-4 border-l-2 border-purple-400/40">
                       {result.rebalancePlan}
                     </p>
                   </div>

@@ -1,12 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { analyzeStock } from '@/lib/claude'
+import { createClient } from '@supabase/supabase-js'
+import { verifyToken } from '@/lib/jwt'
+
+function getServerSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !key || url.includes('xxx')) return null
+  return createClient(url, key, { auth: { persistSession: false } })
+}
+
+async function getCachedResult(symbol: string, noHolding: boolean) {
+  if (!noHolding) return null // don't cache user-specific analyses
+  const sb = getServerSupabase()
+  if (!sb) return null
+  const { data } = await sb
+    .from('analysis_cache')
+    .select('data')
+    .eq('symbol', symbol)
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+  return data?.data ?? null
+}
+
+async function saveCachedResult(symbol: string, result: unknown) {
+  const sb = getServerSupabase()
+  if (!sb) return
+  const now = new Date()
+  const vnHour = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' })).getHours()
+  // During market hours (8-16), cache 4h; otherwise cache 20h
+  const ttlHours = (vnHour >= 8 && vnHour < 16) ? 4 : 20
+  const expiresAt = new Date(now.getTime() + ttlHours * 3600_000).toISOString()
+  await sb.from('analysis_cache').insert({ symbol, data: result, expires_at: expiresAt })
+}
 
 export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
   try {
+    // ── JWT auth check ───────────────────────────────────────────
+    const authHeader = request.headers.get('Authorization')
+    const rawToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+    if (!rawToken) {
+      return NextResponse.json(
+        { error: 'Vui lòng đăng nhập để sử dụng tính năng phân tích AI' },
+        { status: 401 }
+      )
+    }
+    const jwtPayload = await verifyToken(rawToken)
+    if (!jwtPayload) {
+      return NextResponse.json(
+        { error: 'Phiên đăng nhập hết hạn, vui lòng đăng nhập lại' },
+        { status: 401 }
+      )
+    }
+
     const body = await request.json()
-    const { symbol, quote, indicators, fundamental, news, currentHolding } = body
+    const { symbol, quote, indicators, fundamental, news, currentHolding, forceRefresh } = body
 
     if (!symbol) {
       return NextResponse.json(
@@ -54,6 +106,11 @@ export async function POST(request: NextRequest) {
         ? topNews.reduce((sum: number, n: { sentiment: number }) => sum + n.sentiment, 0) / topNews.length
         : 50
 
+    // Check shared cache (only for analyses without portfolio context, and not forced refresh)
+    const noHolding = !currentHolding
+    const cached = !forceRefresh && await getCachedResult(symbol, noHolding)
+    if (cached) return NextResponse.json({ ...cached, _cached: true })
+
     const result = await analyzeStock({
       symbol,
       price: quote?.price || 0,
@@ -80,6 +137,7 @@ export async function POST(request: NextRequest) {
       avgSentiment,
     })
 
+    if (noHolding) await saveCachedResult(symbol, result)
     return NextResponse.json(result)
   } catch (error) {
     const message =

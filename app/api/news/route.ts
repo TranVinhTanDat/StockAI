@@ -113,6 +113,30 @@ function calcSentiment(text: string): number {
   return Math.round(((positive - negative) / total) * 50 + 50)
 }
 
+// Robust multi-format date parser (handles RSS RFC 2822, ISO, Vietnamese DD/MM/YYYY)
+function parseAnyDate(s: string): string {
+  if (!s) return ''
+  s = s.trim()
+  // Standard JS parse (handles RFC 2822 "Fri, 14 Mar 2026 09:26:42 +0700", ISO, etc.)
+  const d = new Date(s)
+  if (!isNaN(d.getTime())) return d.toISOString()
+  // Vietnamese/common: "14/03/2026 09:26" or "14/03/2026"
+  const vnMatch = s.match(/(\d{1,2})\/(\d{2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/)
+  if (vnMatch) {
+    const [, dd, mm, yyyy, hh = '12', mi = '00'] = vnMatch
+    const dt = new Date(`${yyyy}-${mm}-${dd.padStart(2,'0')}T${hh.padStart(2,'0')}:${mi}:00+07:00`)
+    if (!isNaN(dt.getTime())) return dt.toISOString()
+  }
+  // MySQL style: "2026-03-14 09:26:42"
+  const mysqlMatch = s.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/)
+  if (mysqlMatch) {
+    const [, yyyy, mm, dd, hh, mi] = mysqlMatch
+    const dt = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mi}:00+07:00`)
+    if (!isNaN(dt.getTime())) return dt.toISOString()
+  }
+  return ''
+}
+
 function decodeHtmlEntities(s: string): string {
   return s
     .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
@@ -144,7 +168,10 @@ async function fetchRSS(url: string, displaySource: string, limit = 25): Promise
         block.match(/<link><!\[CDATA\[([\s\S]*?)\]\]><\/link>/)?.[1] ||
         block.match(/<link>([^<]*)<\/link>/)?.[1] ||
         block.match(/<guid[^>]*>([^<]*)<\/guid>/)?.[1] || ''
-      const pubDate = block.match(/<pubDate>([^<]*)<\/pubDate>/)?.[1] || ''
+      const pubDate =
+        block.match(/<pubDate>([^<]*)<\/pubDate>/)?.[1] ||
+        block.match(/<dc:date>([^<]*)<\/dc:date>/)?.[1] ||
+        block.match(/<published>([^<]*)<\/published>/)?.[1] || ''
       const description =
         block.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/)?.[1] ||
         block.match(/<description>([^<]*)<\/description>/)?.[1] || ''
@@ -159,10 +186,7 @@ async function fetchRSS(url: string, displaySource: string, limit = 25): Promise
           summary: cleanDesc,
           source: displaySource,
           url: link.trim(),
-          publishedAt: (() => {
-            try { const d = new Date(pubDate); return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString() }
-            catch { return new Date().toISOString() }
-          })(),
+          publishedAt: parseAnyDate(pubDate) || new Date().toISOString(),
           sentiment: calcSentiment(cleanTitle + ' ' + cleanDesc),
           relatedSymbol: null,
         })
@@ -265,22 +289,58 @@ async function fetchVneconomyCompanyNews(symbol: string): Promise<NewsItem[]> {
       if (!title || title.length < 5 || seenUrls.has(href)) continue
       seenUrls.add(href)
 
-      // Look backward from this match for the nearest image upload date
-      const before = html.slice(Math.max(0, lm.index - 3000), lm.index)
-      let publishedAt = new Date().toISOString()
-      // Image path like: upload/2025/06/24/ or upload//2025/06/24/
-      const dateMatch = before.match(/upload\/{1,2}(\d{4})\/(\d{2})\/(\d{2})\/[^"]*"[^>]*(?:class="responsive-image-link"|aria-label)/)
-        || before.match(/upload\/{1,2}(\d{4})\/(\d{2})\/(\d{2})\//)
-      if (dateMatch) {
-        const [, y, m, d] = dateMatch
-        try {
-          const dt = new Date(`${y}-${m}-${d}T12:00:00+07:00`)
+      // Extract date with multiple fallback strategies
+      const context = html.slice(Math.max(0, lm.index - 2500), lm.index + 200)
+      let publishedAt = ''
+
+      // Strategy 1: <time datetime="2026-03-14..."> tag (most reliable)
+      const timeTag = context.match(/<time[^>]+datetime="([^"]+)"/)
+      if (timeTag) publishedAt = parseAnyDate(timeTag[1])
+
+      // Strategy 2: "HH:mm | DD/MM/YYYY" — VnEconomy article time display
+      if (!publishedAt) {
+        const timePat = context.match(/(\d{1,2}):(\d{2})\s*\|\s*(\d{2})\/(\d{2})\/(\d{4})/)
+        if (timePat) {
+          const [, hh, mm, dd, mo, yyyy] = timePat
+          const dt = new Date(`${yyyy}-${mo}-${dd}T${hh.padStart(2,'0')}:${mm}:00+07:00`)
           if (!isNaN(dt.getTime())) publishedAt = dt.toISOString()
-        } catch { /* keep default */ }
+        }
       }
 
+      // Strategy 3: Extract date from article URL slug (e.g. /2026-03-14-slug.htm)
+      if (!publishedAt) {
+        const urlDate = href.match(/\/(\d{4})-(\d{2})-(\d{2})[^/]*\.htm/)
+        if (urlDate) {
+          const [, yyyy, mo, dd] = urlDate
+          const dt = new Date(`${yyyy}-${mo}-${dd}T12:00:00+07:00`)
+          if (!isNaN(dt.getTime())) publishedAt = dt.toISOString()
+        }
+      }
+
+      // Strategy 4: Any DD/MM/YYYY in context
+      if (!publishedAt) {
+        const justDate = context.match(/(\d{2})\/(\d{2})\/(\d{4})/)
+        if (justDate) {
+          const [, dd, mo, yyyy] = justDate
+          const dt = new Date(`${yyyy}-${mo}-${dd}T12:00:00+07:00`)
+          if (!isNaN(dt.getTime())) publishedAt = dt.toISOString()
+        }
+      }
+
+      // Strategy 5: Upload path date (least reliable, no suffix required)
+      if (!publishedAt) {
+        const uploadPat = context.match(/\/[Uu]pload\/{0,2}(\d{4})\/(\d{2})\/(\d{2})\//)
+        if (uploadPat) {
+          const [, yyyy, mo, dd] = uploadPat
+          const dt = new Date(`${yyyy}-${mo}-${dd}T12:00:00+07:00`)
+          if (!isNaN(dt.getTime())) publishedAt = dt.toISOString()
+        }
+      }
+
+      if (!publishedAt) publishedAt = new Date().toISOString()
+
       // Look backward for summary <p> text
-      const summaryMatch = before.match(/<p[^>]*>([^<]{10,200})<\/p>(?![\s\S]*<p[^>]*>[^<]{10,200}<\/p>)/)
+      const summaryMatch = context.match(/<p[^>]*>([^<]{10,200})<\/p>(?![\s\S]*<p[^>]*>[^<]{10,200}<\/p>)/)
       const summary = summaryMatch
         ? decodeHtmlEntities(summaryMatch[1].replace(/<[^>]*>/g, '').trim()).slice(0, 200)
         : ''

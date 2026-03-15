@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { requireAuth } from '@/lib/requireAuth'
 
 export const maxDuration = 30
 
 export async function POST(request: NextRequest) {
+  const { error } = await requireAuth(request)
+  if (error) return error
+
   if (!process.env.CLAUDE_API_KEY) {
     return NextResponse.json(
       { error: 'Claude API key not configured' },
@@ -59,10 +63,19 @@ Trả về JSON:
     const text = firstBlock && firstBlock.type === 'text' ? firstBlock.text : ''
     if (!text) throw new Error('Empty response')
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) throw new Error('Invalid JSON')
+    let jsonStr = ''
+    const cb2 = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+    if (cb2) jsonStr = cb2[1].trim()
+    if (!jsonStr) {
+      let depth2 = 0, start2 = -1
+      for (let i = 0; i < text.length; i++) {
+        if (text[i] === '{') { if (!depth2) start2 = i; depth2++ }
+        else if (text[i] === '}') { depth2--; if (!depth2 && start2 !== -1) { jsonStr = text.slice(start2, i + 1); break } }
+      }
+    }
+    if (!jsonStr) throw new Error('Invalid JSON response')
 
-    return NextResponse.json(JSON.parse(jsonMatch[0]))
+    return NextResponse.json(JSON.parse(jsonStr))
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Summary failed'
     return NextResponse.json({ error: message }, { status: 500 })

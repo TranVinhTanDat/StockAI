@@ -119,7 +119,8 @@ export default function FearGreedGauge() {
   const strokeWidth = 16
   // Full half-circle arc length
   const circumference = Math.PI * radius  // ~220
-  // Score 0→leftmost (180°), Score 100→rightmost (0°)
+  // Positive offset = skip first D units of the paint dash → paints [0, C-D] = LEFT portion
+  // At score=0: dashOffset=C → paint [0,0] = nothing. At score=100: dashOffset=0 → paint [0,C] = full arc
   const dashOffset = circumference * (1 - data.score / 100)
 
   // Needle: score 0 = left (π), score 100 = right (0), score 50 = up (π/2)

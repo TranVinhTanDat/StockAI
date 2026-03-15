@@ -97,11 +97,13 @@ export async function fetchQuote(symbol: string): Promise<QuoteData> {
 
 export async function fetchHistory(
   symbol: string,
-  days: number = 90
+  days: number = 90,
+  customFromTs?: number,
+  customToTs?: number
 ): Promise<CandleData[]> {
   const ticker = symbol.toUpperCase()
-  const toTs = Math.floor(Date.now() / 1000)
-  const fromTs = toTs - days * 86400
+  const toTs = customToTs ?? Math.floor(Date.now() / 1000)
+  const fromTs = customFromTs ?? (toTs - days * 86400)
 
   const res = await fetchWithTimeout(
     `${VPS_HISTORY_URL}?symbol=${ticker}&resolution=D&from=${fromTs}&to=${toTs}`

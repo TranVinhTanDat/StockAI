@@ -39,15 +39,42 @@ export default function AlertManager() {
             <Bell className="w-4 h-4 text-gold" />
             Cảnh Báo Giá
           </h3>
-          {notifPermission !== 'granted' && (
-            <button
-              onClick={requestPermission}
-              className="text-xs text-accent hover:text-accent/80 transition-colors"
-            >
-              Bật thông báo
-            </button>
+          {notifPermission === 'granted' && (
+            <span className="flex items-center gap-1 text-xs text-green-400">
+              <Bell className="w-3 h-3 fill-current" /> Thông báo bật
+            </span>
           )}
         </div>
+
+        {/* Notification permission banner */}
+        {notifPermission === 'default' && (
+          <div className="mb-4 flex items-start gap-3 bg-gold/8 border border-gold/25 rounded-xl p-3.5">
+            <Bell className="w-4 h-4 text-gold flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-gold mb-0.5">Bật thông báo trình duyệt</p>
+              <p className="text-[11px] text-muted leading-relaxed">
+                Nhận cảnh báo ngay khi giá chạm ngưỡng — kể cả khi bạn đang ở tab khác
+              </p>
+            </div>
+            <button
+              onClick={requestPermission}
+              className="flex-shrink-0 text-xs font-semibold bg-gold/20 hover:bg-gold/30 text-gold rounded-lg px-3 py-1.5 transition-colors whitespace-nowrap"
+            >
+              Bật ngay
+            </button>
+          </div>
+        )}
+        {notifPermission === 'denied' && (
+          <div className="mb-4 flex items-start gap-3 bg-surface2 border border-border/60 rounded-xl p-3.5">
+            <BellOff className="w-4 h-4 text-muted flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-muted mb-0.5">Thông báo bị chặn</p>
+              <p className="text-[11px] text-muted/70 leading-relaxed">
+                Vào <span className="text-gray-300">Cài đặt trình duyệt → Quyền riêng tư → Thông báo</span> để cấp quyền cho trang này
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2">
           <input

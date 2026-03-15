@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { NewsItem } from '@/types'
 import { Sparkles, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { getClientToken } from '@/lib/requireAuth'
 
 interface AISummaryProps {
   news: NewsItem[]
@@ -28,9 +29,13 @@ export default function AISummary({ news }: AISummaryProps) {
     setError('')
     setResult(null)
     try {
+      const token = getClientToken()
       const res = await fetch('/api/news-summary', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ news: news.slice(0, 5) }),
       })
       if (!res.ok) {

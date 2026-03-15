@@ -5,6 +5,8 @@ import { calcSMA, calcRSI, calcMACD, calcBB } from '@/lib/indicators'
 export async function GET(request: NextRequest) {
   const symbol = request.nextUrl.searchParams.get('symbol')
   const days = parseInt(request.nextUrl.searchParams.get('days') || '90', 10) || 90
+  const fromParam = request.nextUrl.searchParams.get('from') // YYYY-MM-DD
+  const toParam   = request.nextUrl.searchParams.get('to')   // YYYY-MM-DD
 
   if (!symbol) {
     return NextResponse.json(
@@ -13,8 +15,13 @@ export async function GET(request: NextRequest) {
     )
   }
 
+  let customFromTs: number | undefined
+  let customToTs: number | undefined
+  if (fromParam) customFromTs = Math.floor(new Date(fromParam).getTime() / 1000)
+  if (toParam)   customToTs   = Math.floor(new Date(toParam + 'T23:59:59').getTime() / 1000)
+
   try {
-    const candles = await fetchHistory(symbol, days)
+    const candles = await fetchHistory(symbol, days, customFromTs, customToTs)
 
     if (candles.length === 0) {
       return NextResponse.json(

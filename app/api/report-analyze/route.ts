@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { requireAuth } from '@/lib/requireAuth'
 
 export const maxDuration = 45
 
@@ -34,6 +35,9 @@ async function tryFetchContent(url: string): Promise<string | null> {
 }
 
 export async function POST(request: NextRequest) {
+  const { error } = await requireAuth(request)
+  if (error) return error
+
   if (!process.env.CLAUDE_API_KEY) {
     return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
   }
@@ -97,18 +101,18 @@ Dựa trên tiêu đề và loại báo cáo, hãy phân tích và trả về JS
     const text = block?.type === 'text' ? block.text : ''
     if (!text) throw new Error('Empty response')
 
-    // Extract JSON robustly
-    let jsonStr = text.trim()
-    const cb = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
-    if (cb) jsonStr = cb[1]
-    else {
-      // Find outermost { }
+    // Extract JSON robustly — never pass raw markdown to JSON.parse
+    let jsonStr = ''
+    const cb = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+    if (cb) jsonStr = cb[1].trim()
+    if (!jsonStr) {
       let depth = 0, start = -1
       for (let i = 0; i < text.length; i++) {
         if (text[i] === '{') { if (!depth) start = i; depth++ }
         else if (text[i] === '}') { depth--; if (!depth && start !== -1) { jsonStr = text.slice(start, i + 1); break } }
       }
     }
+    if (!jsonStr) throw new Error('Không thể trích xuất JSON từ phản hồi')
 
     const parsed = JSON.parse(jsonStr)
     return NextResponse.json({

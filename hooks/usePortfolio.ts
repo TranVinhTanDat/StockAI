@@ -141,5 +141,13 @@ export function usePortfolio() {
     [reload]
   )
 
-  return { holdings, trades, balance, isLoading, buy, sell, editHolding, deleteHolding, reload }
+  const setCash = useCallback(
+    async (amount: number) => {
+      await updateBalance(amount)
+      await reload()
+    },
+    [reload]
+  )
+
+  return { holdings, trades, balance, isLoading, buy, sell, editHolding, deleteHolding, reload, setCash }
 }

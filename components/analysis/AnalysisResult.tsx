@@ -27,6 +27,8 @@ import {
   TrendingUp,
   TrendingDown,
   Briefcase,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 
 interface HoldingSnapshot {
@@ -62,6 +64,7 @@ export default function AnalysisResult({
 }: AnalysisResultProps) {
   const [activeTab, setActiveTab] = useState<'technical' | 'fundamental' | 'sentiment'>('technical')
   const [saved, setSaved] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
 
   const handleSave = async () => {
     await saveAnalysis(symbol, result)
@@ -95,9 +98,9 @@ export default function AnalysisResult({
             {symbol} — Phân tích AI
           </h3>
 
-          {/* Cache / Fresh badge */}
-          {fromCache && cachedAt ? (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            {/* Cache / Fresh badge */}
+            {fromCache && cachedAt ? (
               <span className="flex items-center gap-1.5 text-xs text-gold bg-gold/10 border border-gold/20 rounded-full px-2.5 py-1">
                 <Database className="w-3 h-3" />
                 Bộ nhớ đệm · {formatCacheAge(cachedAt)}
@@ -105,13 +108,21 @@ export default function AnalysisResult({
                   <span className="text-gold/60 ml-1">({formatCacheTTL(expiresAt)})</span>
                 )}
               </span>
-            </div>
-          ) : (
-            <span className="flex items-center gap-1.5 text-xs text-accent bg-accent/10 border border-accent/20 rounded-full px-2.5 py-1">
-              <Zap className="w-3 h-3" />
-              Phân tích mới · {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          )}
+            ) : (
+              <span className="flex items-center gap-1.5 text-xs text-accent bg-accent/10 border border-accent/20 rounded-full px-2.5 py-1">
+                <Zap className="w-3 h-3" />
+                Phân tích mới · {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+            {/* Collapse toggle */}
+            <button
+              onClick={() => setCollapsed(c => !c)}
+              className="p-1.5 rounded-lg text-muted hover:text-gray-100 hover:bg-surface2 transition-colors"
+              title={collapsed ? 'Mở rộng' : 'Thu gọn'}
+            >
+              {collapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
 
         {/* ── Recommendation + Metrics ─────────────────────────────────────── */}
@@ -260,7 +271,8 @@ export default function AnalysisResult({
         })()}
       </div>
 
-      {/* ── Score Tabs ─────────────────────────────────────────────────────── */}
+      {/* ── Score Tabs + Body (collapsible) ────────────────────────────────── */}
+      {!collapsed && (<>
       <div className="border-b border-border">
         <div className="flex">
           {tabs.map((tab) => (
@@ -376,6 +388,7 @@ export default function AnalysisResult({
           )}
         </div>
       </div>
+      </>)}
     </div>
   )
 }
