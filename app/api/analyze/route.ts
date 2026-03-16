@@ -42,6 +42,7 @@ async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe:
   try {
     const res = await fetch(`https://api.simplize.vn/api/company/summary/${symbol}`, {
       headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://simplize.vn/' },
+      signal: AbortSignal.timeout(5000),
     })
     if (!res.ok) return { roa: 0, roe: 0, pb: 0 }
     const d = await res.json()
@@ -94,7 +95,7 @@ async function fetchLatestAnalystReportPdf(symbol: string): Promise<{ pdfBase64:
       `https://cafef.vn/du-lieu/Ajax/PageNew/BaoCaoPhanTich.ashx?Symbol=${symbol}&PageIndex=1&PageSize=3`,
       {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Referer': 'https://cafef.vn/' },
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(3000),
       }
     )
     if (!res.ok) return { pdfBase64: null, reportTitle: '' }
@@ -115,7 +116,7 @@ async function fetchLatestAnalystReportPdf(symbol: string): Promise<{ pdfBase64:
       try {
         const pdfRes = await fetch(cdnUrl, {
           headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StockAI/1.0)' },
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(6000),
         })
         if (!pdfRes.ok) continue
         const buf = await pdfRes.arrayBuffer()

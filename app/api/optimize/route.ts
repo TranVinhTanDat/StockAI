@@ -66,7 +66,8 @@ async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe:
   try {
     const res = await fetch(`https://api.simplize.vn/api/company/summary/${symbol}`, {
       headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://simplize.vn/' },
-      next: { revalidate: 3600 },
+      signal: AbortSignal.timeout(5000),
+      next: { revalidate: 3600 } as RequestInit['next'],
     })
     if (!res.ok) return { roa: 0, roe: 0, pe: 0, pb: 0 }
     const d = await res.json()
@@ -84,7 +85,8 @@ async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe:
 async function fetchForeignFlow(symbol: string): Promise<{ buyVol: number; sellVol: number; netVol: number; room?: number }> {
   try {
     const res = await fetch(`https://bgapidatafeed.vps.com.vn/getliststockdata/${symbol.toUpperCase()}`, {
-      next: { revalidate: 300 },
+      signal: AbortSignal.timeout(5000),
+      next: { revalidate: 300 } as RequestInit['next'],
     })
     if (!res.ok) return { buyVol: 0, sellVol: 0, netVol: 0 }
     const json = await res.json()
