@@ -37,18 +37,24 @@ async function saveCachedResult(symbol: string, result: unknown) {
   await sb.from('analysis_cache').insert({ symbol, data: result, expires_at: expiresAt })
 }
 
-// Fetch Simplize for ROA/ROE/PB (more accurate than CafeF, fills gap when Vietcap GraphQL is WAF-blocked)
-async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pb: number }> {
+// Fetch Simplize for full fundamental data — replaces WAF-blocked Vietcap
+async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pb: number; pe: number; eps: number }> {
   try {
     const res = await fetch(`https://api.simplize.vn/api/company/summary/${symbol}`, {
       headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://simplize.vn/' },
       signal: AbortSignal.timeout(5000),
     })
-    if (!res.ok) return { roa: 0, roe: 0, pb: 0 }
+    if (!res.ok) return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0 }
     const d = await res.json()
     const s = d?.data || d
-    return { roa: s?.roa || 0, roe: s?.roe || 0, pb: s?.pbRatio || 0 }
-  } catch { return { roa: 0, roe: 0, pb: 0 } }
+    return {
+      roa: s?.roa || 0,
+      roe: s?.roe || 0,
+      pb: s?.pbRatio || 0,
+      pe: s?.peRatio || 0,
+      eps: s?.epsRatio || 0,
+    }
+  } catch { return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0 } }
 }
 
 // Fetch CafeF KeHoachKinhDoanh for revenue/profit growth (fallback when Vietcap GraphQL is unavailable)
@@ -348,9 +354,9 @@ export async function POST(request: NextRequest) {
       bbLower: latestBb.lower,
       bbSignal,
       volumeSignal,
-      pe: fundamental?.pe || 0,
-      eps: fundamental?.eps || 0,
-      roe: simplize.roe || fundamental?.roe || 0,  // Simplize (accurate) > Vietcap fallback
+      pe: simplize.pe || fundamental?.pe || 0,   // Simplize > Vietcap (WAF-blocked)
+      eps: simplize.eps || fundamental?.eps || 0,
+      roe: simplize.roe || fundamental?.roe || 0,
       roa: simplize.roa || fundamental?.roa || 0,
       pb: simplize.pb || 0,
       revenueGrowth: cafeGrowth.revenueGrowth || fundamental?.revenueGrowth || 0,  // CafeF > Vietcap

@@ -484,10 +484,19 @@ export async function optimizePortfolio(ctx: OptimizeContext): Promise<OptimizeR
   Cơ bản: P/E=${h.pe.toFixed(1)}x | P/B=${(h.pb??0).toFixed(2)}x | ROE=${h.roe.toFixed(1)}% | ROA=${(h.roa??0).toFixed(1)}% | TT_LN=${h.profitGrowth ? (h.profitGrowth >= 0 ? '+' : '') + h.profitGrowth.toFixed(1) + '%' : 'N/A'}${h.revenueGrowth ? ' | TT_DT=' + (h.revenueGrowth >= 0 ? '+' : '') + h.revenueGrowth.toFixed(1) + '%' : ''} | Nợ/Vốn=${h.debtEquity.toFixed(2)} | Cổ tức=${h.dividendYield.toFixed(1)}%${foreignBlock}${newsBlock}`
   }).join('\n\n')
 
+  // Sector benchmarks for each unique industry in portfolio
+  const uniqueIndustries = Array.from(new Set(ctx.holdings.map(h => h.industry).filter(Boolean)))
+  const sectorBenchmarkBlock = uniqueIndustries.length > 0
+    ? `\n▌ BENCHMARK NGÀNH (để đánh giá định giá):\n${uniqueIndustries.map(ind => getSectorBenchmark(ind)).filter(Boolean).join('\n')}`
+    : ''
+
+  const marketRegimeBlock = ctx.vnIndex ? `\n${getMarketRegime(ctx.vnIndex)}` : ''
+
   const prompt = `PHÂN TÍCH DANH MỤC ĐẦU TƯ TOÀN DIỆN — ${today}
 
 ▌ BỐI CẢNH THỊ TRƯỜNG:
-${marketContext}
+${marketContext}${marketRegimeBlock}
+${sectorBenchmarkBlock}
 
 ▌ TỔNG QUAN TÀI SẢN:
 CP: ${ctx.totalValue.toLocaleString('vi-VN')}đ | Tiền mặt: ${ctx.cash.toLocaleString('vi-VN')}đ | Tổng TS: ${totalAssets.toLocaleString('vi-VN')}đ
@@ -500,9 +509,9 @@ ${holdingsText}
 ▌ YÊU CẦU PHÂN TÍCH — DỰA HOÀN TOÀN VÀO SỐ LIỆU THỰC TẾ TRÊN:
 1. Kỹ thuật từng mã: ADX (xu hướng mạnh/sideway?), RSI, MACD, BB, momentum 1-3 tháng
 2. Dòng tiền ngoại: NN đang mua/bán ròng mã nào? Tín hiệu gì? Room còn bao nhiêu?
-3. Cơ bản: P/E + P/B định giá hợp lý không? ROE + ROA so ngành? Tăng trưởng bền vững?
+3. Cơ bản: P/E + P/B so benchmark ngành (từ bảng trên), ROE + ROA có vượt TB ngành không? Tăng trưởng bền vững?
 4. Rủi ro tập trung ngành, mã đơn lẻ, tương quan
-5. Bối cảnh VN-Index: bull/bear market, nên phòng thủ hay tấn công?
+5. Bối cảnh VN-Index + market regime: nên phòng thủ hay tấn công?
 6. Chiến lược tái cơ cấu cụ thể: mã nào tăng/giảm tỷ trọng, tại sao, mức giá
 
 Trả về JSON trong thẻ <result>:

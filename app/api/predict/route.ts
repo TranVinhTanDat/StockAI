@@ -127,8 +127,8 @@ export async function GET(request: NextRequest) {
     const symbols = STYLE_SYMBOLS[style] ?? Object.values(STYLE_SYMBOLS)[0]
 
     // Fetch VN-Index once + all stock data in parallel
-    // Note: fetchFundamental (Vietcap GraphQL) removed — WAF-blocked, always returns zeros
-    // Note: fetchCafeFGrowth removed — slow CafeF API, often exceeds timeout budget
+    // Data sources: VPS quote+history (fast), Simplize pe/eps/roe/roa/pb, CafeF growth (3s timeout)
+    // Vietcap GraphQL removed — WAF-blocked, always returned zeros
     const [vnIndex, ...stockResults] = await Promise.all([
       fetchVNIndexContext(),
       ...symbols.map(async (symbol) => {
