@@ -192,6 +192,10 @@ interface AnalysisContext {
   resistance?: number
   support2?: number
   resistance2?: number
+  // Net profit margin (biên lợi nhuận ròng)
+  netMargin?: number
+  // Quarterly EPS trend (4 quarters, newest first) — shows earnings acceleration/deceleration
+  quarterlyEPS?: Array<{ period: string; eps: number; pe: number }>
   // Latest analyst report PDF (base64) for deep analysis
   reportPdfBase64?: string
   reportTitle?: string
@@ -257,6 +261,23 @@ ${parts.join(' | ')}${w52Str}`
   const fmtGrowth = (v: number) =>
     v !== 0 ? (v >= 0 ? '+' : '') + v.toFixed(1) + '%' : 'N/A'
 
+  // Quarterly EPS trend block — shows earnings acceleration/deceleration
+  const quarterlyEPSBlock = (() => {
+    const q = ctx.quarterlyEPS
+    if (!q || q.length < 2) return ''
+    const rows = q.map(r =>
+      `  ${r.period}: EPS=${r.eps > 0 ? r.eps.toLocaleString('vi-VN') + '₫' : 'N/A'}${r.pe > 0 ? ` | P/E=${r.pe.toFixed(1)}x` : ''}`
+    ).join('\n')
+    const oldest = q[q.length - 1].eps, newest = q[0].eps
+    const epsChg = oldest > 0 && newest > 0 ? Math.round(((newest - oldest) / Math.abs(oldest)) * 100) : 0
+    const trend = epsChg > 20 ? `→ ⬆ EPS TĂNG TỐC +${epsChg}% — tín hiệu tăng trưởng lợi nhuận RẤT MẠNH`
+      : epsChg > 5 ? `→ ↑ EPS tăng nhẹ +${epsChg}% qua các quý`
+      : epsChg < -20 ? `→ ⬇ EPS SUY GIẢM ${epsChg}% — CẢNH BÁO tăng trưởng lợi nhuận yếu`
+      : epsChg < -5 ? `→ ↓ EPS giảm nhẹ ${epsChg}%`
+      : `→ ↔ EPS ổn định (biến động <5%)`
+    return `\n▌ XU HƯỚNG EPS THEO QUÝ (4 quý gần nhất — phân tích gia tốc lợi nhuận):\n${rows}\n${trend}\n→ Xét: EPS đang tăng tốc hay giảm tốc? P/E đang co lại (tích cực) hay mở rộng?`
+  })()
+
   // Support/Resistance block from actual candle data
   const srBlock = (ctx.support && ctx.resistance)
     ? `\n▌ VÙNG HỖ TRỢ/KHÁNG CỰ (20 phiên — dùng để xác định entryZone/targetPrice/stopLoss):
@@ -279,9 +300,10 @@ BB(20,2): Upper=${ctx.bbUpper.toLocaleString('vi-VN')} Mid=${ctx.bbMid.toLocaleS
 → Giá ở ${bbPosition}% dải BB | ${ctx.bbSignal || 'Inside BB'}
 Khối lượng: ${ctx.volumeSignal || 'Bình thường'}
 
+${quarterlyEPSBlock}
 ▌ CƠ BẢN (số liệu mới nhất từ Simplize + báo cáo tài chính):
 P/E: ${fmt0(ctx.pe, 'x')} | P/B: ${fmt0(ctx.pb ?? 0, 'x', 2)} | EPS: ${ctx.eps > 0 ? ctx.eps.toLocaleString('vi-VN') + '₫' : 'N/A'}
-ROE: ${fmt0(ctx.roe, '%')} | ROA: ${fmt0(ctx.roa ?? 0, '%')}
+ROE: ${fmt0(ctx.roe, '%')} | ROA: ${fmt0(ctx.roa ?? 0, '%')}${ctx.netMargin ? ` | Biên LN ròng: ${ctx.netMargin.toFixed(1)}%` : ''}
 Tăng trưởng DT: ${fmtGrowth(ctx.revenueGrowth)} | Tăng trưởng LN: ${fmtGrowth(ctx.profitGrowth)}
 Nợ/Vốn chủ: ${ctx.debtEquity > 0 ? ctx.debtEquity.toFixed(2) : 'N/A'} | Cổ tức: ${fmt0(ctx.dividendYield, '%')}
 
@@ -481,7 +503,7 @@ export async function optimizePortfolio(ctx: OptimizeContext): Promise<OptimizeR
   Vị thế: ${h.qty.toLocaleString()} CP | Giá vốn: ${h.avgCost.toLocaleString()}đ → Hiện: ${h.currentPrice.toLocaleString()}đ | L/L: ${pnlSign}${h.pnlPct.toFixed(1)}%
   Kỹ thuật: RSI=${h.rsi} (${rsiLabel}) | ADX=${h.adx??0} (${h.adxTrend??'N/A'}) | MACD=${h.macdSignal}${h.macdHistogram ? ` hist=${h.macdHistogram}` : ''} | ${h.aboveSMA20 ? '↑SMA20' : '↓SMA20'} | ${h.aboveSMA50 ? '↑SMA50' : '↓SMA50'} | BB: ${h.bbSignal||'N/A'} | Vol: ${h.volumeSignal||'N/A'}
   Momentum: Trend30D: ${trendSign}${h.trend30d.toFixed(1)}%${momentum1Mstr}${momentum3Mstr}
-  Cơ bản: P/E=${h.pe.toFixed(1)}x | P/B=${(h.pb??0).toFixed(2)}x | ROE=${h.roe.toFixed(1)}% | ROA=${(h.roa??0).toFixed(1)}% | TT_LN=${h.profitGrowth ? (h.profitGrowth >= 0 ? '+' : '') + h.profitGrowth.toFixed(1) + '%' : 'N/A'}${h.revenueGrowth ? ' | TT_DT=' + (h.revenueGrowth >= 0 ? '+' : '') + h.revenueGrowth.toFixed(1) + '%' : ''} | Nợ/Vốn=${h.debtEquity.toFixed(2)} | Cổ tức=${h.dividendYield.toFixed(1)}%${foreignBlock}${newsBlock}`
+  Cơ bản: P/E=${h.pe > 0 ? h.pe.toFixed(1) + 'x' : 'N/A'} | P/B=${(h.pb??0) > 0 ? (h.pb??0).toFixed(2) + 'x' : 'N/A'} | ROE=${h.roe > 0 ? h.roe.toFixed(1) + '%' : 'N/A'} | ROA=${(h.roa??0) > 0 ? (h.roa??0).toFixed(1) + '%' : 'N/A'} | TT_LN=${h.profitGrowth ? (h.profitGrowth >= 0 ? '+' : '') + h.profitGrowth.toFixed(1) + '%' : 'N/A'}${h.revenueGrowth ? ' | TT_DT=' + (h.revenueGrowth >= 0 ? '+' : '') + h.revenueGrowth.toFixed(1) + '%' : ''}${h.debtEquity > 0 ? ' | Nợ/Vốn=' + h.debtEquity.toFixed(2) : ''}${h.dividendYield > 0 ? ' | Cổ tức=' + h.dividendYield.toFixed(1) + '%' : ''}${foreignBlock}${newsBlock}`
   }).join('\n\n')
 
   // Sector benchmarks for each unique industry in portfolio
@@ -580,6 +602,15 @@ interface PredictStock {
   momentum1M: number
   momentum3M: number
   volume: number
+  // Support / Resistance
+  support?: number
+  resistance?: number
+  support2?: number
+  resistance2?: number
+  // 52-week position
+  w52high?: number
+  w52low?: number
+  w52position?: number
   // Fundamental
   pe: number
   eps: number
@@ -641,7 +672,13 @@ export async function predictStocks(
   const timestamp = new Date().toLocaleString('vi-VN')
 
   const vnBlock = ctx.vnIndex
-    ? `\n▌ BỐI CẢNH THỊ TRƯỜNG (VN-Index):\nVN-Index: ${ctx.vnIndex.currentLevel.toLocaleString('vi-VN')} điểm | Xu hướng 30D: ${ctx.vnIndex.trend30d >= 0 ? '+' : ''}${ctx.vnIndex.trend30d.toFixed(1)}% | RSI: ${ctx.vnIndex.rsi} (${ctx.vnIndex.rsi > 70 ? 'Quá mua — thận trọng' : ctx.vnIndex.rsi < 30 ? 'Quá bán — có thể phục hồi' : 'Trung lập'})\n`
+    ? `\n▌ BỐI CẢNH THỊ TRƯỜNG (VN-Index):\nVN-Index: ${ctx.vnIndex.currentLevel.toLocaleString('vi-VN')} điểm | Xu hướng 30D: ${ctx.vnIndex.trend30d >= 0 ? '+' : ''}${ctx.vnIndex.trend30d.toFixed(1)}% | RSI: ${ctx.vnIndex.rsi} (${ctx.vnIndex.rsi > 70 ? 'Quá mua — thận trọng' : ctx.vnIndex.rsi < 30 ? 'Quá bán — có thể phục hồi' : 'Trung lập'})\n${getMarketRegime(ctx.vnIndex)}\n`
+    : ''
+
+  // Sector benchmarks for all unique industries in the stock list
+  const uniqueInds = Array.from(new Set(ctx.stocks.map(s => s.industry).filter(i => i && i !== 'Khác')))
+  const sectorBenchBlock = uniqueInds.length > 0
+    ? `\n▌ BENCHMARK NGÀNH (so sánh định giá):\n${uniqueInds.map(ind => getSectorBenchmark(ind)).filter(Boolean).join('\n')}\n`
     : ''
 
   const tableRows = ctx.stocks
@@ -650,16 +687,22 @@ export async function predictStocks(
       const foreignStr = (s.foreignBuyVol > 0 || s.foreignSellVol > 0)
         ? `\n   Dòng NN: Mua=${s.foreignBuyVol.toLocaleString('vi-VN')} | Bán=${s.foreignSellVol.toLocaleString('vi-VN')} | Net=${foreignNet >= 0 ? '+' : ''}${foreignNet.toLocaleString('vi-VN')}${s.foreignRoom !== undefined ? ` | Room: ${s.foreignRoom.toFixed(1)}%` : ''}`
         : ''
+      const srStr = (s.support && s.resistance)
+        ? `\n   S/R: Hỗ trợ=${s.support2 ? s.support2.toLocaleString('vi-VN') + '→' : ''}${s.support.toLocaleString('vi-VN')}₫ | Kháng cự=${s.resistance2 ? s.resistance2.toLocaleString('vi-VN') + '→' : ''}${s.resistance.toLocaleString('vi-VN')}₫`
+        : ''
+      const w52Str = (s.w52high && s.w52low)
+        ? `\n   52W: Low=${s.w52low.toLocaleString('vi-VN')}₫ / High=${s.w52high.toLocaleString('vi-VN')}₫ → Giá ở ${s.w52position ?? 50}% vùng 52 tuần`
+        : ''
       return `${i + 1}. [${s.symbol}] ${s.industry}
    Giá: ${s.price.toLocaleString('vi-VN')}₫ (${s.changePct > 0 ? '+' : ''}${s.changePct.toFixed(1)}% hôm nay, Trend30D: ${s.trend30d >= 0 ? '+' : ''}${s.trend30d.toFixed(1)}%)
    Kỹ thuật: RSI=${s.rsi} | ADX=${s.adx} (${s.adxTrend}) | MACD=${s.macdSignal} hist=${s.macdHistogram} | ${s.aboveSMA20 ? '↑SMA20' : '↓SMA20'} | ${s.aboveSMA50 ? '↑SMA50' : '↓SMA50'} | BB: ${s.bbSignal} | Vol: ${s.volumeSignal}
-   Momentum: 1T=${s.momentum1M >= 0 ? '+' : ''}${s.momentum1M}% | 3T=${s.momentum3M >= 0 ? '+' : ''}${s.momentum3M}% | KL=${s.volume.toLocaleString('vi-VN')}
-   Cơ bản: P/E=${s.pe.toFixed(1)}x | P/B=${s.pb.toFixed(2)}x | EPS=${s.eps.toLocaleString('vi-VN')}₫ | ROE=${s.roe.toFixed(1)}% | ROA=${s.roa.toFixed(1)}% | LN_Growth=${s.profitGrowth >= 0 ? '+' : ''}${s.profitGrowth.toFixed(1)}% | DT_Growth=${s.revenueGrowth >= 0 ? '+' : ''}${s.revenueGrowth.toFixed(1)}% | D/E=${s.debtEquity.toFixed(2)} | Cổ_tức=${s.dividendYield.toFixed(1)}%${foreignStr}`
+   Momentum: 1T=${s.momentum1M >= 0 ? '+' : ''}${s.momentum1M}% | 3T=${s.momentum3M >= 0 ? '+' : ''}${s.momentum3M}% | KL=${s.volume.toLocaleString('vi-VN')}${srStr}${w52Str}
+   Cơ bản: P/E=${s.pe.toFixed(1)}x | P/B=${s.pb.toFixed(2)}x | EPS=${s.eps.toLocaleString('vi-VN')}₫ | ROE=${s.roe.toFixed(1)}% | ROA=${s.roa.toFixed(1)}% | LN_Growth=${s.profitGrowth >= 0 ? '+' : ''}${s.profitGrowth.toFixed(1)}% | DT_Growth=${s.revenueGrowth >= 0 ? '+' : ''}${s.revenueGrowth.toFixed(1)}%${s.dividendYield > 0 ? ` | Cổ tức=${s.dividendYield.toFixed(1)}%` : ''}${s.debtEquity > 0 ? ` | Nợ/Vốn=${s.debtEquity.toFixed(2)}x` : ''}${foreignStr}`
     })
     .join('\n')
 
   const prompt = `PHÂN TÍCH CHUYÊN SÂU ${ctx.stocks.length} MÃ CỔ PHIẾU VIỆT NAM (${timestamp})
-${vnBlock}
+${vnBlock}${sectorBenchBlock}
 ═══════════════════════════════════════════
 DỮ LIỆU THỰC TẾ TỪNG MÃ (90 ngày lịch sử):
 ═══════════════════════════════════════════
@@ -783,6 +826,8 @@ export interface ChatStockContext {
   w52high?: number
   w52low?: number
   debtEquity?: number
+  netMargin?: number
+  quarterlyEPS?: Array<{ period: string; eps: number; pe: number }>
   // Analyst report PDF for deep analysis
   reportPdfBase64?: string
   reportTitle?: string
@@ -839,9 +884,17 @@ BB(20,2): Upper=${ctx.bbUpper.toLocaleString('vi-VN')} / Mid=${ctx.bbMid.toLocal
 Khối lượng: ${ctx.volumeSignal}
 Momentum:${momentum1WStr} | 1 tháng=${ctx.momentum1M >= 0 ? '+' : ''}${ctx.momentum1M}% | 3 tháng=${ctx.momentum3M >= 0 ? '+' : ''}${ctx.momentum3M}% | Trend 30D=${ctx.trend30d >= 0 ? '+' : ''}${ctx.trend30d.toFixed(1)}%
 ${srText ? `Hỗ trợ/Kháng cự (20 phiên): ${srText}` : ''}
-▌ CƠ BẢN (Simplize + CafeF — dữ liệu mới nhất):
+${(() => {
+    const q = ctx.quarterlyEPS
+    if (!q || q.length < 2) return ''
+    const rows = q.map(r => `  ${r.period}: EPS=${r.eps > 0 ? r.eps.toLocaleString('vi-VN') + '₫' : 'N/A'}${r.pe > 0 ? ` | P/E=${r.pe.toFixed(1)}x` : ''}`).join('\n')
+    const oldest = q[q.length - 1].eps, newest = q[0].eps
+    const epsChg = oldest > 0 && newest > 0 ? Math.round(((newest - oldest) / Math.abs(oldest)) * 100) : 0
+    const trend = epsChg > 20 ? `→ ⬆ EPS TĂNG TỐC +${epsChg}%` : epsChg > 5 ? `→ ↑ +${epsChg}%` : epsChg < -20 ? `→ ⬇ EPS SUY GIẢM ${epsChg}%` : epsChg < -5 ? `→ ↓ ${epsChg}%` : `→ ↔ ổn định`
+    return `▌ EPS THEO QUÝ (4 quý gần nhất):\n${rows}\n${trend}\n\n`
+  })()}▌ CƠ BẢN (Simplize + CafeF — dữ liệu mới nhất):
 P/E: ${fmt0(ctx.pe, 'x')} | P/B: ${fmt0(ctx.pb, 'x', 2)} | EPS: ${ctx.eps > 0 ? ctx.eps.toLocaleString('vi-VN') + '₫' : 'N/A'}
-ROE: ${fmt0(ctx.roe, '%')} | ROA: ${fmt0(ctx.roa, '%')}${ctx.debtEquity !== undefined && ctx.debtEquity > 0 ? ` | Nợ/Vốn: ${ctx.debtEquity.toFixed(2)}x` : ''}
+ROE: ${fmt0(ctx.roe, '%')} | ROA: ${fmt0(ctx.roa, '%')}${ctx.netMargin ? ` | Biên LN ròng: ${ctx.netMargin.toFixed(1)}%` : ''}${ctx.debtEquity !== undefined && ctx.debtEquity > 0 ? ` | Nợ/Vốn: ${ctx.debtEquity.toFixed(2)}x` : ''}
 Tăng trưởng Doanh thu: ${fmtGrowth(ctx.revenueGrowth)} | Tăng trưởng Lợi nhuận: ${fmtGrowth(ctx.profitGrowth)}
 Cổ tức: ${fmt0(ctx.dividendYield, '%')}
 

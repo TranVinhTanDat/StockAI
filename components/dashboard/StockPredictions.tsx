@@ -33,6 +33,7 @@ export default function StockPredictions() {
   const [style, setStyle] = useState<ActiveTab>('longterm')
   const [predictions, setPredictions] = useState<PredictionItem[] | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [retryMsg, setRetryMsg] = useState<string | null>(null)
   const [error, setError] = useState(false)
   const [fromStorage, setFromStorage] = useState(false)
   const [predictedAt, setPredictedAt] = useState<string | null>(null)
@@ -66,22 +67,35 @@ export default function StockPredictions() {
     setError(false)
     setFromStorage(false)
     setPredictedAt(null)
-    try {
+    setRetryMsg(null)
+
+    const attempt = async (retryCount: number): Promise<void> => {
       const token = getClientToken()
       const res = await fetch(`/api/predict?style=${s}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
+      if (res.status === 504 && retryCount < 2) {
+        setRetryMsg(`Timeout — thử lại (${retryCount + 1}/2)...`)
+        await new Promise(r => setTimeout(r, 3000))
+        setRetryMsg(null)
+        return attempt(retryCount + 1)
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data: PredictionItem[] = await res.json()
       await savePredictions(s as InvestmentStyle, data)
       setPredictions(data)
       setFromStorage(false)
       setPredictedAt(new Date().toISOString())
+    }
+
+    try {
+      await attempt(0)
     } catch {
       setError(true)
       setPredictions(null)
     } finally {
       setIsLoading(false)
+      setRetryMsg(null)
     }
   }, [])
 
@@ -109,7 +123,7 @@ export default function StockPredictions() {
               title="Chạy phân tích AI sâu (mất ~30-60s)"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              {isLoading ? 'Đang phân tích...' : 'Phân tích AI'}
+              {isLoading ? (retryMsg ?? 'Đang phân tích...') : 'Phân tích AI'}
             </button>
           </div>
         )}

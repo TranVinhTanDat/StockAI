@@ -61,15 +61,15 @@ async function fetchCafeFGrowth(symbol: string): Promise<{ revenueGrowth: number
   } catch { return { revenueGrowth: 0, profitGrowth: 0 } }
 }
 
-// Fetch Simplize summary for ROA/ROE/marketCap
-async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pe: number; pb: number }> {
+// Fetch Simplize summary for ROA/ROE/PE/PB + dividendYield/debtToEquity
+async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pe: number; pb: number; dividendYield: number; debtToEquity: number }> {
   try {
     const res = await fetch(`https://api.simplize.vn/api/company/summary/${symbol}`, {
       headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://simplize.vn/' },
       signal: AbortSignal.timeout(5000),
       next: { revalidate: 3600 } as RequestInit['next'],
     })
-    if (!res.ok) return { roa: 0, roe: 0, pe: 0, pb: 0 }
+    if (!res.ok) return { roa: 0, roe: 0, pe: 0, pb: 0, dividendYield: 0, debtToEquity: 0 }
     const d = await res.json()
     const s = d?.data || d
     return {
@@ -77,8 +77,10 @@ async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe:
       roe: s?.roe || 0,
       pe: s?.peRatio || 0,
       pb: s?.pbRatio || 0,
+      dividendYield: s?.dividendYield || s?.dividendRatio || s?.dividend || 0,
+      debtToEquity: s?.deRatio || s?.debtToEquity || s?.leverageRatio || 0,
     }
-  } catch { return { roa: 0, roe: 0, pe: 0, pb: 0 } }
+  } catch { return { roa: 0, roe: 0, pe: 0, pb: 0, dividendYield: 0, debtToEquity: 0 } }
 }
 
 // Fetch foreign investor flows for a symbol (lightweight VPS quote fetch)
@@ -267,13 +269,15 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Simplize fundamental data (more accurate ROA/ROE)
+          // Simplize fundamental data (more accurate ROA/ROE + dividendYield/debtToEquity)
           if (simplizeResult.status === 'fulfilled') {
             const s = simplizeResult.value
             base.roa = Math.round(s.roa * 10) / 10
             base.roe = Math.round(s.roe * 10) / 10
             if (s.pe > 0) base.pe = Math.round(s.pe * 10) / 10
             if (s.pb > 0) base.pb = Math.round(s.pb * 10) / 10
+            if (s.dividendYield > 0) base.dividendYield = Math.round(s.dividendYield * 10) / 10
+            if (s.debtToEquity > 0) base.debtEquity = Math.round(s.debtToEquity * 100) / 100
           }
 
           // Recent news

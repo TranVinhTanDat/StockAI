@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchQuote, fetchHistory } from '@/lib/tcbs'
 import { predictStocks, type InvestmentStyle } from '@/lib/claude'
 import { requireAuth } from '@/lib/requireAuth'
+import { INDUSTRY_MAP } from '@/lib/utils'
 import { calcRSI, calcMACD, calcBB, calcADX, calcSMA } from '@/lib/indicators'
 import type { PredictionItem } from '@/types'
 
@@ -28,15 +29,15 @@ const STYLE_SYMBOLS: Record<InvestmentStyle, string[]> = {
   etf:      ['VCB', 'BID', 'CTG', 'HPG', 'VNM', 'GAS', 'FPT', 'VIC', 'VHM', 'MSN', 'MWG', 'TCB'],
 }
 
-// Fetch Simplize for ROE/ROA/PB/PE/EPS — replaces WAF-blocked Vietcap + slow CafeF
-async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pb: number; pe: number; eps: number }> {
+// Fetch Simplize for ROE/ROA/PB/PE/EPS + netMargin/dividendYield — replaces WAF-blocked Vietcap
+async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pb: number; pe: number; eps: number; netMargin: number; dividendYield: number; debtToEquity: number }> {
   try {
     const res = await fetch(`https://api.simplize.vn/api/company/summary/${symbol}`, {
       headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://simplize.vn/' },
       signal: AbortSignal.timeout(4000),
       next: { revalidate: 3600 } as RequestInit['next'],
     })
-    if (!res.ok) return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0 }
+    if (!res.ok) return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 }
     const d = await res.json()
     const s = d?.data || d
     return {
@@ -45,8 +46,11 @@ async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe:
       pb: s?.pbRatio || 0,
       pe: s?.peRatio || 0,
       eps: s?.epsRatio || 0,
+      netMargin: s?.netProfitMargin || s?.netMarginRatio || s?.netMargin || 0,
+      dividendYield: s?.dividendYield || s?.dividendRatio || s?.dividend || 0,
+      debtToEquity: s?.deRatio || s?.debtToEquity || s?.leverageRatio || 0,
     }
-  } catch { return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0 } }
+  } catch { return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 } }
 }
 
 // Fetch CafeF profit growth — 3s hard timeout so it never blocks predict
@@ -145,14 +149,14 @@ export async function GET(request: NextRequest) {
       ...symbols.map(async (symbol) => {
         const [quoteRes, candlesRes, simplizeRes, cafeGrowthRes] = await Promise.allSettled([
           fetchQuote(symbol),
-          fetchHistory(symbol, 60).catch(() => []),
+          fetchHistory(symbol, 90).catch(() => []),
           fetchSimplizeSummary(symbol),
           fetchCafeFGrowth(symbol),
         ])
 
         const q = quoteRes.status === 'fulfilled' ? quoteRes.value : null
         const candles = candlesRes.status === 'fulfilled' ? candlesRes.value : []
-        const s = simplizeRes.status === 'fulfilled' ? simplizeRes.value : { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0 }
+        const s = simplizeRes.status === 'fulfilled' ? simplizeRes.value : { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 }
         const g = cafeGrowthRes.status === 'fulfilled' ? cafeGrowthRes.value : { revenueGrowth: 0, profitGrowth: 0 }
 
         if (!q || q.price <= 0) return null
@@ -230,11 +234,42 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        // Support / Resistance via swing pivot (±2 bar window)
+        let support: number | undefined, resistance: number | undefined
+        let support2: number | undefined, resistance2: number | undefined
+        if (candles.length >= 10) {
+          const W = 2
+          const swingHighs: number[] = [], swingLows: number[] = []
+          for (let i = W; i < candles.length - W; i++) {
+            let isH = true, isL = true
+            for (let j = i - W; j <= i + W; j++) {
+              if (j === i) continue
+              if (candles[j].high >= candles[i].high) isH = false
+              if (candles[j].low <= candles[i].low) isL = false
+            }
+            if (isH) swingHighs.push(candles[i].high)
+            if (isL) swingLows.push(candles[i].low)
+          }
+          const resLevels = swingHighs.filter(h => h > lastClose).sort((a, b) => a - b)
+          const supLevels = swingLows.filter(l => l < lastClose).sort((a, b) => b - a)
+          resistance = resLevels[0]
+          resistance2 = resLevels[1]
+          support = supLevels[0]
+          support2 = supLevels[1]
+        }
+
+        // 52-week high/low from fetchQuote (already fetched 365-day history)
+        const w52high = q.high52w || undefined
+        const w52low = q.low52w || undefined
+        const w52position = (w52high && w52low && w52high > w52low && lastClose >= w52low)
+          ? Math.round(((lastClose - w52low) / (w52high - w52low)) * 100)
+          : undefined
+
         return {
           symbol,
           price: q.price,
           changePct: q.changePct,
-          industry: q.industry || 'Khác',
+          industry: INDUSTRY_MAP[symbol] || q.industry || 'Khác',
           // Technical
           rsi,
           macdSignal,
@@ -249,6 +284,15 @@ export async function GET(request: NextRequest) {
           momentum1M,
           momentum3M,
           volume: q.volume,
+          // Support / Resistance
+          support,
+          resistance,
+          support2,
+          resistance2,
+          // 52-week range
+          w52high,
+          w52low,
+          w52position,
           // Fundamental — all from Simplize (fast, reliable)
           pe: Math.round((s.pe || 0) * 10) / 10,
           eps: Math.round((s.eps || 0) * 10) / 10,
@@ -257,8 +301,8 @@ export async function GET(request: NextRequest) {
           pb: Math.round((s.pb || 0) * 100) / 100,
           revenueGrowth: g.revenueGrowth,
           profitGrowth: g.profitGrowth,
-          debtEquity: 0,
-          dividendYield: 0,
+          debtEquity: Math.round((s.debtToEquity || 0) * 100) / 100,
+          dividendYield: Math.round((s.dividendYield || 0) * 10) / 10,
           // Foreign investor flows
           foreignBuyVol: q.foreignBuyVol ?? 0,
           foreignSellVol: q.foreignSellVol ?? 0,

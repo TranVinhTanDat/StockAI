@@ -38,13 +38,14 @@ async function saveCachedResult(symbol: string, result: unknown) {
 }
 
 // Fetch Simplize for full fundamental data — replaces WAF-blocked Vietcap
-async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pb: number; pe: number; eps: number }> {
+async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pb: number; pe: number; eps: number; netMargin: number; dividendYield: number; debtToEquity: number }> {
   try {
     const res = await fetch(`https://api.simplize.vn/api/company/summary/${symbol}`, {
       headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://simplize.vn/' },
       signal: AbortSignal.timeout(5000),
+      next: { revalidate: 3600 } as RequestInit['next'],
     })
-    if (!res.ok) return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0 }
+    if (!res.ok) return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 }
     const d = await res.json()
     const s = d?.data || d
     return {
@@ -53,8 +54,11 @@ async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe:
       pb: s?.pbRatio || 0,
       pe: s?.peRatio || 0,
       eps: s?.epsRatio || 0,
+      netMargin: s?.netProfitMargin || s?.netMarginRatio || s?.netMargin || 0,
+      dividendYield: s?.dividendYield || s?.dividendRatio || s?.dividend || 0,
+      debtToEquity: s?.deRatio || s?.debtToEquity || s?.leverageRatio || 0,
     }
-  } catch { return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0 } }
+  } catch { return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 } }
 }
 
 // Fetch CafeF KeHoachKinhDoanh for revenue/profit growth (fallback when Vietcap GraphQL is unavailable)
@@ -62,7 +66,7 @@ async function fetchCafeFGrowth(symbol: string): Promise<{ revenueGrowth: number
   try {
     const res = await fetch(
       `https://cafef.vn/du-lieu/Ajax/PageNew/KeHoachKinhDoanh.ashx?Symbol=${symbol}`,
-      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(5000) }
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(5000), next: { revalidate: 86400 } as RequestInit['next'] }
     )
     if (!res.ok) return { revenueGrowth: 0, profitGrowth: 0 }
     const data = await res.json()
@@ -92,6 +96,27 @@ async function fetchCafeFGrowth(symbol: string): Promise<{ revenueGrowth: number
     const profitGrowth = prevProfit !== 0 && currProfit !== 0 ? Math.round(((currProfit - prevProfit) / Math.abs(prevProfit)) * 1000) / 10 : 0
     return { revenueGrowth, profitGrowth }
   } catch { return { revenueGrowth: 0, profitGrowth: 0 } }
+}
+
+// Fetch CafeF quarterly EPS/PE trend (4 quarters) — reveals earnings acceleration/deceleration
+async function fetchCafeFQuarterlyRatios(symbol: string): Promise<Array<{ period: string; eps: number; pe: number }>> {
+  try {
+    const res = await fetch(
+      `https://cafef.vn/du-lieu/Ajax/PageNew/ChiSoTaiChinh.ashx?Symbol=${symbol}&TotalRow=4&ReportType=Q&Sort=DESC`,
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(4000), next: { revalidate: 86400 } as RequestInit['next'] }
+    )
+    if (!res.ok) return []
+    const data = await res.json()
+    // Try multiple response structures (CafeF inconsistent)
+    const rows: Array<Record<string, unknown>> =
+      data?.Data?.Data || data?.data?.Data || data?.Data || data?.data || []
+    if (!Array.isArray(rows) || rows.length === 0) return []
+    return rows.slice(0, 4).map(r => ({
+      period: String(r.ReportDate || r.Quarter || r.reportDate || r.year || ''),
+      eps: Number(r.EPS || r.eps || 0),
+      pe: Number(r.PriceToEarning || r.PE || r.pe || r.priceToEarning || 0),
+    })).filter(r => r.period && (r.eps !== 0 || r.pe !== 0))
+  } catch { return [] }
 }
 
 // Fetch latest analyst report PDF for deep analysis context
@@ -329,12 +354,13 @@ export async function POST(request: NextRequest) {
     const cached = !forceRefresh && await getCachedResult(symbol, noHolding)
     if (cached) return NextResponse.json({ ...cached, _cached: true })
 
-    // Fetch enrichment data in parallel (Simplize + VN-Index + analyst report PDF + CafeF growth)
-    const [simplize, vnIndex, analystReport, cafeGrowth] = await Promise.all([
+    // Fetch enrichment data in parallel (Simplize + VN-Index + analyst report PDF + CafeF growth + quarterly EPS)
+    const [simplize, vnIndex, analystReport, cafeGrowth, quarterlyRatios] = await Promise.all([
       fetchSimplizeSummary(symbol),
       fetchVNIndexContext(),
       fetchLatestAnalystReportPdf(symbol),
       fetchCafeFGrowth(symbol),
+      fetchCafeFQuarterlyRatios(symbol),
     ])
 
     const result = await analyzeStock({
@@ -359,10 +385,12 @@ export async function POST(request: NextRequest) {
       roe: simplize.roe || fundamental?.roe || 0,
       roa: simplize.roa || fundamental?.roa || 0,
       pb: simplize.pb || 0,
+      netMargin: simplize.netMargin || 0,
       revenueGrowth: cafeGrowth.revenueGrowth || fundamental?.revenueGrowth || 0,  // CafeF > Vietcap
       profitGrowth: cafeGrowth.profitGrowth || fundamental?.profitGrowth || 0,
-      debtEquity: fundamental?.debtEquity || 0,
-      dividendYield: fundamental?.dividendYield || 0,
+      debtEquity: simplize.debtToEquity || fundamental?.debtEquity || 0,
+      dividendYield: simplize.dividendYield || fundamental?.dividendYield || 0,
+      quarterlyEPS: quarterlyRatios.length >= 2 ? quarterlyRatios : undefined,
       topNews,
       avgSentiment,
       vnIndex,
