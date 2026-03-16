@@ -6,8 +6,8 @@ import useSWR from 'swr'
 import Link from 'next/link'
 import {
   Search, Star, StarOff, RefreshCw, TrendingUp,
-  X, ChevronUp, ChevronDown, ArrowLeft,
-  Clock,
+  X, ChevronUp, ChevronDown, ArrowLeft, Clock,
+  Activity,
 } from 'lucide-react'
 import type { StockBoard } from '@/lib/priceboard-data'
 
@@ -63,7 +63,7 @@ const DEFAULT_SUB: Record<MainGroup, string> = {
   hose: 'vn30', hnx: 'hnx30', upcom: 'upcom', sector: 'vnfin', favorites: 'favorites',
 }
 
-type SortKey = 'sym' | 'price' | 'changePct' | 'vol' | 'ceil' | 'floor' | 'ref'
+type SortKey = 'sym' | 'price' | 'changePct' | 'vol' | 'ceil' | 'floor' | 'ref' | 'foreignNet'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -74,7 +74,7 @@ function fmt(n: number, decimals = 0): string {
 
 function fmtVol(n: number): string {
   if (!n) return '—'
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
   return n.toLocaleString('vi-VN')
 }
@@ -82,6 +82,13 @@ function fmtVol(n: number): string {
 function fmtPrice(p: number): string {
   if (!p) return '—'
   return (p / 1000).toFixed(2)
+}
+
+function fmtVal(val: number): string {
+  if (!val) return '—'
+  if (val >= 1_000_000_000) return `${(val / 1_000_000_000).toFixed(1)}T`
+  if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(0)}M`
+  return `${(val / 1_000).toFixed(0)}K`
 }
 
 function priceClass(price: number, ref: number, ceil: number, floor: number): string {
@@ -129,7 +136,7 @@ function MarketClock() {
     <div className="flex items-center gap-2 text-xs">
       <Clock className="w-3.5 h-3.5 text-muted" />
       <span className="text-gray-300 font-mono">{time}</span>
-      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${open ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-muted'}`}>
+      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${open ? 'bg-green-500/20 text-green-400 animate-pulse' : 'bg-gray-500/20 text-muted'}`}>
         {open ? '● ĐANG KHỚP' : '○ Đóng cửa'}
       </span>
     </div>
@@ -142,106 +149,178 @@ function IndexChip({ name, value, change, changePct }: { name: string; value: nu
   if (!value) return null
   const up = change >= 0
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 bg-surface2/60 rounded-lg border border-border/40">
+    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors ${
+      up ? 'bg-green-500/8 border-green-500/25' : 'bg-red-500/8 border-red-500/25'
+    }`}>
       <span className="text-xs text-muted font-medium">{name}</span>
-      <span className="text-sm font-bold text-gray-100">{fmt(value, 2)}</span>
-      <span className={`text-xs font-semibold ${up ? 'text-green-400' : 'text-red-400'}`}>
-        {up ? '▲' : '▼'} {Math.abs(changePct).toFixed(2)}%
+      <span className="text-sm font-bold text-gray-100 font-mono">{fmt(value, 2)}</span>
+      <span className={`text-xs font-bold ${up ? 'text-green-400' : 'text-red-400'}`}>
+        {up ? '▲' : '▼'} {Math.abs(change).toFixed(2)} ({Math.abs(changePct).toFixed(2)}%)
       </span>
     </div>
+  )
+}
+
+// ─── Flash TD ─────────────────────────────────────────────────────────────────
+// Per-cell flash: lights up green or red when value changes
+
+function FlashTd({ value, className, children }: { value: number; className?: string; children: React.ReactNode }) {
+  const ref = useRef<HTMLTableCellElement>(null)
+  const prevRef = useRef<number | undefined>(undefined)
+
+  useEffect(() => {
+    if (prevRef.current !== undefined && prevRef.current !== value && ref.current) {
+      const cls = value > prevRef.current ? 'cell-flash-up' : 'cell-flash-down'
+      ref.current.classList.add(cls)
+      const el = ref.current
+      setTimeout(() => el?.classList.remove(cls), 900)
+    }
+    prevRef.current = value
+  }, [value])
+
+  return <td ref={ref} className={className}>{children}</td>
+}
+
+// ─── Compact 3-level OrderBook columns ────────────────────────────────────────
+
+function BidCol({ levels }: { levels: { p: number; v: number }[] }) {
+  const valid = levels.filter(l => l.p > 0)
+  return (
+    <td className="py-1 px-1 hidden xl:table-cell w-[88px]">
+      {valid.length === 0
+        ? <span className="text-muted text-xs block text-right">—</span>
+        : valid.map((l, i) => (
+          <div key={i} className="flex items-center justify-end gap-1 leading-[1.45]">
+            <span className="text-[10px] text-muted font-mono">{fmtVol(l.v)}</span>
+            <span className="text-[11px] text-green-400 font-mono font-semibold w-[38px] text-right">{fmtPrice(l.p)}</span>
+          </div>
+        ))
+      }
+    </td>
+  )
+}
+
+function AskCol({ levels }: { levels: { p: number; v: number }[] }) {
+  const valid = levels.filter(l => l.p > 0)
+  return (
+    <td className="py-1 px-1 hidden xl:table-cell w-[88px]">
+      {valid.length === 0
+        ? <span className="text-muted text-xs block text-left">—</span>
+        : valid.map((l, i) => (
+          <div key={i} className="flex items-center justify-start gap-1 leading-[1.45]">
+            <span className="text-[11px] text-red-400 font-mono font-semibold w-[38px]">{fmtPrice(l.p)}</span>
+            <span className="text-[10px] text-muted font-mono">{fmtVol(l.v)}</span>
+          </div>
+        ))
+      }
+    </td>
   )
 }
 
 // ─── Price Row ────────────────────────────────────────────────────────────────
 
 function PriceRow({
-  stock, isFav, onToggleFav, onSelect, isSelected, prevPrice,
+  stock, isFav, onToggleFav, onSelect, isSelected,
 }: {
   stock: StockBoard; isFav: boolean
   onToggleFav: () => void; onSelect: () => void; isSelected: boolean
-  prevPrice?: number
 }) {
   const pc = priceClass(stock.price, stock.ref, stock.ceil, stock.floor)
   const cc = changeClass(stock.changePct)
+  const foreignNet = stock.foreignBuy - stock.foreignSell
+  const foreignColor = foreignNet > 0 ? 'text-green-400' : foreignNet < 0 ? 'text-red-400' : 'text-muted'
 
-  const flashRef = useRef<HTMLTableRowElement>(null)
-  const prevRef  = useRef<number | undefined>(prevPrice)
-  useEffect(() => {
-    if (prevRef.current !== undefined && prevRef.current !== stock.price && flashRef.current) {
-      const dir = stock.price > prevRef.current ? 'flash-up' : 'flash-down'
-      flashRef.current.classList.add(dir)
-      setTimeout(() => flashRef.current?.classList.remove(dir), 600)
-    }
-    prevRef.current = stock.price
-  }, [stock.price])
+  // Subtle row tint based on change direction
+  const rowTint = stock.changePct >= 6.9
+    ? 'bg-fuchsia-900/10'
+    : stock.changePct <= -6.9
+    ? 'bg-cyan-900/10'
+    : stock.changePct > 1
+    ? 'bg-green-900/5'
+    : stock.changePct < -1
+    ? 'bg-red-900/5'
+    : ''
 
   return (
     <tr
-      ref={flashRef}
       onClick={onSelect}
-      className={`border-b border-border/20 cursor-pointer transition-colors hover:bg-surface2/40 ${isSelected ? 'bg-accent/5 border-l-2 border-l-accent' : ''}`}
+      className={`border-b border-border/15 cursor-pointer transition-all hover:bg-surface2/50 active:scale-[0.998] ${rowTint} ${
+        isSelected ? 'bg-accent/8 border-l-2 border-l-accent' : ''
+      }`}
     >
-      <td className="w-8 py-2 pl-2 text-center">
+      {/* Favorite */}
+      <td className="w-8 py-1.5 pl-2 text-center">
         <button
           onClick={e => { e.stopPropagation(); onToggleFav() }}
-          className={`p-0.5 rounded transition-colors ${isFav ? 'text-yellow-400' : 'text-muted hover:text-yellow-400'}`}
+          className={`p-0.5 rounded transition-colors ${isFav ? 'text-yellow-400' : 'text-border hover:text-yellow-400'}`}
         >
           {isFav ? <Star className="w-3 h-3 fill-current" /> : <StarOff className="w-3 h-3" />}
         </button>
       </td>
-      <td className="py-2 pl-1 pr-2">
-        <span className="text-sm font-bold text-gray-100">{stock.sym}</span>
+
+      {/* Symbol */}
+      <td className="py-1.5 pl-1 pr-2 min-w-[44px]">
+        <span className="text-xs font-bold text-gray-100 tracking-wide">{stock.sym}</span>
       </td>
-      <td className="py-2 px-2 hidden lg:table-cell max-w-[140px]">
-        <span className="text-xs text-muted truncate block">{stock.name}</span>
+
+      {/* Company name */}
+      <td className="py-1.5 px-2 hidden lg:table-cell max-w-[130px]">
+        <span className="text-[11px] text-muted truncate block">{stock.name}</span>
       </td>
-      <td className="py-2 px-2 text-right">
-        <span className="text-xs text-yellow-400 font-mono">{fmtPrice(stock.ref)}</span>
+
+      {/* Ref */}
+      <td className="py-1.5 px-1 text-right">
+        <span className="text-[11px] text-yellow-400/80 font-mono">{fmtPrice(stock.ref)}</span>
       </td>
-      <td className="py-2 px-1 text-right">
-        <span className="text-xs text-fuchsia-400 font-mono">{fmtPrice(stock.ceil)}</span>
+
+      {/* Ceil */}
+      <td className="py-1.5 px-1 text-right hidden sm:table-cell">
+        <span className="text-[11px] text-fuchsia-400/80 font-mono">{fmtPrice(stock.ceil)}</span>
       </td>
-      <td className="py-2 px-1 text-right">
-        <span className="text-xs text-cyan-400 font-mono">{fmtPrice(stock.floor)}</span>
+
+      {/* Floor */}
+      <td className="py-1.5 px-1 text-right hidden sm:table-cell">
+        <span className="text-[11px] text-cyan-400/80 font-mono">{fmtPrice(stock.floor)}</span>
       </td>
-      {/* Best bid */}
-      <td className="py-2 px-1 text-right hidden xl:table-cell">
-        {stock.bid[0].p > 0 ? (
-          <div>
-            <div className="text-xs text-green-400 font-mono">{fmtPrice(stock.bid[0].p)}</div>
-            <div className="text-[10px] text-muted">{fmtVol(stock.bid[0].v)}</div>
-          </div>
-        ) : <span className="text-muted text-xs">—</span>}
-      </td>
-      {/* Current price */}
-      <td className="py-2 px-2 text-right">
+
+      {/* 3-level Bid book */}
+      <BidCol levels={stock.bid} />
+
+      {/* Current price — FLASH CELL */}
+      <FlashTd value={stock.price} className="py-1.5 px-2 text-right">
         <span className={`text-sm font-bold font-mono ${pc}`}>{fmtPrice(stock.price)}</span>
-      </td>
-      <td className="py-2 px-1 text-right">
-        <div className={`text-xs font-semibold ${cc}`}>
+      </FlashTd>
+
+      {/* Change — FLASH CELL */}
+      <FlashTd value={stock.changePct} className="py-1.5 px-1 text-right min-w-[70px]">
+        <div className={`text-xs font-bold ${cc}`}>
           {stock.changePct >= 0 ? '+' : ''}{stock.changePct.toFixed(2)}%
         </div>
-        <div className={`text-[10px] ${cc}`}>
+        <div className={`text-[10px] font-mono ${cc} opacity-80`}>
           {stock.change >= 0 ? '+' : ''}{fmtPrice(stock.change)}
         </div>
+      </FlashTd>
+
+      {/* 3-level Ask book */}
+      <AskCol levels={stock.ask} />
+
+      {/* Volume */}
+      <td className="py-1.5 px-2 text-right">
+        <div className="text-[11px] text-gray-300 font-mono">{fmtVol(stock.vol)}</div>
+        {stock.totalVal > 0 && (
+          <div className="text-[10px] text-muted">{fmtVal(stock.totalVal)}</div>
+        )}
       </td>
-      {/* Best ask */}
-      <td className="py-2 px-1 text-right hidden xl:table-cell">
-        {stock.ask[0].p > 0 ? (
-          <div>
-            <div className="text-xs text-red-400 font-mono">{fmtPrice(stock.ask[0].p)}</div>
-            <div className="text-[10px] text-muted">{fmtVol(stock.ask[0].v)}</div>
-          </div>
-        ) : <span className="text-muted text-xs">—</span>}
-      </td>
-      <td className="py-2 px-2 text-right">
-        <span className="text-xs text-muted">{fmtVol(stock.vol)}</span>
-      </td>
-      <td className="py-2 px-2 text-right hidden md:table-cell">
+
+      {/* Foreign buy/sell/net */}
+      <td className="py-1.5 px-2 text-right hidden md:table-cell min-w-[72px]">
         {(stock.foreignBuy > 0 || stock.foreignSell > 0) ? (
-          <div className="text-[10px]">
-            <div className="text-green-400">{fmtVol(stock.foreignBuy)}</div>
-            <div className="text-red-400">{fmtVol(stock.foreignSell)}</div>
+          <div className="text-[10px] space-y-px">
+            <div className="text-green-400 font-mono">{fmtVol(stock.foreignBuy)}</div>
+            <div className="text-red-400 font-mono">{fmtVol(stock.foreignSell)}</div>
+            <div className={`font-semibold font-mono ${foreignColor}`}>
+              {foreignNet >= 0 ? '+' : ''}{fmtVol(Math.abs(foreignNet))}
+            </div>
           </div>
         ) : <span className="text-muted text-xs">—</span>}
       </td>
@@ -261,7 +340,6 @@ export default function PriceBoardClient() {
   const [favorites, setFavorites] = useState<string[]>([])
   const [sortKey,   setSortKey]   = useState<SortKey>('sym')
   const [sortAsc,   setSortAsc]   = useState(true)
-  const prevPricesRef = useRef<Record<string, number>>({})
 
   // Load favorites from localStorage
   useEffect(() => {
@@ -304,13 +382,6 @@ export default function PriceBoardClient() {
     { refreshInterval: isMarketOpen() ? 5000 : 30000, revalidateOnFocus: false }
   )
 
-  // Track previous prices for flash animation
-  useEffect(() => {
-    if (data?.stocks) {
-      data.stocks.forEach(s => { prevPricesRef.current[s.sym] = s.price })
-    }
-  }, [data])
-
   // Filter + sort
   const stocks = useMemo(() => {
     let list = data?.stocks ?? []
@@ -323,13 +394,14 @@ export default function PriceBoardClient() {
     }
     return [...list].sort((a, b) => {
       let diff = 0
-      if      (sortKey === 'sym')       diff = a.sym.localeCompare(b.sym)
-      else if (sortKey === 'price')     diff = a.price - b.price
-      else if (sortKey === 'changePct') diff = a.changePct - b.changePct
-      else if (sortKey === 'vol')       diff = a.vol - b.vol
-      else if (sortKey === 'ref')       diff = a.ref - b.ref
-      else if (sortKey === 'ceil')      diff = a.ceil - b.ceil
-      else if (sortKey === 'floor')     diff = a.floor - b.floor
+      if      (sortKey === 'sym')        diff = a.sym.localeCompare(b.sym)
+      else if (sortKey === 'price')      diff = a.price - b.price
+      else if (sortKey === 'changePct')  diff = a.changePct - b.changePct
+      else if (sortKey === 'vol')        diff = a.vol - b.vol
+      else if (sortKey === 'ref')        diff = a.ref - b.ref
+      else if (sortKey === 'ceil')       diff = a.ceil - b.ceil
+      else if (sortKey === 'floor')      diff = a.floor - b.floor
+      else if (sortKey === 'foreignNet') diff = (a.foreignBuy - a.foreignSell) - (b.foreignBuy - b.foreignSell)
       return sortAsc ? diff : -diff
     })
   }, [data, search, sortKey, sortAsc, mainGroup, favorites])
@@ -348,16 +420,20 @@ export default function PriceBoardClient() {
 
   const Th = ({ k, label, className = '' }: { k: SortKey; label: string; className?: string }) => (
     <th
-      className={`py-2 px-2 text-right text-[10px] font-semibold text-muted uppercase tracking-wider cursor-pointer hover:text-gray-200 select-none ${className}`}
+      className={`py-2 px-2 text-right text-[10px] font-semibold text-muted uppercase tracking-wider cursor-pointer hover:text-gray-200 select-none whitespace-nowrap ${className}`}
       onClick={() => handleSort(k)}
     >
       <span className="inline-flex items-center gap-0.5 justify-end">{label}<SortIcon k={k} /></span>
     </th>
   )
 
-  const upCount   = (data?.stocks ?? []).filter(s => s.changePct > 0).length
-  const downCount = (data?.stocks ?? []).filter(s => s.changePct < 0).length
-  const refCount  = (data?.stocks ?? []).filter(s => Math.abs(s.changePct) < 0.01).length
+  const allStocks = data?.stocks ?? []
+  const upCount    = allStocks.filter(s => s.changePct > 0.05).length
+  const downCount  = allStocks.filter(s => s.changePct < -0.05).length
+  const refCount   = allStocks.filter(s => Math.abs(s.changePct) <= 0.05).length
+  const totalUp    = upCount + downCount + refCount
+  const upPct      = totalUp > 0 ? (upCount / totalUp) * 100 : 0
+  const downPct    = totalUp > 0 ? (downCount / totalUp) * 100 : 0
 
   const subList = mainGroup !== 'favorites' ? SUB_GROUPS[mainGroup] : []
 
@@ -365,11 +441,11 @@ export default function PriceBoardClient() {
     <div className="flex flex-col h-dvh bg-bg overflow-hidden">
 
       {/* ══ Top bar ══ */}
-      <header className="flex items-center gap-3 px-4 py-2.5 bg-surface border-b border-border/60 flex-shrink-0 flex-wrap">
-        <Link href="/" className="flex items-center gap-2 flex-shrink-0 hover:opacity-80 transition-opacity mr-2">
+      <header className="flex items-center gap-3 px-4 py-2 bg-surface border-b border-border/60 flex-shrink-0 flex-wrap">
+        <Link href="/" className="flex items-center gap-2 flex-shrink-0 hover:opacity-80 transition-opacity mr-1">
           <ArrowLeft className="w-4 h-4 text-muted" />
-          <div className="w-7 h-7 rounded-lg bg-accent/15 flex items-center justify-center">
-            <TrendingUp className="w-3.5 h-3.5 text-accent" />
+          <div className="w-6 h-6 rounded-lg bg-accent/15 flex items-center justify-center">
+            <TrendingUp className="w-3 h-3 text-accent" />
           </div>
           <span className="text-sm font-bold text-gray-100">StockAI VN</span>
         </Link>
@@ -381,25 +457,36 @@ export default function PriceBoardClient() {
         </div>
 
         <div className="ml-auto flex items-center gap-3 flex-wrap">
-          <div className="hidden sm:flex items-center gap-2 text-xs">
-            <span className="text-green-400 font-semibold">{upCount}↑</span>
-            <span className="text-yellow-400">{refCount}→</span>
-            <span className="text-red-400 font-semibold">{downCount}↓</span>
-          </div>
+          {/* Market breadth */}
+          {totalUp > 0 && (
+            <div className="hidden sm:flex flex-col gap-0.5">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-green-400 font-semibold">{upCount}↑</span>
+                <span className="text-yellow-400">{refCount}→</span>
+                <span className="text-red-400 font-semibold">{downCount}↓</span>
+              </div>
+              {/* Breadth bar */}
+              <div className="flex h-1 rounded-full overflow-hidden w-24 bg-border/40">
+                <div className="bg-green-500/80 transition-all" style={{ width: `${upPct}%` }} />
+                <div className="bg-yellow-500/60 flex-1" />
+                <div className="bg-red-500/80 transition-all" style={{ width: `${downPct}%` }} />
+              </div>
+            </div>
+          )}
           <MarketClock />
           <button onClick={() => mutate()} className="p-1.5 rounded-lg text-muted hover:text-accent transition-colors" title="Làm mới">
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-accent' : ''}`} />
           </button>
         </div>
       </header>
 
       {/* ══ Main group tabs ══ */}
-      <div className="flex items-center gap-0.5 px-4 pt-2 pb-0 bg-surface/90 border-b border-border/40 flex-shrink-0">
+      <div className="flex items-center gap-0.5 px-4 pt-1.5 pb-0 bg-surface/90 border-b border-border/40 flex-shrink-0">
         {MAIN_GROUPS.map(tab => (
           <button
             key={tab.key}
             onClick={() => handleMainGroup(tab.key)}
-            className={`relative px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors ${
+            className={`relative px-4 py-1.5 text-xs font-semibold rounded-t-lg transition-colors ${
               mainGroup === tab.key
                 ? 'bg-surface2 text-accent border border-border/60 border-b-surface2 -mb-px z-10'
                 : 'text-muted hover:text-gray-200 hover:bg-surface2/40'
@@ -414,7 +501,7 @@ export default function PriceBoardClient() {
       </div>
 
       {/* ══ Sub-group + search bar ══ */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-surface2 border-b border-border/40 flex-shrink-0 flex-wrap">
+      <div className="flex items-center gap-2 px-4 py-1.5 bg-surface2/80 border-b border-border/30 flex-shrink-0 flex-wrap">
         {/* Sub-tabs */}
         {subList.length > 0 && (
           <div className="flex overflow-x-auto no-scrollbar gap-1 flex-1">
@@ -435,13 +522,13 @@ export default function PriceBoardClient() {
         )}
 
         {/* Search */}
-        <div className="flex items-center gap-1.5 bg-surface border border-border/40 rounded-lg px-2.5 py-1.5 min-w-[160px] max-w-xs">
+        <div className="flex items-center gap-1.5 bg-surface border border-border/40 rounded-lg px-2.5 py-1 min-w-[150px] max-w-xs">
           <Search className="w-3.5 h-3.5 text-muted flex-shrink-0" />
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value.toUpperCase())}
-            placeholder="Tìm mã hoặc tên..."
+            placeholder="Tìm mã..."
             className="bg-transparent text-sm text-gray-200 placeholder:text-muted outline-none w-full"
           />
           {search && (
@@ -452,6 +539,14 @@ export default function PriceBoardClient() {
         </div>
 
         {search && <span className="text-xs text-muted">{stocks.length} kết quả</span>}
+
+        {/* Legend */}
+        <div className="hidden md:flex items-center gap-3 text-[10px] text-muted ml-auto">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-fuchsia-400/60 inline-block" />Trần</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-cyan-400/60 inline-block" />Sàn</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-yellow-400/60 inline-block" />TC</span>
+          <span className="flex items-center gap-1"><Activity className="w-3 h-3 text-accent" />Giá nhấp nháy khi thay đổi</span>
+        </div>
       </div>
 
       {/* ══ Main content ══ */}
@@ -460,31 +555,32 @@ export default function PriceBoardClient() {
         {/* Table */}
         <div className="flex-1 overflow-auto min-w-0">
           {isLoading && !data ? (
-            <div className="flex items-center justify-center h-64">
+            <div className="flex flex-col items-center justify-center h-64 gap-3">
               <div className="animate-spin w-8 h-8 border-2 border-accent border-t-transparent rounded-full" />
+              <p className="text-xs text-muted">Đang tải dữ liệu thị trường...</p>
             </div>
           ) : stocks.length === 0 ? (
             <div className="text-center text-muted py-20 text-sm">
               {mainGroup === 'favorites' && favorites.length === 0
-                ? 'Chưa có mã yêu thích. Nhấn ⭐ để thêm.'
+                ? 'Chưa có mã yêu thích. Nhấn ⭐ để thêm vào danh sách theo dõi.'
                 : 'Không tìm thấy mã nào.'}
             </div>
           ) : (
             <table className="w-full text-sm border-collapse">
-              <thead className="sticky top-0 z-10 bg-surface border-b border-border/60">
-                <tr className="text-left">
+              <thead className="sticky top-0 z-10 bg-surface border-b-2 border-border/60">
+                <tr>
                   <th className="w-8 py-2 pl-2" />
-                  <Th k="sym"       label="Mã"      className="text-left" />
+                  <Th k="sym"        label="Mã"       className="text-left pl-1" />
                   <th className="py-2 px-2 text-left text-[10px] font-semibold text-muted uppercase tracking-wider hidden lg:table-cell">Tên CT</th>
-                  <Th k="ref"       label="TC" />
-                  <Th k="ceil"      label="Trần" />
-                  <Th k="floor"     label="Sàn" />
-                  <th className="py-2 px-1 text-right text-[10px] font-semibold text-muted uppercase hidden xl:table-cell">Mua tốt</th>
-                  <Th k="price"     label="Giá" />
-                  <Th k="changePct" label="%±" />
-                  <th className="py-2 px-1 text-right text-[10px] font-semibold text-muted uppercase hidden xl:table-cell">Bán tốt</th>
-                  <Th k="vol"       label="KL Khớp" />
-                  <th className="py-2 px-2 text-right text-[10px] font-semibold text-muted uppercase hidden md:table-cell">NN Mua/Bán</th>
+                  <Th k="ref"        label="TC" />
+                  <Th k="ceil"       label="Trần"     className="hidden sm:table-cell" />
+                  <Th k="floor"      label="Sàn"      className="hidden sm:table-cell" />
+                  <th className="py-2 px-1 text-center text-[10px] font-semibold text-green-400/70 uppercase hidden xl:table-cell w-[88px]">Dư Mua</th>
+                  <Th k="price"      label="Giá" />
+                  <Th k="changePct"  label="%±" />
+                  <th className="py-2 px-1 text-center text-[10px] font-semibold text-red-400/70 uppercase hidden xl:table-cell w-[88px]">Dư Bán</th>
+                  <Th k="vol"        label="KL Khớp" />
+                  <Th k="foreignNet" label="NN Mua/Bán/Net" className="hidden md:table-cell" />
                 </tr>
               </thead>
               <tbody>
@@ -496,7 +592,6 @@ export default function PriceBoardClient() {
                     onToggleFav={() => toggleFav(stock.sym)}
                     onSelect={() => setSelected(selected === stock.sym ? null : stock.sym)}
                     isSelected={selected === stock.sym}
-                    prevPrice={prevPricesRef.current[stock.sym]}
                   />
                 ))}
               </tbody>
@@ -510,14 +605,27 @@ export default function PriceBoardClient() {
         <StockDetailModal stock={selectedStock} onClose={() => setSelected(null)} />
       )}
 
-      {/* Flash animation + scrollbar hide */}
+      {/* Cell flash animation + scrollbar hide */}
       <style jsx global>{`
-        .flash-up   { animation: flash-green 0.6s ease; }
-        .flash-down { animation: flash-red   0.6s ease; }
-        @keyframes flash-green { 0%,100% { background: transparent } 30% { background: rgba(34,197,94,0.15) } }
-        @keyframes flash-red   { 0%,100% { background: transparent } 30% { background: rgba(239,68,68,0.15)  } }
+        /* Per-cell flash animations */
+        .cell-flash-up   { animation: cf-green 0.9s ease; }
+        .cell-flash-down { animation: cf-red   0.9s ease; }
+        @keyframes cf-green {
+          0%   { background: transparent; }
+          20%  { background: rgba(34, 197, 94, 0.30); }
+          100% { background: transparent; }
+        }
+        @keyframes cf-red {
+          0%   { background: transparent; }
+          20%  { background: rgba(239, 68, 68, 0.30); }
+          100% { background: transparent; }
+        }
         .no-scrollbar { scrollbar-width: none; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        /* Thin table scrollbar */
+        .overflow-auto::-webkit-scrollbar { width: 4px; height: 4px; }
+        .overflow-auto::-webkit-scrollbar-track { background: transparent; }
+        .overflow-auto::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
       `}</style>
     </div>
   )

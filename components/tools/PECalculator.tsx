@@ -16,13 +16,23 @@ const SECTOR_PE: Record<string, number> = {
   'Dầu khí': 10,
 }
 
+function useDotInput(initial = '') {
+  const [val, setVal] = useState(initial)
+  const num = parseFloat(val.replace(/\./g, '')) || 0
+  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\./g, '').replace(/[^\d]/g, '')
+    setVal(raw ? Number(raw).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '')
+  }
+  return { val, num, onChange }
+}
+
 export default function PECalculator() {
-  const [price, setPrice] = useState('')
-  const [eps, setEps] = useState('')
+  const priceInput = useDotInput()
+  const epsInput = useDotInput()
   const [sector, setSector] = useState('Ngân hàng')
 
-  const p = parseFloat(price) || 0
-  const e = parseFloat(eps) || 0
+  const p = priceInput.num
+  const e = epsInput.num
   const pe = e > 0 ? p / e : 0
   const sectorPe = SECTOR_PE[sector]
   const fairValue = e * sectorPe
@@ -44,21 +54,23 @@ export default function PECalculator() {
         <div>
           <label className="text-xs text-muted mb-1 block">Giá thị trường (₫)</label>
           <input
-            type="number"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            placeholder="85000"
+            type="text"
+            value={priceInput.val}
+            onChange={priceInput.onChange}
+            placeholder="85.000"
             className="input-dark w-full text-sm"
+            inputMode="numeric"
           />
         </div>
         <div>
           <label className="text-xs text-muted mb-1 block">EPS (₫/cổ phiếu)</label>
           <input
-            type="number"
-            value={eps}
-            onChange={(e) => setEps(e.target.value)}
-            placeholder="5000"
+            type="text"
+            value={epsInput.val}
+            onChange={epsInput.onChange}
+            placeholder="5.000"
             className="input-dark w-full text-sm"
+            inputMode="numeric"
           />
         </div>
       </div>
@@ -67,10 +79,10 @@ export default function PECalculator() {
         <label className="text-xs text-muted mb-1 block">Ngành</label>
         <select
           value={sector}
-          onChange={(e) => setSector(e.target.value)}
+          onChange={e => setSector(e.target.value)}
           className="input-dark w-full text-sm"
         >
-          {Object.keys(SECTOR_PE).map((s) => (
+          {Object.keys(SECTOR_PE).map(s => (
             <option key={s} value={s}>{s} (P/E TB: {SECTOR_PE[s]}x)</option>
           ))}
         </select>
@@ -98,7 +110,7 @@ export default function PECalculator() {
           </div>
           <div className="flex justify-between">
             <span className="text-muted">Nhận xét:</span>
-            <span className={`font-semibold ${verdict.color}`}>{verdict.text}</span>
+            <span className={`font-bold ${verdict.color}`}>{verdict.text}</span>
           </div>
         </div>
       )}

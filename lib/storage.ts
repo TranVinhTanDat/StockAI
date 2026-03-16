@@ -522,3 +522,37 @@ export async function savePredictions(style: string, predictions: PredictionItem
   if (filtered.length > 10) filtered.splice(10)
   setLocal(getLocalKey('stockai_predictions'), filtered)
 }
+
+// ─── Chat History ─────────────────────────────────────────
+
+interface ChatSessionEntry {
+  symbol: string
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>
+  updatedAt: string
+}
+
+const MAX_CHAT_SESSIONS = 10   // keep up to 10 symbols
+const MAX_CHAT_MESSAGES = 60   // keep up to 60 messages per session
+
+export function getChatHistory(symbol: string): Array<{ role: 'user' | 'assistant'; content: string }> {
+  const all = getLocal<ChatSessionEntry[]>(getLocalKey('stockai_chat_history'), [])
+  return all.find((s) => s.symbol === symbol)?.messages ?? []
+}
+
+export function saveChatHistory(symbol: string, messages: Array<{ role: 'user' | 'assistant'; content: string }>): void {
+  const all = getLocal<ChatSessionEntry[]>(getLocalKey('stockai_chat_history'), [])
+  const filtered = all.filter((s) => s.symbol !== symbol)
+  const trimmed = messages.slice(-MAX_CHAT_MESSAGES)
+  filtered.unshift({ symbol, messages: trimmed, updatedAt: new Date().toISOString() })
+  if (filtered.length > MAX_CHAT_SESSIONS) filtered.splice(MAX_CHAT_SESSIONS)
+  setLocal(getLocalKey('stockai_chat_history'), filtered)
+}
+
+export function clearChatHistory(symbol: string): void {
+  const all = getLocal<ChatSessionEntry[]>(getLocalKey('stockai_chat_history'), [])
+  setLocal(getLocalKey('stockai_chat_history'), all.filter((s) => s.symbol !== symbol))
+}
+
+export function getAllChatSessions(): ChatSessionEntry[] {
+  return getLocal<ChatSessionEntry[]>(getLocalKey('stockai_chat_history'), [])
+}

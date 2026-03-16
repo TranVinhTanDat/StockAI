@@ -24,6 +24,43 @@ async function fetchNewsHeadlines(symbol: string): Promise<string[]> {
   } catch { return [] }
 }
 
+// Fetch CafeF KeHoachKinhDoanh for revenue/profit growth
+async function fetchCafeFGrowth(symbol: string): Promise<{ revenueGrowth: number; profitGrowth: number }> {
+  try {
+    const res = await fetch(
+      `https://cafef.vn/du-lieu/Ajax/PageNew/KeHoachKinhDoanh.ashx?Symbol=${symbol}`,
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(5000), next: { revalidate: 86400 } as RequestInit['next'] }
+    )
+    if (!res.ok) return { revenueGrowth: 0, profitGrowth: 0 }
+    const data = await res.json()
+    const inner = data?.Data || data?.data || data
+    let yearEntries: Array<{ Year: number; Values: Array<{ Name: string; Value: string }> }> = []
+    if (Array.isArray(inner)) yearEntries = inner
+    else if (Array.isArray(inner?.ListYear)) yearEntries = inner.ListYear
+    else if (inner?.Year) yearEntries = [inner]
+    yearEntries.sort((a, b) => b.Year - a.Year)
+    if (yearEntries.length < 2) return { revenueGrowth: 0, profitGrowth: 0 }
+    const curr = yearEntries[0], prev = yearEntries[1]
+    const REVENUE_NAMES = ['Doanh thu', 'Tổng doanh thu', 'Tổng thu nhập hoạt động', 'Tổng thu nhập thuần', 'Tổng thu nhập', 'Thu nhập lãi và tương đương', 'Thu nhập lãi thuần', 'Thu nhập lãi', 'Tổng thu']
+    const PROFIT_NAMES = ['Lợi nhuận trước thuế', 'Lợi nhuận sau thuế', 'LNTT', 'LNST', 'Tổng Lợi nhuận trước thuế']
+    const findVal = (entry: typeof curr, names: string[]): number => {
+      for (const name of names) {
+        const item = (entry.Values || []).find(v => v.Name?.includes(name))
+        if (item?.Value && item.Value !== 'N/A') {
+          const n = parseFloat(String(item.Value).replace(/\./g, '').replace(',', '.'))
+          if (!isNaN(n) && n > 0) return n
+        }
+      }
+      return 0
+    }
+    const currRev = findVal(curr, REVENUE_NAMES), prevRev = findVal(prev, REVENUE_NAMES)
+    const currProfit = findVal(curr, PROFIT_NAMES), prevProfit = findVal(prev, PROFIT_NAMES)
+    const revenueGrowth = prevRev > 0 && currRev > 0 ? Math.round(((currRev - prevRev) / prevRev) * 1000) / 10 : 0
+    const profitGrowth = prevProfit !== 0 && currProfit !== 0 ? Math.round(((currProfit - prevProfit) / Math.abs(prevProfit)) * 1000) / 10 : 0
+    return { revenueGrowth, profitGrowth }
+  } catch { return { revenueGrowth: 0, profitGrowth: 0 } }
+}
+
 // Fetch Simplize summary for ROA/ROE/marketCap
 async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pe: number; pb: number }> {
   try {
@@ -132,6 +169,7 @@ export async function POST(request: NextRequest) {
             pb: 0,
             roe: 0,
             roa: 0,
+            revenueGrowth: 0,
             profitGrowth: 0,
             debtEquity: 0,
             dividendYield: 0,
@@ -145,11 +183,12 @@ export async function POST(request: NextRequest) {
           }
 
           // Fetch all data in parallel
-          const [histResult, simplizeResult, newsResult, foreignResult] = await Promise.allSettled([
+          const [histResult, simplizeResult, newsResult, foreignResult, cafeGrowthResult] = await Promise.allSettled([
             fetchHistory(h.symbol, 90),
             fetchSimplizeSummary(h.symbol),
             fetchNewsHeadlines(h.symbol),
             fetchForeignFlow(h.symbol),
+            fetchCafeFGrowth(h.symbol),
           ])
 
           // Technical analysis from 90-day history
@@ -247,6 +286,12 @@ export async function POST(request: NextRequest) {
             base.foreignSellVol = f.sellVol
             base.foreignNetVol = f.netVol
             base.foreignRoom = f.room
+          }
+
+          // Revenue/profit growth from CafeF (accurate, fills Vietcap WAF gap)
+          if (cafeGrowthResult.status === 'fulfilled') {
+            base.revenueGrowth = cafeGrowthResult.value.revenueGrowth
+            base.profitGrowth = cafeGrowthResult.value.profitGrowth
           }
 
           return base

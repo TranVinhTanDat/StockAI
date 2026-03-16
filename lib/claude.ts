@@ -141,6 +141,9 @@ interface AnalysisContext {
   resistance?: number
   support2?: number
   resistance2?: number
+  // Latest analyst report PDF (base64) for deep analysis
+  reportPdfBase64?: string
+  reportTitle?: string
 }
 
 export async function analyzeStock(
@@ -262,12 +265,29 @@ Trả về JSON trong thẻ <result>:
 }
 </result>`
 
+  // Build message content — use document API when analyst report PDF is available
+  const pdfNote = ctx.reportPdfBase64
+    ? `\n\n▌ BÁO CÁO PHÂN TÍCH CHUYÊN GIA (đính kèm PDF — ĐỌC TOÀN BỘ):\nTiêu đề: "${ctx.reportTitle || 'Báo cáo phân tích mới nhất'}"\n→ Kết hợp nội dung PDF với tất cả dữ liệu kỹ thuật + cơ bản ở trên. Ưu tiên target price và khuyến nghị từ chuyên gia nếu hợp lý với tín hiệu kỹ thuật.`
+    : ''
+
+  const fullPrompt = prompt + pdfNote
+
+  const userContent: Anthropic.MessageParam['content'] = ctx.reportPdfBase64
+    ? [
+        {
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: ctx.reportPdfBase64 },
+        } as Anthropic.DocumentBlockParam,
+        { type: 'text', text: fullPrompt },
+      ]
+    : fullPrompt
+
   const response = await client.messages.create({
     model: 'claude-opus-4-6',
     max_tokens: 3500,
     system:
       'Bạn là chuyên gia phân tích chứng khoán CFA Level 3, 20 năm kinh nghiệm thị trường Việt Nam. Phân tích sâu, khách quan, dựa hoàn toàn trên số liệu thực tế được cung cấp. Không được bịa đặt số liệu. Khi fundamental data = N/A, không suy diễn từ giá trị đó. QUAN TRỌNG: Chỉ trả về JSON hợp lệ trong thẻ <result>, không có text nào khác.',
-    messages: [{ role: 'user', content: prompt }],
+    messages: [{ role: 'user', content: userContent }],
   })
 
   const firstBlock = response.content?.[0]
@@ -304,6 +324,7 @@ interface StockDetail {
   pb?: number
   roe: number
   roa?: number
+  revenueGrowth?: number
   profitGrowth: number
   debtEquity: number
   dividendYield: number
@@ -383,7 +404,7 @@ export async function optimizePortfolio(ctx: OptimizeContext): Promise<OptimizeR
   Vị thế: ${h.qty.toLocaleString()} CP | Giá vốn: ${h.avgCost.toLocaleString()}đ → Hiện: ${h.currentPrice.toLocaleString()}đ | L/L: ${pnlSign}${h.pnlPct.toFixed(1)}%
   Kỹ thuật: RSI=${h.rsi} (${rsiLabel}) | ADX=${h.adx??0} (${h.adxTrend??'N/A'}) | MACD=${h.macdSignal}${h.macdHistogram ? ` hist=${h.macdHistogram}` : ''} | ${h.aboveSMA20 ? '↑SMA20' : '↓SMA20'} | ${h.aboveSMA50 ? '↑SMA50' : '↓SMA50'} | BB: ${h.bbSignal||'N/A'} | Vol: ${h.volumeSignal||'N/A'}
   Momentum: Trend30D: ${trendSign}${h.trend30d.toFixed(1)}%${momentum1Mstr}${momentum3Mstr}
-  Cơ bản: P/E=${h.pe.toFixed(1)}x | P/B=${(h.pb??0).toFixed(2)}x | ROE=${h.roe.toFixed(1)}% | ROA=${(h.roa??0).toFixed(1)}% | Nợ/Vốn=${h.debtEquity.toFixed(2)} | Cổ tức=${h.dividendYield.toFixed(1)}%${foreignBlock}${newsBlock}`
+  Cơ bản: P/E=${h.pe.toFixed(1)}x | P/B=${(h.pb??0).toFixed(2)}x | ROE=${h.roe.toFixed(1)}% | ROA=${(h.roa??0).toFixed(1)}% | TT_LN=${h.profitGrowth ? (h.profitGrowth >= 0 ? '+' : '') + h.profitGrowth.toFixed(1) + '%' : 'N/A'}${h.revenueGrowth ? ' | TT_DT=' + (h.revenueGrowth >= 0 ? '+' : '') + h.revenueGrowth.toFixed(1) + '%' : ''} | Nợ/Vốn=${h.debtEquity.toFixed(2)} | Cổ tức=${h.dividendYield.toFixed(1)}%${foreignBlock}${newsBlock}`
   }).join('\n\n')
 
   const prompt = `PHÂN TÍCH DANH MỤC ĐẦU TƯ TOÀN DIỆN — ${today}
@@ -615,4 +636,177 @@ Trả về JSON array trong thẻ <result>:
   }
 
   return JSON.parse(extractJSONArray(text))
+}
+
+// ─── Chat AI ────────────────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface ChatStockContext {
+  symbol: string
+  price: number
+  changePct: number
+  style?: InvestmentStyle
+  // Technical
+  rsi: number
+  macd: number
+  signal: number
+  macdHistogram: number
+  sma20: number
+  sma50: number
+  aboveSMA20: boolean
+  aboveSMA50: boolean
+  bbUpper: number
+  bbMid: number
+  bbLower: number
+  bbSignal: string
+  volumeSignal: string
+  adx: number
+  adxTrend: string
+  momentum1M: number
+  momentum3M: number
+  trend30d: number
+  support: number
+  resistance: number
+  support2: number
+  resistance2: number
+  // Fundamental
+  pe: number
+  pb: number
+  eps: number
+  roe: number
+  roa: number
+  revenueGrowth: number
+  profitGrowth: number
+  dividendYield: number
+  // Foreign flows
+  foreignBuyVol: number
+  foreignSellVol: number
+  foreignNetVol: number
+  foreignRoom?: number
+  // News
+  newsHeadlines: string[]
+  // Market
+  vnIndex?: { trend30d: number; currentLevel: number; rsi: number }
+  // Additional depth fields (match analyzeStock)
+  momentum1W?: number
+  w52position?: number
+  w52high?: number
+  w52low?: number
+  debtEquity?: number
+  // Analyst report PDF for deep analysis
+  reportPdfBase64?: string
+  reportTitle?: string
+}
+
+export async function chatStockAnalysis(
+  ctx: ChatStockContext,
+  messages: ChatMessage[]
+): Promise<string> {
+  const client = getClient()
+  const today = new Date().toLocaleDateString('vi-VN')
+  const styleDesc = ctx.style ? STYLE_DESCRIPTIONS[ctx.style] : null
+
+  const fmt0 = (v: number, suffix: string, d = 1) => v !== 0 ? v.toFixed(d) + suffix : 'N/A'
+  const fmtGrowth = (v: number) => v !== 0 ? (v >= 0 ? '+' : '') + v.toFixed(1) + '%' : 'N/A'
+
+  const vnBlock = ctx.vnIndex
+    ? `${ctx.vnIndex.currentLevel.toLocaleString('vi-VN')} điểm | Xu hướng 30D: ${ctx.vnIndex.trend30d >= 0 ? '+' : ''}${ctx.vnIndex.trend30d.toFixed(1)}% | RSI: ${ctx.vnIndex.rsi} (${ctx.vnIndex.rsi > 70 ? 'Quá mua ⚠' : ctx.vnIndex.rsi < 30 ? 'Quá bán 🔻' : 'Trung lập'})`
+    : 'Không có dữ liệu'
+
+  const foreignNet = ctx.foreignNetVol
+  const foreignBlock = (ctx.foreignBuyVol > 0 || ctx.foreignSellVol > 0)
+    ? `Mua: ${ctx.foreignBuyVol.toLocaleString('vi-VN')} CP | Bán: ${ctx.foreignSellVol.toLocaleString('vi-VN')} CP | Net: ${foreignNet >= 0 ? '+' : ''}${foreignNet.toLocaleString('vi-VN')}${ctx.foreignRoom !== undefined ? ` | Room: ${ctx.foreignRoom.toFixed(1)}%` : ''}`
+    : 'Không có dữ liệu hôm nay'
+
+  const newsText = ctx.newsHeadlines.length > 0
+    ? ctx.newsHeadlines.slice(0, 5).map((h, i) => `${i + 1}. ${h}`).join('\n')
+    : 'Không có tin nổi bật'
+
+  const srText = (ctx.support && ctx.resistance)
+    ? `Kháng cự: ${ctx.resistance2 > 0 ? ctx.resistance2.toLocaleString('vi-VN') + '₫ (gần) → ' : ''}${ctx.resistance.toLocaleString('vi-VN')}₫ | Hỗ trợ: ${ctx.support2 > 0 ? ctx.support2.toLocaleString('vi-VN') + '₫ (gần) → ' : ''}${ctx.support.toLocaleString('vi-VN')}₫`
+    : ''
+
+  const w52Block = (ctx.w52high && ctx.w52low && ctx.w52position !== undefined)
+    ? `52 tuần: Low=${ctx.w52low.toLocaleString('vi-VN')}₫ / High=${ctx.w52high.toLocaleString('vi-VN')}₫ → Giá đang ở ${ctx.w52position}% vùng 52 tuần (0%=đáy 52T, 100%=đỉnh 52T)`
+    : ''
+
+  const momentum1WStr = ctx.momentum1W !== undefined ? ` | 1 tuần=${ctx.momentum1W >= 0 ? '+' : ''}${ctx.momentum1W}%` : ''
+
+  const systemPrompt = `Bạn là chuyên gia phân tích chứng khoán CFA Level 3, 20 năm kinh nghiệm tại thị trường chứng khoán Việt Nam. Đang tư vấn đầu tư về mã **${ctx.symbol}** — ${today}.
+
+Dưới đây là toàn bộ dữ liệu THỰC TẾ cập nhật (90 ngày lịch sử + realtime):
+
+▌ GIÁ HIỆN TẠI:
+${ctx.price.toLocaleString('vi-VN')}₫ | Hôm nay: ${ctx.changePct >= 0 ? '+' : ''}${ctx.changePct.toFixed(2)}%
+${w52Block}
+
+▌ KỸ THUẬT (90 ngày dữ liệu thực — VPS):
+RSI(14): ${ctx.rsi.toFixed(0)} → ${ctx.rsi > 70 ? 'Quá mua ⚠' : ctx.rsi < 30 ? 'Quá bán 🔻' : 'Trung lập'}
+ADX(14): ${ctx.adx} → ${ctx.adxTrend} (>25=xu hướng mạnh, <20=sideway)
+MACD: ${ctx.macd.toFixed(2)} | Signal: ${ctx.signal.toFixed(2)} | Histogram: ${ctx.macdHistogram.toFixed(2)} (${ctx.macdHistogram > 0 ? 'tăng ↑ momentum bullish' : 'giảm ↓ momentum bearish'})
+SMA20: ${ctx.sma20.toLocaleString('vi-VN')}₫ (giá ${ctx.aboveSMA20 ? 'TRÊN ↑' : 'DƯỚI ↓'}) | SMA50: ${ctx.sma50.toLocaleString('vi-VN')}₫ (${ctx.aboveSMA50 ? 'TRÊN ↑' : 'DƯỚI ↓'})
+BB(20,2): Upper=${ctx.bbUpper.toLocaleString('vi-VN')} / Mid=${ctx.bbMid.toLocaleString('vi-VN')} / Lower=${ctx.bbLower.toLocaleString('vi-VN')} → ${ctx.bbSignal}
+Khối lượng: ${ctx.volumeSignal}
+Momentum:${momentum1WStr} | 1 tháng=${ctx.momentum1M >= 0 ? '+' : ''}${ctx.momentum1M}% | 3 tháng=${ctx.momentum3M >= 0 ? '+' : ''}${ctx.momentum3M}% | Trend 30D=${ctx.trend30d >= 0 ? '+' : ''}${ctx.trend30d.toFixed(1)}%
+${srText ? `Hỗ trợ/Kháng cự (20 phiên): ${srText}` : ''}
+▌ CƠ BẢN (Simplize + CafeF — dữ liệu mới nhất):
+P/E: ${fmt0(ctx.pe, 'x')} | P/B: ${fmt0(ctx.pb, 'x', 2)} | EPS: ${ctx.eps > 0 ? ctx.eps.toLocaleString('vi-VN') + '₫' : 'N/A'}
+ROE: ${fmt0(ctx.roe, '%')} | ROA: ${fmt0(ctx.roa, '%')}${ctx.debtEquity !== undefined && ctx.debtEquity > 0 ? ` | Nợ/Vốn: ${ctx.debtEquity.toFixed(2)}x` : ''}
+Tăng trưởng Doanh thu: ${fmtGrowth(ctx.revenueGrowth)} | Tăng trưởng Lợi nhuận: ${fmtGrowth(ctx.profitGrowth)}
+Cổ tức: ${fmt0(ctx.dividendYield, '%')}
+
+▌ DÒNG TIỀN NGOẠI (tín hiệu quan trọng TTCK VN):
+${foreignBlock}
+
+▌ TIN TỨC GẦN ĐÂY (7 ngày):
+${newsText}
+
+▌ VN-INDEX (bối cảnh thị trường):
+${vnBlock}
+${styleDesc ? `\n▌ PHONG CÁCH ĐẦU TƯ ĐANG ĐƯỢC HỎI: ${ctx.style?.toUpperCase()}\n${styleDesc}\n` : ''}${ctx.reportPdfBase64 ? `\n▌ BÁO CÁO PHÂN TÍCH CHUYÊN GIA (đã đính kèm PDF — tham khảo khi trả lời):\nTiêu đề: "${ctx.reportTitle || 'Báo cáo phân tích mới nhất'}"\n→ Kết hợp nội dung PDF với dữ liệu kỹ thuật + cơ bản ở trên\n` : ''}
+QUY TẮC TRẢ LỜI — PHÂN TÍCH CHUYÊN SÂU:
+- Phân tích SÂU và CHI TIẾT, dựa HOÀN TOÀN trên số liệu THỰC TẾ ở trên
+- Trả lời bằng tiếng Việt, CỤ THỂ với con số thực (không chung chung)
+- Khi N/A thì nói rõ không có dữ liệu, KHÔNG được bịa số
+- Dùng markdown ĐẦY ĐỦ: **bold** cho điểm quan trọng, ## cho tiêu đề phần, bullet points (- ) cho danh sách
+- BẮT BUỘC đề cập: ADX (xu hướng mạnh/sideway?), dòng tiền NN (mua/bán ròng bao nhiêu CP?), momentum 1T/3T khi relevant
+- Khi nói về giá: luôn kèm vùng giá cụ thể (vùng hỗ trợ, kháng cự, vùng mua)
+- Cuối câu trả lời: tóm tắt **Kết luận** 1-2 dòng + gợi ý 1-2 câu hỏi follow-up phù hợp`
+
+  // Build Anthropic messages — inject PDF as document block on first message if available
+  const anthropicMessages: Anthropic.MessageParam[] = []
+  const isFirstQuestion = messages.length === 1
+
+  if (ctx.reportPdfBase64 && isFirstQuestion && messages[0]?.role === 'user') {
+    // First question: attach PDF as document context
+    anthropicMessages.push({
+      role: 'user',
+      content: [
+        {
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: ctx.reportPdfBase64 },
+        } as Anthropic.DocumentBlockParam,
+        { type: 'text', text: messages[0].content },
+      ],
+    })
+  } else {
+    // Multi-turn or no PDF: plain messages
+    for (const m of messages) {
+      anthropicMessages.push({ role: m.role, content: m.content })
+    }
+  }
+
+  const response = await client.messages.create({
+    model: 'claude-opus-4-6',
+    max_tokens: 3000,
+    system: systemPrompt,
+    messages: anthropicMessages,
+  })
+
+  const firstBlock = response.content?.[0]
+  return firstBlock && firstBlock.type === 'text' ? firstBlock.text : 'Không thể tạo phân tích lúc này. Vui lòng thử lại.'
 }

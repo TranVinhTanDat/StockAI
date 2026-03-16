@@ -37,17 +37,96 @@ async function saveCachedResult(symbol: string, result: unknown) {
   await sb.from('analysis_cache').insert({ symbol, data: result, expires_at: expiresAt })
 }
 
-// Fetch Simplize for ROA/ROE/PB (more accurate than CafeF)
-async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; pb: number }> {
+// Fetch Simplize for ROA/ROE/PB (more accurate than CafeF, fills gap when Vietcap GraphQL is WAF-blocked)
+async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pb: number }> {
   try {
     const res = await fetch(`https://api.simplize.vn/api/company/summary/${symbol}`, {
       headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://simplize.vn/' },
     })
-    if (!res.ok) return { roa: 0, pb: 0 }
+    if (!res.ok) return { roa: 0, roe: 0, pb: 0 }
     const d = await res.json()
     const s = d?.data || d
-    return { roa: s?.roa || 0, pb: s?.pbRatio || 0 }
-  } catch { return { roa: 0, pb: 0 } }
+    return { roa: s?.roa || 0, roe: s?.roe || 0, pb: s?.pbRatio || 0 }
+  } catch { return { roa: 0, roe: 0, pb: 0 } }
+}
+
+// Fetch CafeF KeHoachKinhDoanh for revenue/profit growth (fallback when Vietcap GraphQL is unavailable)
+async function fetchCafeFGrowth(symbol: string): Promise<{ revenueGrowth: number; profitGrowth: number }> {
+  try {
+    const res = await fetch(
+      `https://cafef.vn/du-lieu/Ajax/PageNew/KeHoachKinhDoanh.ashx?Symbol=${symbol}`,
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(5000) }
+    )
+    if (!res.ok) return { revenueGrowth: 0, profitGrowth: 0 }
+    const data = await res.json()
+    const inner = data?.Data || data?.data || data
+    let yearEntries: Array<{ Year: number; Values: Array<{ Name: string; Value: string }> }> = []
+    if (Array.isArray(inner)) yearEntries = inner
+    else if (Array.isArray(inner?.ListYear)) yearEntries = inner.ListYear
+    else if (inner?.Year) yearEntries = [inner]
+    yearEntries.sort((a, b) => b.Year - a.Year)
+    if (yearEntries.length < 2) return { revenueGrowth: 0, profitGrowth: 0 }
+    const curr = yearEntries[0], prev = yearEntries[1]
+    const REVENUE_NAMES = ['Doanh thu', 'Tổng doanh thu', 'Tổng thu nhập hoạt động', 'Tổng thu nhập thuần', 'Tổng thu nhập', 'Thu nhập lãi và tương đương', 'Thu nhập lãi thuần', 'Thu nhập lãi', 'Tổng thu']
+    const PROFIT_NAMES = ['Lợi nhuận trước thuế', 'Lợi nhuận sau thuế', 'LNTT', 'LNST', 'Tổng Lợi nhuận trước thuế']
+    const findVal = (entry: typeof curr, names: string[]): number => {
+      for (const name of names) {
+        const item = (entry.Values || []).find(v => v.Name?.includes(name))
+        if (item?.Value && item.Value !== 'N/A') {
+          const n = parseFloat(String(item.Value).replace(/\./g, '').replace(',', '.'))
+          if (!isNaN(n) && n > 0) return n
+        }
+      }
+      return 0
+    }
+    const currRev = findVal(curr, REVENUE_NAMES), prevRev = findVal(prev, REVENUE_NAMES)
+    const currProfit = findVal(curr, PROFIT_NAMES), prevProfit = findVal(prev, PROFIT_NAMES)
+    const revenueGrowth = prevRev > 0 && currRev > 0 ? Math.round(((currRev - prevRev) / prevRev) * 1000) / 10 : 0
+    const profitGrowth = prevProfit !== 0 && currProfit !== 0 ? Math.round(((currProfit - prevProfit) / Math.abs(prevProfit)) * 1000) / 10 : 0
+    return { revenueGrowth, profitGrowth }
+  } catch { return { revenueGrowth: 0, profitGrowth: 0 } }
+}
+
+// Fetch latest analyst report PDF for deep analysis context
+async function fetchLatestAnalystReportPdf(symbol: string): Promise<{ pdfBase64: string | null; reportTitle: string }> {
+  try {
+    const res = await fetch(
+      `https://cafef.vn/du-lieu/Ajax/PageNew/BaoCaoPhanTich.ashx?Symbol=${symbol}&PageIndex=1&PageSize=3`,
+      {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Referer': 'https://cafef.vn/' },
+        signal: AbortSignal.timeout(5000),
+      }
+    )
+    if (!res.ok) return { pdfBase64: null, reportTitle: '' }
+    const data = await res.json()
+    const reports: Array<{ ImageThumb?: string; FileName?: string; Title?: string }> = data?.Data || []
+
+    for (const r of reports) {
+      let pdfUrl = ''
+      if (r.ImageThumb && r.ImageThumb.includes('Images/Uploaded/')) {
+        const basePath = r.ImageThumb.replace(/^thumb\/[\d_]+\//, '').replace(/\.(png|jpg|jpeg)$/i, '.pdf')
+        pdfUrl = `https://cafef.vn/${basePath}`
+      } else if (r.FileName) {
+        pdfUrl = `https://cafef.vn/Images/Uploaded/DuLieuDownload/PhanTichBaoCao/${r.FileName}`
+      }
+      if (!pdfUrl) continue
+
+      const cdnUrl = pdfUrl.replace(/^https?:\/\/cafef\.vn\//i, 'https://cafefnew.mediacdn.vn/')
+      try {
+        const pdfRes = await fetch(cdnUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StockAI/1.0)' },
+          signal: AbortSignal.timeout(10000),
+        })
+        if (!pdfRes.ok) continue
+        const buf = await pdfRes.arrayBuffer()
+        if (buf.byteLength > 10 * 1024 * 1024) continue // skip >10MB
+        return { pdfBase64: Buffer.from(buf).toString('base64'), reportTitle: r.Title || '' }
+      } catch { continue }
+    }
+    return { pdfBase64: null, reportTitle: '' }
+  } catch {
+    return { pdfBase64: null, reportTitle: '' }
+  }
 }
 
 // Fetch VN-Index 30-day trend for market context
@@ -216,10 +295,12 @@ export async function POST(request: NextRequest) {
     const cached = !forceRefresh && await getCachedResult(symbol, noHolding)
     if (cached) return NextResponse.json({ ...cached, _cached: true })
 
-    // Fetch enrichment data in parallel (Simplize + VN-Index)
-    const [simplize, vnIndex] = await Promise.all([
+    // Fetch enrichment data in parallel (Simplize + VN-Index + analyst report PDF + CafeF growth)
+    const [simplize, vnIndex, analystReport, cafeGrowth] = await Promise.all([
       fetchSimplizeSummary(symbol),
       fetchVNIndexContext(),
+      fetchLatestAnalystReportPdf(symbol),
+      fetchCafeFGrowth(symbol),
     ])
 
     const result = await analyzeStock({
@@ -240,11 +321,11 @@ export async function POST(request: NextRequest) {
       volumeSignal,
       pe: fundamental?.pe || 0,
       eps: fundamental?.eps || 0,
-      roe: fundamental?.roe || 0,
-      roa: simplize.roa,
-      pb: simplize.pb,
-      revenueGrowth: fundamental?.revenueGrowth || 0,
-      profitGrowth: fundamental?.profitGrowth || 0,
+      roe: simplize.roe || fundamental?.roe || 0,  // Simplize (accurate) > Vietcap fallback
+      roa: simplize.roa || fundamental?.roa || 0,
+      pb: simplize.pb || 0,
+      revenueGrowth: cafeGrowth.revenueGrowth || fundamental?.revenueGrowth || 0,  // CafeF > Vietcap
+      profitGrowth: cafeGrowth.profitGrowth || fundamental?.profitGrowth || 0,
       debtEquity: fundamental?.debtEquity || 0,
       dividendYield: fundamental?.dividendYield || 0,
       topNews,
@@ -266,6 +347,8 @@ export async function POST(request: NextRequest) {
       resistance,
       support2,
       resistance2,
+      reportPdfBase64: analystReport.pdfBase64 || undefined,
+      reportTitle: analystReport.reportTitle || undefined,
     })
 
     if (noHolding) await saveCachedResult(symbol, result)

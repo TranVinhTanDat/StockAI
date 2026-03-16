@@ -199,6 +199,10 @@ export default function Home() {
     handleSectionChange('analysis')
 
     if (!forceRefresh) {
+      // If already showing result for this symbol, keep it — don't re-run AI
+      if (analysisState.status === 'done' && analysisState.symbol === upper) {
+        return
+      }
       const cached = getCachedAnalysis(upper)
       if (cached) {
         const h = holdings.find(hh => hh.symbol === upper)
@@ -223,7 +227,7 @@ export default function Home() {
     } catch (e) {
       setAnalysisState({ status: 'error', message: e instanceof Error ? e.message : 'Lỗi không xác định' })
     }
-  }, [runFullAnalysis, holdings, handleSectionChange, user])
+  }, [runFullAnalysis, holdings, handleSectionChange, user, analysisState])
 
   const handleViewChart = useCallback(() => {
     if (analysisState.status === 'done') setChartSymbol(analysisState.symbol)
@@ -340,7 +344,7 @@ export default function Home() {
           )}
 
           <AnalysisInput
-            onAnalyze={(sym) => handleAnalyze(sym, true)}
+            onAnalyze={(sym) => handleAnalyze(sym)}
             isLoading={analysisState.status === 'loading'}
             initialSymbol={pendingSymbol || undefined}
           />

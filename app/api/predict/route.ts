@@ -29,18 +29,55 @@ const STYLE_SYMBOLS: Record<InvestmentStyle, string[]> = {
              'MSN', 'MWG', 'TCB', 'ACB', 'MBB', 'PLX', 'SAB', 'VPB', 'HDB'],
 }
 
-// Fetch Simplize for ROA/PB
-async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; pb: number }> {
+// Fetch Simplize for ROA/ROE/PB (fills gap when Vietcap GraphQL is WAF-blocked)
+async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pb: number }> {
   try {
     const res = await fetch(`https://api.simplize.vn/api/company/summary/${symbol}`, {
       headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://simplize.vn/' },
       next: { revalidate: 3600 },
     })
-    if (!res.ok) return { roa: 0, pb: 0 }
+    if (!res.ok) return { roa: 0, roe: 0, pb: 0 }
     const d = await res.json()
     const s = d?.data || d
-    return { roa: s?.roa || 0, pb: s?.pbRatio || 0 }
-  } catch { return { roa: 0, pb: 0 } }
+    return { roa: s?.roa || 0, roe: s?.roe || 0, pb: s?.pbRatio || 0 }
+  } catch { return { roa: 0, roe: 0, pb: 0 } }
+}
+
+// Fetch CafeF KeHoachKinhDoanh for revenue/profit growth
+async function fetchCafeFGrowth(symbol: string): Promise<{ revenueGrowth: number; profitGrowth: number }> {
+  try {
+    const res = await fetch(
+      `https://cafef.vn/du-lieu/Ajax/PageNew/KeHoachKinhDoanh.ashx?Symbol=${symbol}`,
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(5000), next: { revalidate: 86400 } as RequestInit['next'] }
+    )
+    if (!res.ok) return { revenueGrowth: 0, profitGrowth: 0 }
+    const data = await res.json()
+    const inner = data?.Data || data?.data || data
+    let yearEntries: Array<{ Year: number; Values: Array<{ Name: string; Value: string }> }> = []
+    if (Array.isArray(inner)) yearEntries = inner
+    else if (Array.isArray(inner?.ListYear)) yearEntries = inner.ListYear
+    else if (inner?.Year) yearEntries = [inner]
+    yearEntries.sort((a, b) => b.Year - a.Year)
+    if (yearEntries.length < 2) return { revenueGrowth: 0, profitGrowth: 0 }
+    const curr = yearEntries[0], prev = yearEntries[1]
+    const REVENUE_NAMES = ['Doanh thu', 'Tổng doanh thu', 'Tổng thu nhập hoạt động', 'Tổng thu nhập thuần', 'Tổng thu nhập', 'Thu nhập lãi và tương đương', 'Thu nhập lãi thuần', 'Thu nhập lãi', 'Tổng thu']
+    const PROFIT_NAMES = ['Lợi nhuận trước thuế', 'Lợi nhuận sau thuế', 'LNTT', 'LNST', 'Tổng Lợi nhuận trước thuế']
+    const findVal = (entry: typeof curr, names: string[]): number => {
+      for (const name of names) {
+        const item = (entry.Values || []).find(v => v.Name?.includes(name))
+        if (item?.Value && item.Value !== 'N/A') {
+          const n = parseFloat(String(item.Value).replace(/\./g, '').replace(',', '.'))
+          if (!isNaN(n) && n > 0) return n
+        }
+      }
+      return 0
+    }
+    const currRev = findVal(curr, REVENUE_NAMES), prevRev = findVal(prev, REVENUE_NAMES)
+    const currProfit = findVal(curr, PROFIT_NAMES), prevProfit = findVal(prev, PROFIT_NAMES)
+    const revenueGrowth = prevRev > 0 && currRev > 0 ? Math.round(((currRev - prevRev) / prevRev) * 1000) / 10 : 0
+    const profitGrowth = prevProfit !== 0 && currProfit !== 0 ? Math.round(((currProfit - prevProfit) / Math.abs(prevProfit)) * 1000) / 10 : 0
+    return { revenueGrowth, profitGrowth }
+  } catch { return { revenueGrowth: 0, profitGrowth: 0 } }
 }
 
 // Fetch VN-Index 30-day trend for market context
@@ -92,17 +129,19 @@ export async function GET(request: NextRequest) {
     const [vnIndex, ...stockResults] = await Promise.all([
       fetchVNIndexContext(),
       ...symbols.map(async (symbol) => {
-        const [quoteRes, fundamentalRes, candlesRes, simplizeRes] = await Promise.allSettled([
+        const [quoteRes, fundamentalRes, candlesRes, simplizeRes, cafeGrowthRes] = await Promise.allSettled([
           fetchQuote(symbol),
           fetchFundamental(symbol),
           fetchHistory(symbol, 90).catch(() => []),
           fetchSimplizeSummary(symbol),
+          fetchCafeFGrowth(symbol),
         ])
 
         const q = quoteRes.status === 'fulfilled' ? quoteRes.value : null
         const f = fundamentalRes.status === 'fulfilled' ? fundamentalRes.value : null
         const candles = candlesRes.status === 'fulfilled' ? candlesRes.value : []
-        const s = simplizeRes.status === 'fulfilled' ? simplizeRes.value : { roa: 0, pb: 0 }
+        const s = simplizeRes.status === 'fulfilled' ? simplizeRes.value : { roa: 0, roe: 0, pb: 0 }
+        const cafeGrowth = cafeGrowthRes.status === 'fulfilled' ? cafeGrowthRes.value : { revenueGrowth: 0, profitGrowth: 0 }
 
         if (!q || q.price <= 0) return null
 
@@ -198,14 +237,14 @@ export async function GET(request: NextRequest) {
           momentum1M,
           momentum3M,
           volume: q.volume,
-          // Fundamental
+          // Fundamental — Simplize > Vietcap (WAF-blocked), CafeF > Vietcap for growth
           pe: f?.pe ?? 0,
           eps: f?.eps ?? 0,
-          roe: f?.roe ?? 0,
-          roa: Math.round((s.roa ?? 0) * 10) / 10,
+          roe: Math.round((s.roe || f?.roe || 0) * 10) / 10,
+          roa: Math.round((s.roa || f?.roa || 0) * 10) / 10,
           pb: Math.round((s.pb ?? 0) * 100) / 100,
-          revenueGrowth: f?.revenueGrowth ?? 0,
-          profitGrowth: f?.profitGrowth ?? 0,
+          revenueGrowth: cafeGrowth.revenueGrowth || (f?.revenueGrowth ?? 0),
+          profitGrowth: cafeGrowth.profitGrowth || (f?.profitGrowth ?? 0),
           debtEquity: f?.debtEquity ?? 0,
           dividendYield: f?.dividendYield ?? 0,
           // Foreign investor flows

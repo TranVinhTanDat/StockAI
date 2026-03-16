@@ -3,20 +3,30 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { formatVND } from '@/lib/utils'
 
+function useDotInput(initial = '') {
+  const [val, setVal] = useState(initial)
+  const num = parseFloat(val.replace(/\./g, '')) || 0
+  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\./g, '').replace(/[^\d]/g, '')
+    setVal(raw ? Number(raw).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '')
+  }
+  return { val, num, onChange }
+}
+
 export default function DCASimulator() {
-  const [monthly, setMonthly] = useState('5000000')
+  const monthly = useDotInput('5.000.000')
   const [months, setMonths] = useState('24')
   const [growth, setGrowth] = useState('15')
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  const m = parseFloat(monthly) || 0
+  const m = monthly.num
   const n = parseInt(months) || 0
   const g = parseFloat(growth) / 100 / 12 // monthly rate
 
   const rows = useMemo(() => {
     const result: Array<{ month: number; invested: number; value: number; pnl: number }> = []
     let value = 0
-    for (let i = 1; i <= Math.min(n, 60); i++) {
+    for (let i = 1; i <= Math.min(n, 120); i++) {
       value = (value + m) * (1 + g)
       result.push({
         month: i,
@@ -37,7 +47,6 @@ export default function DCASimulator() {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || rows.length === 0) return
-
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
@@ -47,57 +56,52 @@ export default function DCASimulator() {
     canvas.width = w * dpr
     canvas.height = h * dpr
     ctx.scale(dpr, dpr)
-
     ctx.clearRect(0, 0, w, h)
 
-    const maxVal = Math.max(...rows.map((r) => r.value))
+    const maxVal = Math.max(...rows.map(r => r.value))
     if (maxVal === 0) return
-    const padLeft = 16
-    const padRight = 16
-    const padTop = 12
-    const padBottom = 12
-    const chartW = w - padLeft - padRight
-    const chartH = h - padTop - padBottom
-
+    const padL = 16, padR = 16, padT = 12, padB = 12
+    const chartW = w - padL - padR
+    const chartH = h - padT - padB
     const xStep = rows.length > 1 ? chartW / (rows.length - 1) : chartW
+
+    // Fill area between invested and value
+    ctx.beginPath()
+    rows.forEach((r, i) => {
+      const x = padL + i * xStep
+      const y = padT + chartH * (1 - r.value / maxVal)
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+    })
+    for (let i = rows.length - 1; i >= 0; i--) {
+      ctx.lineTo(padL + i * xStep, padT + chartH * (1 - rows[i].invested / maxVal))
+    }
+    ctx.closePath()
+    ctx.fillStyle = 'rgba(0,212,170,0.08)'
+    ctx.fill()
 
     // Invested line
     ctx.beginPath()
     rows.forEach((r, i) => {
-      const x = padLeft + i * xStep
-      const y = padTop + chartH * (1 - r.invested / maxVal)
+      const x = padL + i * xStep
+      const y = padT + chartH * (1 - r.invested / maxVal)
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
     })
     ctx.strokeStyle = '#7a8ba0'
     ctx.lineWidth = 1.5
+    ctx.setLineDash([4, 3])
     ctx.stroke()
+    ctx.setLineDash([])
 
     // Value line
     ctx.beginPath()
     rows.forEach((r, i) => {
-      const x = padLeft + i * xStep
-      const y = padTop + chartH * (1 - r.value / maxVal)
+      const x = padL + i * xStep
+      const y = padT + chartH * (1 - r.value / maxVal)
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
     })
     ctx.strokeStyle = '#00d4aa'
-    ctx.lineWidth = 2
+    ctx.lineWidth = 2.5
     ctx.stroke()
-
-    // Fill between
-    ctx.beginPath()
-    rows.forEach((r, i) => {
-      const x = padLeft + i * xStep
-      const y = padTop + chartH * (1 - r.value / maxVal)
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
-    })
-    for (let i = rows.length - 1; i >= 0; i--) {
-      const x = padLeft + i * xStep
-      const y = padTop + chartH * (1 - rows[i].invested / maxVal)
-      ctx.lineTo(x, y)
-    }
-    ctx.closePath()
-    ctx.fillStyle = 'rgba(0,212,170,0.1)'
-    ctx.fill()
   }, [rows])
 
   return (
@@ -108,12 +112,12 @@ export default function DCASimulator() {
         <div>
           <label className="text-xs text-muted mb-1 block">Mỗi tháng (₫)</label>
           <input
-            type="number"
-            value={monthly}
-            onChange={(e) => setMonthly(e.target.value)}
-            placeholder="5000000"
+            type="text"
+            value={monthly.val}
+            onChange={monthly.onChange}
+            placeholder="5.000.000"
             className="input-dark w-full text-sm"
-            step={500000}
+            inputMode="numeric"
           />
         </div>
         <div>
@@ -121,7 +125,7 @@ export default function DCASimulator() {
           <input
             type="number"
             value={months}
-            onChange={(e) => setMonths(e.target.value)}
+            onChange={e => setMonths(e.target.value)}
             placeholder="24"
             className="input-dark w-full text-sm"
             min={1}
@@ -133,7 +137,7 @@ export default function DCASimulator() {
           <input
             type="number"
             value={growth}
-            onChange={(e) => setGrowth(e.target.value)}
+            onChange={e => setGrowth(e.target.value)}
             placeholder="15"
             className="input-dark w-full text-sm"
             step={1}
@@ -146,7 +150,7 @@ export default function DCASimulator() {
           <div className="bg-surface2 rounded-lg p-4 grid grid-cols-3 gap-4 text-sm">
             <div>
               <p className="text-muted text-xs">Tổng đầu tư</p>
-              <p className="font-semibold">{formatVND(totalInvested)}</p>
+              <p className="font-semibold text-gray-200">{formatVND(totalInvested)}</p>
             </div>
             <div>
               <p className="text-muted text-xs">Giá trị cuối</p>
@@ -154,8 +158,8 @@ export default function DCASimulator() {
             </div>
             <div>
               <p className="text-muted text-xs">Lãi / ROI</p>
-              <p className="font-semibold text-accent">
-                {roi.toFixed(1)}%
+              <p className={`font-semibold ${roi >= 0 ? 'text-accent' : 'text-danger'}`}>
+                {formatVND(totalPnl)} ({roi >= 0 ? '+' : ''}{roi.toFixed(1)}%)
               </p>
             </div>
           </div>
@@ -168,7 +172,7 @@ export default function DCASimulator() {
 
           <div className="flex items-center gap-4 text-xs text-muted">
             <span className="flex items-center gap-1.5">
-              <span className="inline-block w-4 h-0.5 bg-muted" />
+              <span className="inline-block w-4 h-0.5 bg-muted/60 border-dashed border-t border-muted" />
               Vốn đầu tư
             </span>
             <span className="flex items-center gap-1.5">

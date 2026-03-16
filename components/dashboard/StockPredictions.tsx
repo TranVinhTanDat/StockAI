@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import type { PredictionItem, SavedPrediction } from '@/types'
+import type { PredictionItem } from '@/types'
 import { formatVND, getRecommendationBg } from '@/lib/utils'
 import type { InvestmentStyle } from '@/lib/claude'
-import { Target, Sparkles, AlertTriangle, TrendingUp, Zap, Coins, BarChart3, RefreshCw, Database, History, ChevronRight } from 'lucide-react'
+import { Target, Sparkles, AlertTriangle, TrendingUp, Zap, Coins, BarChart3, RefreshCw, Database, MessageCircle } from 'lucide-react'
 import { getClientToken } from '@/lib/requireAuth'
-import { getPredictions, savePredictions, getAllPredictions } from '@/lib/storage'
+import { getPredictions, savePredictions } from '@/lib/storage'
+import StockChatAI from '@/components/dashboard/StockChatAI'
 
 const STYLES: { key: InvestmentStyle; label: string; icon: React.ComponentType<{ className?: string }>; desc: string; color: string }[] = [
   { key: 'longterm', label: 'Dài Hạn',   icon: TrendingUp, desc: 'Buy & Hold 3-5 năm',   color: 'text-accent' },
@@ -26,27 +27,22 @@ function styleLabel(key: string): string {
   return STYLES.find(s => s.key === key)?.label ?? key
 }
 
+type ActiveTab = InvestmentStyle | 'chat'
+
 export default function StockPredictions() {
-  const [style, setStyle] = useState<InvestmentStyle>('longterm')
+  const [style, setStyle] = useState<ActiveTab>('longterm')
   const [predictions, setPredictions] = useState<PredictionItem[] | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(false)
   const [fromStorage, setFromStorage] = useState(false)
   const [predictedAt, setPredictedAt] = useState<string | null>(null)
-  const [history, setHistory] = useState<SavedPrediction[]>([])
-  const [showHistory, setShowHistory] = useState(false)
-
-  // Load history of all analyzed styles
-  const loadHistory = useCallback(async () => {
-    const all = await getAllPredictions()
-    setHistory(all)
-  }, [])
 
   // On style change: load from storage (no auto-fetch)
   useEffect(() => {
+    if (style === 'chat') return
     let cancelled = false
     async function loadFromStorage() {
-      const saved = await getPredictions(style)
+      const saved = await getPredictions(style as InvestmentStyle)
       if (!cancelled) {
         if (saved) {
           setPredictions(saved.predictions)
@@ -64,15 +60,12 @@ export default function StockPredictions() {
     return () => { cancelled = true }
   }, [style])
 
-  // Load history on mount
-  useEffect(() => { loadHistory() }, [loadHistory])
-
-  const runAnalysis = useCallback(async (s: string) => {
+  const runAnalysis = useCallback(async (s: ActiveTab) => {
+    if (s === 'chat') return
     setIsLoading(true)
     setError(false)
     setFromStorage(false)
     setPredictedAt(null)
-
     try {
       const token = getClientToken()
       const res = await fetch(`/api/predict?style=${s}`, {
@@ -80,31 +73,19 @@ export default function StockPredictions() {
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data: PredictionItem[] = await res.json()
-      await savePredictions(s, data)
+      await savePredictions(s as InvestmentStyle, data)
       setPredictions(data)
       setFromStorage(false)
       setPredictedAt(new Date().toISOString())
-      // Refresh history after saving
-      await loadHistory()
     } catch {
       setError(true)
       setPredictions(null)
     } finally {
       setIsLoading(false)
     }
-  }, [loadHistory])
+  }, [])
 
   const handleReanalyze = () => runAnalysis(style)
-
-  // Load a saved prediction from history panel
-  const handleLoadFromHistory = (saved: SavedPrediction) => {
-    setStyle(saved.style as InvestmentStyle)
-    setPredictions(saved.predictions)
-    setFromStorage(true)
-    setPredictedAt(saved.predicted_at)
-    setShowHistory(false)
-    setError(false)
-  }
 
   return (
     <div className="space-y-4">
@@ -113,101 +94,42 @@ export default function StockPredictions() {
           <Target className="w-5 h-5 text-accent" />
           AI Dự Đoán — Mã Nên Đầu Tư
         </h2>
-        <div className="flex items-center gap-2">
-          {predictedAt && (
-            <span className="flex items-center gap-1 text-xs text-gold bg-gold/10 border border-gold/20 rounded-full px-2.5 py-1">
-              <Database className="w-3 h-3" />
-              {fromStorage ? 'Lưu trữ' : 'Vừa phân tích'} · {new Date(predictedAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
-            </span>
-          )}
-          {/* History toggle */}
-          {history.length > 0 && (
+        {style !== 'chat' && (
+          <div className="flex items-center gap-2">
+            {predictedAt && (
+              <span className="flex items-center gap-1 text-xs text-gold bg-gold/10 border border-gold/20 rounded-full px-2.5 py-1">
+                <Database className="w-3 h-3" />
+                {fromStorage ? 'Lưu trữ' : 'Vừa phân tích'} · {new Date(predictedAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+              </span>
+            )}
             <button
-              onClick={() => setShowHistory(v => !v)}
-              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors ${
-                showHistory
-                  ? 'bg-surface2 text-gray-100 border border-border'
-                  : 'bg-surface2 hover:bg-border text-muted hover:text-gray-100'
-              }`}
-              title="Lịch sử phân tích AI"
+              onClick={handleReanalyze}
+              disabled={isLoading}
+              className="flex items-center gap-1.5 text-xs bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+              title="Chạy phân tích AI sâu (mất ~30-60s)"
             >
-              <History className="w-3.5 h-3.5" />
-              Lịch sử ({history.length})
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              {isLoading ? 'Đang phân tích...' : 'Phân tích AI'}
             </button>
-          )}
-          <button
-            onClick={handleReanalyze}
-            disabled={isLoading}
-            className="flex items-center gap-1.5 text-xs bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
-            title="Chạy phân tích AI sâu (mất ~30-60s)"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            {isLoading ? 'Đang phân tích...' : 'Phân tích AI'}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
-
-      {/* ── History panel ─────────────────────────────────── */}
-      {showHistory && history.length > 0 && (
-        <div className="card-glass border border-border/50 rounded-xl overflow-hidden">
-          <div className="px-4 py-2.5 bg-surface2/60 border-b border-border/40 flex items-center gap-2">
-            <History className="w-4 h-4 text-accent" />
-            <span className="text-sm font-medium text-gray-200">Lịch sử phân tích gần đây</span>
-            <span className="text-xs text-muted ml-auto">{history.length} phong cách đã lưu</span>
-          </div>
-          <div className="divide-y divide-border/30">
-            {history.map((h) => {
-              const styleInfo = STYLES.find(s => s.key === h.style)
-              const Icon = styleInfo?.icon ?? Target
-              const top3 = h.predictions.slice(0, 3)
-              return (
-                <button
-                  key={h.style}
-                  onClick={() => handleLoadFromHistory(h)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-surface2/50 transition-colors text-left ${h.style === style ? 'bg-accent/5' : ''}`}
-                >
-                  <Icon className={`w-4 h-4 flex-shrink-0 ${styleInfo?.color ?? 'text-muted'}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-sm font-medium text-gray-200">{styleLabel(h.style)}</span>
-                      {h.style === style && <span className="text-[10px] text-accent bg-accent/10 px-1.5 py-0.5 rounded">Đang xem</span>}
-                    </div>
-                    <div className="text-xs text-muted">
-                      Top: {top3.map(p => `${p.symbol} ★${p.score}`).join(' · ')}
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    <span className="text-[10px] text-muted">
-                      {new Date(h.predicted_at).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <ChevronRight className="w-3.5 h-3.5 text-muted" />
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Style tabs */}
       <div className="flex flex-wrap gap-2">
         {STYLES.map((s) => {
           const Icon = s.icon
           const isActive = style === s.key
-          const hasSaved = history.some(h => h.style === s.key)
           return (
             <button
               key={s.key}
               onClick={() => setStyle(s.key)}
-              className={`relative flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
                 isActive
                   ? 'bg-accent/15 text-accent border border-accent/40 shadow shadow-accent/10'
                   : 'bg-surface2 text-muted border border-transparent hover:text-gray-100 hover:bg-surface2/80'
               }`}
             >
-              {hasSaved && !isActive && (
-                <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent/60" />
-              )}
               <Icon className={`w-4 h-4 ${isActive ? 'text-accent' : s.color}`} />
               <div className="text-left">
                 <div className="leading-tight">{s.label}</div>
@@ -216,10 +138,25 @@ export default function StockPredictions() {
             </button>
           )
         })}
+        {/* Chat AI tab */}
+        <button
+          onClick={() => setStyle('chat')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
+            style === 'chat'
+              ? 'bg-blue-500/15 text-blue-400 border border-blue-400/40 shadow shadow-blue-400/10'
+              : 'bg-surface2 text-muted border border-transparent hover:text-gray-100 hover:bg-surface2/80'
+          }`}
+        >
+          <MessageCircle className={`w-4 h-4 ${style === 'chat' ? 'text-blue-400' : 'text-blue-400/60'}`} />
+          <div className="text-left">
+            <div className="leading-tight">Chat AI</div>
+            <div className="text-[10px] opacity-60 leading-tight hidden sm:block">Hỏi đáp chuyên sâu</div>
+          </div>
+        </button>
       </div>
 
       {/* Active style description */}
-      {(() => {
+      {style !== 'chat' && (() => {
         const active = STYLES.find(s => s.key === style)
         if (!active) return null
         const Icon = active.icon
@@ -237,8 +174,11 @@ export default function StockPredictions() {
         )
       })()}
 
-      {/* Loading skeleton */}
-      {isLoading && (
+      {/* Chat AI panel */}
+      {style === 'chat' && <StockChatAI />}
+
+      {/* Prediction content — hidden in chat mode */}
+      {style !== 'chat' && isLoading && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="card-glass p-5 animate-pulse space-y-3">
@@ -263,7 +203,7 @@ export default function StockPredictions() {
       )}
 
       {/* Empty state */}
-      {!isLoading && !error && !predictions && (
+      {style !== 'chat' && !isLoading && !error && !predictions && (
         <div className="card-glass p-10 text-center">
           <Target className="w-10 h-10 text-muted mx-auto mb-3 opacity-40" />
           <p className="text-gray-300 font-medium mb-1">Chưa có phân tích cho phong cách này</p>
@@ -279,7 +219,7 @@ export default function StockPredictions() {
       )}
 
       {/* Error */}
-      {error && !isLoading && (
+      {style !== 'chat' && error && !isLoading && (
         <div className="card-glass p-8 text-center">
           <Sparkles className="w-8 h-8 text-muted mx-auto mb-3 opacity-50" />
           <p className="text-muted text-sm">Phân tích thất bại. Vui lòng thử lại.</p>
@@ -288,7 +228,7 @@ export default function StockPredictions() {
       )}
 
       {/* Predictions grid */}
-      {!isLoading && predictions && predictions.length > 0 && (
+      {style !== 'chat' && !isLoading && predictions && predictions.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {predictions.map((p) => (
             <div key={p.symbol} className="card-glass p-5 hover:bg-surface2/30 transition-colors">
@@ -360,10 +300,12 @@ export default function StockPredictions() {
       )}
 
       {/* Disclaimer */}
-      <div className="flex items-center gap-2 text-xs text-muted">
-        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-        <span>Chỉ mang tính tham khảo, không phải lời khuyên đầu tư. Phân tích AI dựa trên dữ liệu VPS realtime + ADX + dòng tiền ngoại.</span>
-      </div>
+      {style !== 'chat' && (
+        <div className="flex items-center gap-2 text-xs text-muted">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>Chỉ mang tính tham khảo, không phải lời khuyên đầu tư. Phân tích AI dựa trên dữ liệu VPS realtime + ADX + dòng tiền ngoại.</span>
+        </div>
+      )}
     </div>
   )
 }
