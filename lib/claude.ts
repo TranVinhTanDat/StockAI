@@ -96,8 +96,59 @@ interface CurrentHolding {
   totalCost: number
 }
 
+// ─── Sector P/E benchmarks (HOSE/HNX — dữ liệu trung bình ngành Việt Nam) ──────
+
+const SECTOR_PE_BENCHMARKS: Record<string, string> = {
+  'Ngân hàng':          'P/E TB: 8–12x | P/B TB: 1.0–2.0x | ROE TB: 15–20% | ROA TB: 1–2%',
+  'Bất động sản':       'P/E TB: 12–22x | P/B TB: 0.8–2.5x | ROE TB: 10–18%',
+  'Thép':               'P/E TB: 6–12x  | P/B TB: 0.7–1.5x | ROE TB: 8–15% (chu kỳ cao)',
+  'Vật liệu xây dựng':  'P/E TB: 8–14x  | P/B TB: 0.8–1.8x | ROE TB: 8–14%',
+  'Bán lẻ':             'P/E TB: 12–22x | P/B TB: 1.5–3.5x | ROE TB: 15–25%',
+  'Công nghệ':          'P/E TB: 15–30x | P/B TB: 2.0–5.0x | ROE TB: 18–30%',
+  'Thực phẩm':          'P/E TB: 15–25x | P/B TB: 2.0–4.0x | ROE TB: 20–30%',
+  'Đồ uống':            'P/E TB: 15–25x | P/B TB: 2.0–4.5x | ROE TB: 20–35%',
+  'Dầu khí':            'P/E TB: 8–15x  | P/B TB: 1.0–2.5x | ROE TB: 12–18%',
+  'Chứng khoán':        'P/E TB: 8–16x  | P/B TB: 1.0–2.5x | ROE TB: 12–20%',
+  'Dược phẩm':          'P/E TB: 15–25x | P/B TB: 2.0–4.0x | ROE TB: 15–25%',
+  'Điện':               'P/E TB: 12–18x | P/B TB: 1.0–2.2x | ROE TB: 10–16%',
+  'Năng lượng':         'P/E TB: 10–18x | P/B TB: 1.0–2.2x | ROE TB: 10–18%',
+  'Vận tải':            'P/E TB: 10–18x | P/B TB: 0.8–2.0x | ROE TB: 10–18%',
+  'Logistics':          'P/E TB: 12–20x | P/B TB: 1.0–2.5x | ROE TB: 12–20%',
+  'Xây dựng':           'P/E TB: 8–15x  | P/B TB: 0.8–1.8x | ROE TB: 8–15%',
+  'Hóa chất':           'P/E TB: 8–14x  | P/B TB: 0.8–1.8x | ROE TB: 8–14%',
+  'Thủy sản':           'P/E TB: 8–15x  | P/B TB: 0.8–2.0x | ROE TB: 10–18%',
+  'Nông nghiệp':        'P/E TB: 8–15x  | P/B TB: 0.8–1.8x | ROE TB: 8–15%',
+  'Bảo hiểm':           'P/E TB: 12–20x | P/B TB: 1.0–2.5x | ROE TB: 12–20%',
+  'Viễn thông':         'P/E TB: 10–18x | P/B TB: 1.5–3.0x | ROE TB: 15–22%',
+  'Y tế':               'P/E TB: 15–28x | P/B TB: 2.0–5.0x | ROE TB: 15–25%',
+}
+
+function getSectorBenchmark(industry: string): string {
+  if (!industry) return ''
+  for (const [key, val] of Object.entries(SECTOR_PE_BENCHMARKS)) {
+    if (industry.toLowerCase().includes(key.toLowerCase()) || key.toLowerCase().includes(industry.toLowerCase().split(' ')[0])) {
+      return `▌ ĐỊNH GIÁ THAM CHIẾU NGÀNH "${industry}":\n${val}\n→ Dùng để đánh giá P/E, P/B, ROE của ${industry} so với trung bình ngành`
+    }
+  }
+  return ''
+}
+
+function getMarketRegime(vnIndex?: { trend30d: number; currentLevel: number; rsi: number }): string {
+  if (!vnIndex) return ''
+  const { rsi, trend30d } = vnIndex
+  let regime: string
+  if      (rsi > 70 && trend30d > 10) regime = '🔥 BULL MẠNH — thị trường quá mua, rủi ro điều chỉnh ngắn hạn cao'
+  else if (rsi > 55 && trend30d > 3)  regime = '📈 BULL — xu hướng tăng rõ ràng, thuận lợi cho mua'
+  else if (rsi >= 45 && rsi <= 55 && Math.abs(trend30d) < 3) regime = '↔ TÍCH LŨY/SIDEWAYS — thị trường chưa có hướng rõ, chọn lọc cẩn thận'
+  else if (rsi < 30 && trend30d < -8) regime = '🔻 BEAR MẠNH — rủi ro cao, ưu tiên phòng thủ, tăng tiền mặt'
+  else if (rsi < 45 && trend30d < -3) regime = '⚠ BEAR NHẸ — thị trường giảm, thận trọng, chỉ mua mã cực mạnh'
+  else                                 regime = '🔄 ĐIỀU CHỈNH — thị trường biến động, theo dõi tín hiệu xác nhận'
+  return `→ Chế độ thị trường: ${regime}`
+}
+
 interface AnalysisContext {
   symbol: string
+  industry?: string
   price: number
   changePct: number
   sma20: number
@@ -161,10 +212,13 @@ export async function analyzeStock(
     .join('\n')
 
   const vnIndexBlock = ctx.vnIndex
-    ? `\n▌ BỐI CẢNH THỊ TRƯỜNG (VN-Index):\nVN-Index: ${ctx.vnIndex.currentLevel.toLocaleString('vi-VN')} điểm | Xu hướng 30D: ${ctx.vnIndex.trend30d >= 0 ? '+' : ''}${ctx.vnIndex.trend30d.toFixed(1)}% | RSI: ${ctx.vnIndex.rsi} (${ctx.vnIndex.rsi > 70 ? 'Quá mua — thị trường có thể điều chỉnh' : ctx.vnIndex.rsi < 30 ? 'Quá bán — có thể phục hồi' : 'Trung lập'})\n→ Xét tác động xu hướng thị trường chung lên mã ${ctx.symbol}`
+    ? `\n▌ BỐI CẢNH THỊ TRƯỜNG (VN-Index):\nVN-Index: ${ctx.vnIndex.currentLevel.toLocaleString('vi-VN')} điểm | Xu hướng 30D: ${ctx.vnIndex.trend30d >= 0 ? '+' : ''}${ctx.vnIndex.trend30d.toFixed(1)}% | RSI: ${ctx.vnIndex.rsi} (${ctx.vnIndex.rsi > 70 ? 'Quá mua — thị trường có thể điều chỉnh' : ctx.vnIndex.rsi < 30 ? 'Quá bán — có thể phục hồi' : 'Trung lập'})\n${getMarketRegime(ctx.vnIndex)}\n→ Xét tác động xu hướng thị trường chung lên mã ${ctx.symbol}`
     : ''
 
-  // Foreign flow block
+  // Sector P/E benchmark block
+  const sectorBlock = ctx.industry ? `\n${getSectorBenchmark(ctx.industry)}` : ''
+
+  // Foreign flow block with interpretation thresholds
   const foreignBlock = (() => {
     const net = ctx.foreignNetVol ?? 0
     const buy = ctx.foreignBuyVol ?? 0
@@ -172,8 +226,13 @@ export async function analyzeStock(
     if (buy === 0 && sell === 0) return ''
     const netLabel = net > 0 ? `MUA RÒNG +${net.toLocaleString('vi-VN')}` : net < 0 ? `BÁN RÒNG ${net.toLocaleString('vi-VN')}` : 'Cân bằng'
     const roomStr = ctx.foreignRoom !== undefined ? ` | Room NN còn: ${ctx.foreignRoom.toFixed(1)}%` : ''
+    const absNet = Math.abs(net)
+    const interpretation = absNet > 500_000 ? (net > 0 ? '→ Tín hiệu tích lũy mạnh từ tổ chức nước ngoài' : '→ Áp lực bán ròng mạnh từ khối ngoại, cảnh báo đảo chiều')
+      : absNet > 100_000 ? (net > 0 ? '→ Khối ngoại đang mua tích lũy vừa' : '→ Khối ngoại đang thoát hàng vừa')
+      : '→ Giao dịch ngoại không đáng kể phiên này'
     return `\n▌ DÒNG TIỀN NGOẠI (hôm nay — tín hiệu quan trọng nhất TTCK VN):
-NN mua: ${buy.toLocaleString('vi-VN')} CP | NN bán: ${sell.toLocaleString('vi-VN')} CP | Net: ${netLabel}${roomStr}`
+NN mua: ${buy.toLocaleString('vi-VN')} CP | NN bán: ${sell.toLocaleString('vi-VN')} CP | Net: ${netLabel}${roomStr}
+${interpretation}`
   })()
 
   // Momentum block
@@ -207,7 +266,7 @@ Hỗ trợ:   ${ctx.support2 ? ctx.support2.toLocaleString('vi-VN') + '₫ (gầ
     : ''
 
   const prompt = `PHÂN TÍCH CHUYÊN SÂU CỔ PHIẾU ${ctx.symbol} — ${new Date().toLocaleDateString('vi-VN')}
-${vnIndexBlock}${foreignBlock}${momentumBlock}${srBlock}
+${vnIndexBlock}${sectorBlock}${foreignBlock}${momentumBlock}${srBlock}
 
 ▌ KỸ THUẬT (90 ngày — dữ liệu thực):
 Giá: ${ctx.price.toLocaleString('vi-VN')}₫ | Hôm nay: ${ctx.changePct > 0 ? '+' : ''}${ctx.changePct.toFixed(2)}%
@@ -295,7 +354,25 @@ Trả về JSON trong thẻ <result>:
 
   if (!text) throw new Error('Claude returned empty response')
 
-  return JSON.parse(extractJSONObject(text)) as AnalysisResult
+  // Try parse — if fails, retry once with explicit correction prompt
+  try {
+    return JSON.parse(extractJSONObject(text)) as AnalysisResult
+  } catch {
+    const retryResponse = await client.messages.create({
+      model: 'claude-opus-4-6',
+      max_tokens: 2000,
+      system: 'Bạn là chuyên gia phân tích chứng khoán. Chỉ trả về JSON hợp lệ trong thẻ <result>, không có text nào khác.',
+      messages: [
+        { role: 'user', content: userContent },
+        { role: 'assistant', content: text },
+        { role: 'user', content: 'Response của bạn không phải JSON hợp lệ. Hãy trả về CHỈ JSON object trong thẻ <result>...</result>, không kèm text nào khác.' },
+      ],
+    })
+    const retryBlock = retryResponse.content?.[0]
+    const retryText = retryBlock && retryBlock.type === 'text' ? retryBlock.text : ''
+    if (!retryText) throw new Error('Claude retry returned empty response')
+    return JSON.parse(extractJSONObject(retryText)) as AnalysisResult
+  }
 }
 
 interface StockDetail {

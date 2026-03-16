@@ -267,17 +267,44 @@ export async function POST(request: NextRequest) {
     const foreignNetVol = foreignBuyVol - foreignSellVol
     const foreignRoom = quote?.foreignRoom
 
-    // Support / Resistance từ dữ liệu nến thực (20 phiên mạnh + 10 phiên gần)
+    // Support / Resistance — swing point detection (pivot highs/lows)
+    // More accurate than simple max/min: finds actual market reaction levels
     let support = 0, resistance = 0, support2 = 0, resistance2 = 0
     if (highsArr.length >= 10 && lowsArr.length >= 10) {
-      const last20H = highsArr.slice(-20)
-      const last20L = lowsArr.slice(-20)
-      const last10H = highsArr.slice(-10)
-      const last10L = lowsArr.slice(-10)
-      resistance  = Math.round(Math.max(...last20H))
-      support     = Math.round(Math.min(...last20L))
-      resistance2 = Math.round(Math.max(...last10H))
-      support2    = Math.round(Math.min(...last10L))
+      const window = 2 // pivot window: high[i] must be highest in ±2 bars
+      const swingHighs: number[] = []
+      const swingLows: number[] = []
+      const n = Math.min(highsArr.length, lowsArr.length)
+      for (let i = window; i < n - window; i++) {
+        const h = highsArr[i]
+        const l = lowsArr[i]
+        // Swing high: highest in local window
+        let isSwingHigh = true, isSwingLow = true
+        for (let j = i - window; j <= i + window; j++) {
+          if (j !== i) {
+            if (highsArr[j] >= h) isSwingHigh = false
+            if (lowsArr[j] <= l) isSwingLow = false
+          }
+        }
+        if (isSwingHigh) swingHighs.push(h)
+        if (isSwingLow) swingLows.push(l)
+      }
+      // Use all swing points for strong S/R, last half for near S/R
+      if (swingHighs.length > 0) {
+        resistance = Math.round(Math.max(...swingHighs))
+        const mid = Math.floor(swingHighs.length / 2)
+        resistance2 = mid > 0 ? Math.round(Math.max(...swingHighs.slice(mid))) : resistance
+      }
+      if (swingLows.length > 0) {
+        support = Math.round(Math.min(...swingLows))
+        const mid = Math.floor(swingLows.length / 2)
+        support2 = mid > 0 ? Math.round(Math.min(...swingLows.slice(mid))) : support
+      }
+      // Fallback to simple max/min if not enough swing points
+      if (!resistance) resistance = Math.round(Math.max(...highsArr.slice(-20)))
+      if (!support)    support    = Math.round(Math.min(...lowsArr.slice(-20)))
+      if (!resistance2) resistance2 = Math.round(Math.max(...highsArr.slice(-10)))
+      if (!support2)    support2    = Math.round(Math.min(...lowsArr.slice(-10)))
     }
 
     const topNews = (news || []).slice(0, 5).map((n: { title: string; sentiment: number }) => ({
@@ -305,6 +332,7 @@ export async function POST(request: NextRequest) {
 
     const result = await analyzeStock({
       symbol,
+      industry: quote?.industry || '',
       price,
       currentHolding: currentHolding || null,
       changePct: quote?.changePct || 0,
