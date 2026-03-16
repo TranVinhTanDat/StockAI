@@ -1,0 +1,1784 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="UTF-8">
+<meta name="ProgId" content="Word.Document">
+<meta name="Generator" content="Microsoft Word 15">
+<meta name="Originator" content="Microsoft Word 15">
+<title>StockAI VN – Tài liệu dự án</title>
+<style>
+  /* ── Page Layout ── */
+  @page {
+    size: A4;
+    margin: 2.5cm 2.8cm 2.5cm 3cm;
+    mso-header-margin: 1.5cm;
+    mso-footer-margin: 1.5cm;
+  }
+  body {
+    font-family: "Be Vietnam Pro", "Times New Roman", serif;
+    font-size: 12pt;
+    color: #1a1a2e;
+    line-height: 1.6;
+    background: #ffffff;
+  }
+
+  /* ── Cover Page ── */
+  .cover {
+    text-align: center;
+    padding: 120px 0 80px;
+    page-break-after: always;
+    border-bottom: 3px solid #00d4aa;
+  }
+  .cover-logo {
+    font-size: 56pt;
+    font-weight: 900;
+    color: #00d4aa;
+    letter-spacing: -2px;
+    font-family: "Be Vietnam Pro", Arial, sans-serif;
+    margin-bottom: 8px;
+  }
+  .cover-sub {
+    font-size: 18pt;
+    color: #7a8ba0;
+    margin-bottom: 48px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+  }
+  .cover-line {
+    width: 80px;
+    height: 4px;
+    background: #00d4aa;
+    margin: 0 auto 48px;
+  }
+  .cover-title {
+    font-size: 28pt;
+    font-weight: 800;
+    color: #1a1a2e;
+    margin-bottom: 16px;
+    line-height: 1.2;
+  }
+  .cover-desc {
+    font-size: 13pt;
+    color: #5a6a7a;
+    max-width: 600px;
+    margin: 0 auto 60px;
+    line-height: 1.8;
+  }
+  .cover-meta {
+    font-size: 10pt;
+    color: #7a8ba0;
+    border-top: 1px solid #e0e8f0;
+    padding-top: 24px;
+    margin-top: 60px;
+  }
+  .cover-meta table {
+    margin: 0 auto;
+    border: none;
+  }
+  .cover-meta td {
+    padding: 4px 20px;
+    border: none;
+    text-align: center;
+  }
+  .cover-badge {
+    display: inline-block;
+    background: #e8fdf8;
+    color: #00a88a;
+    border: 1px solid #00d4aa;
+    border-radius: 20px;
+    padding: 6px 20px;
+    font-size: 10pt;
+    font-weight: 600;
+    margin: 4px;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Table of Contents ── */
+  .toc-page {
+    page-break-after: always;
+    padding: 40px 0;
+  }
+  .toc-title {
+    font-size: 22pt;
+    font-weight: 800;
+    color: #1a1a2e;
+    border-bottom: 3px solid #00d4aa;
+    padding-bottom: 12px;
+    margin-bottom: 32px;
+  }
+  .toc-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 6px 0;
+    border-bottom: 1px dotted #c0d0e0;
+    font-size: 11pt;
+  }
+  .toc-item.h1 { font-weight: 700; color: #1a1a2e; font-size: 12pt; margin-top: 12px; }
+  .toc-item.h2 { padding-left: 24px; color: #3a4a5a; }
+  .toc-item.h3 { padding-left: 48px; color: #5a6a7a; font-size: 10pt; }
+  .toc-page-num { color: #7a8ba0; font-size: 10pt; }
+
+  /* ── Headings ── */
+  h1 {
+    font-size: 20pt;
+    font-weight: 900;
+    color: #1a1a2e;
+    border-left: 5px solid #00d4aa;
+    padding-left: 16px;
+    margin-top: 36px;
+    margin-bottom: 16px;
+    page-break-before: always;
+  }
+  h1:first-of-type { page-break-before: avoid; }
+  h2 {
+    font-size: 14pt;
+    font-weight: 800;
+    color: #1e3050;
+    margin-top: 28px;
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1.5px solid #c0d8f0;
+  }
+  h3 {
+    font-size: 12pt;
+    font-weight: 700;
+    color: #2a4060;
+    margin-top: 20px;
+    margin-bottom: 8px;
+  }
+  h4 {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #00a88a;
+    margin-top: 16px;
+    margin-bottom: 6px;
+  }
+
+  /* ── Body Text ── */
+  p { margin-bottom: 10px; text-align: justify; }
+  li { margin-bottom: 5px; }
+
+  /* ── Code Blocks ── */
+  pre {
+    background: #f4f8ff;
+    border: 1px solid #c8d8f0;
+    border-left: 4px solid #00d4aa;
+    border-radius: 4px;
+    padding: 14px 18px;
+    font-family: "Courier New", monospace;
+    font-size: 9pt;
+    color: #1a3050;
+    overflow-x: auto;
+    margin: 14px 0;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+  code {
+    background: #eef4ff;
+    border: 1px solid #c0d4f0;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-family: "Courier New", monospace;
+    font-size: 9.5pt;
+    color: #1a3a6a;
+  }
+
+  /* ── Tables ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 10.5pt;
+  }
+  th {
+    background: #1a3050;
+    color: #ffffff;
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 700;
+    font-size: 10pt;
+  }
+  td {
+    padding: 8px 14px;
+    border-bottom: 1px solid #e0ecf8;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #f5faff; }
+  tr:hover td { background: #eaf4ff; }
+
+  /* ── Callout Boxes ── */
+  .box-info {
+    background: #e8f8f5;
+    border: 1px solid #00d4aa;
+    border-left: 4px solid #00d4aa;
+    border-radius: 4px;
+    padding: 14px 18px;
+    margin: 16px 0;
+  }
+  .box-warn {
+    background: #fff8e8;
+    border: 1px solid #f5a623;
+    border-left: 4px solid #f5a623;
+    border-radius: 4px;
+    padding: 14px 18px;
+    margin: 16px 0;
+  }
+  .box-danger {
+    background: #fff0f3;
+    border: 1px solid #f43f5e;
+    border-left: 4px solid #f43f5e;
+    border-radius: 4px;
+    padding: 14px 18px;
+    margin: 16px 0;
+  }
+  .box-title {
+    font-weight: 700;
+    font-size: 10pt;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Badges / Tags ── */
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 9pt;
+    font-weight: 600;
+    margin: 2px;
+  }
+  .badge-green { background: #e8fdf8; color: #00a88a; border: 1px solid #00d4aa; }
+  .badge-blue  { background: #e8f0ff; color: #2a6ae0; border: 1px solid #6090f0; }
+  .badge-gold  { background: #fff8e8; color: #c07820; border: 1px solid #f5a623; }
+  .badge-red   { background: #fff0f3; color: #c0203a; border: 1px solid #f43f5e; }
+  .badge-gray  { background: #f0f4f8; color: #4a5a6a; border: 1px solid #b0c0d0; }
+
+  /* ── Section Divider ── */
+  .section-divider {
+    text-align: center;
+    color: #c0d0e0;
+    font-size: 18pt;
+    margin: 20px 0;
+  }
+
+  /* ── Stats Row ── */
+  .stats-row {
+    display: flex;
+    gap: 20px;
+    margin: 20px 0;
+    flex-wrap: wrap;
+  }
+  .stat-card {
+    flex: 1;
+    min-width: 120px;
+    background: #f5faff;
+    border: 1px solid #c8daf0;
+    border-top: 3px solid #00d4aa;
+    border-radius: 6px;
+    padding: 14px 16px;
+    text-align: center;
+  }
+  .stat-number {
+    font-size: 22pt;
+    font-weight: 900;
+    color: #00a88a;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .stat-label {
+    font-size: 9pt;
+    color: #5a6a7a;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Feature Grid ── */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 20px 0;
+  }
+  .feature-card {
+    background: #f8fbff;
+    border: 1px solid #dceaf8;
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .feature-icon { font-size: 18pt; margin-bottom: 8px; }
+  .feature-name { font-weight: 700; font-size: 11pt; color: #1a2e4a; margin-bottom: 6px; }
+  .feature-desc { font-size: 10pt; color: #4a5a6a; line-height: 1.5; }
+
+  /* ── File Tree ── */
+  .file-tree {
+    background: #f2f6ff;
+    border: 1px solid #c0d4f0;
+    border-radius: 6px;
+    padding: 16px 20px;
+    font-family: "Courier New", monospace;
+    font-size: 9pt;
+    line-height: 1.7;
+    color: #1a2a3a;
+  }
+  .file-tree .dir  { color: #1a5aa0; font-weight: 700; }
+  .file-tree .file { color: #2a4a2a; }
+  .file-tree .note { color: #7a8ba0; font-style: italic; }
+
+  /* ── API Route Table ── */
+  .method-get  { background: #e8f8e8; color: #1a7a1a; border: 1px solid #60c060; border-radius: 3px; padding: 1px 8px; font-size: 9pt; font-weight: 700; }
+  .method-post { background: #e8eeff; color: #1a2a9a; border: 1px solid #6070d0; border-radius: 3px; padding: 1px 8px; font-size: 9pt; font-weight: 700; }
+
+  /* ── Footer ── */
+  .page-footer {
+    margin-top: 60px;
+    padding-top: 16px;
+    border-top: 1px solid #c0d0e0;
+    font-size: 9pt;
+    color: #7a8ba0;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════
+     COVER PAGE
+══════════════════════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-logo">StockAI VN</div>
+  <div class="cover-sub">Nền tảng phân tích chứng khoán Việt Nam</div>
+  <div class="cover-line"></div>
+  <div class="cover-title">Tài Liệu Kỹ Thuật & Thiết Kế Hệ Thống<br>Technical Design Document</div>
+  <div class="cover-desc">
+    Ứng dụng web phân tích chứng khoán Việt Nam tích hợp trí tuệ nhân tạo Claude AI,
+    dữ liệu thị trường thời gian thực từ VPS, biểu đồ kỹ thuật chuyên nghiệp
+    và đầy đủ công cụ quản lý danh mục đầu tư.
+  </div>
+  <div>
+    <span class="cover-badge">Next.js 14</span>
+    <span class="cover-badge">TypeScript</span>
+    <span class="cover-badge">Claude AI</span>
+    <span class="cover-badge">Lightweight Charts v5</span>
+    <span class="cover-badge">Supabase</span>
+    <span class="cover-badge">Tailwind CSS v3</span>
+  </div>
+  <div class="cover-meta">
+    <table>
+      <tr>
+        <td><strong>Phiên bản</strong><br>1.0.0</td>
+        <td><strong>Ngày cập nhật</strong><br>16/03/2026</td>
+        <td><strong>Tổng số file</strong><br>108 files</td>
+        <td><strong>Trạng thái</strong><br>✅ Production Ready</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     TABLE OF CONTENTS
+══════════════════════════════════════════════════════════════ -->
+<div class="toc-page">
+  <div class="toc-title">📋 Mục Lục</div>
+
+  <div class="toc-item h1"><span>1. Tổng Quan Dự Án</span><span class="toc-page-num">3</span></div>
+  <div class="toc-item h2"><span>1.1 Mục tiêu &amp; tầm nhìn</span><span class="toc-page-num">3</span></div>
+  <div class="toc-item h2"><span>1.2 Số liệu dự án</span><span class="toc-page-num">3</span></div>
+  <div class="toc-item h2"><span>1.3 Tính năng nổi bật</span><span class="toc-page-num">4</span></div>
+
+  <div class="toc-item h1"><span>2. Kiến Trúc Hệ Thống</span><span class="toc-page-num">5</span></div>
+  <div class="toc-item h2"><span>2.1 Technology Stack</span><span class="toc-page-num">5</span></div>
+  <div class="toc-item h2"><span>2.2 Kiến trúc tổng thể</span><span class="toc-page-num">6</span></div>
+  <div class="toc-item h2"><span>2.3 Luồng dữ liệu</span><span class="toc-page-num">6</span></div>
+
+  <div class="toc-item h1"><span>3. Cấu Trúc Thư Mục</span><span class="toc-page-num">7</span></div>
+
+  <div class="toc-item h1"><span>4. Nguồn Dữ Liệu &amp; API</span><span class="toc-page-num">8</span></div>
+  <div class="toc-item h2"><span>4.1 Nguồn dữ liệu thị trường</span><span class="toc-page-num">8</span></div>
+  <div class="toc-item h2"><span>4.2 API Routes nội bộ</span><span class="toc-page-num">9</span></div>
+
+  <div class="toc-item h1"><span>5. Tính Năng Chi Tiết</span><span class="toc-page-num">10</span></div>
+  <div class="toc-item h2"><span>5.1 Dashboard &amp; Tổng quan thị trường</span><span class="toc-page-num">10</span></div>
+  <div class="toc-item h2"><span>5.2 Phân tích AI</span><span class="toc-page-num">11</span></div>
+  <div class="toc-item h2"><span>5.3 Biểu đồ kỹ thuật</span><span class="toc-page-num">12</span></div>
+  <div class="toc-item h2"><span>5.4 Bảng giá điện tử</span><span class="toc-page-num">12</span></div>
+  <div class="toc-item h2"><span>5.5 Quản lý danh mục</span><span class="toc-page-num">13</span></div>
+  <div class="toc-item h2"><span>5.6 Tin tức &amp; Sentiment</span><span class="toc-page-num">14</span></div>
+  <div class="toc-item h2"><span>5.7 Chat AI</span><span class="toc-page-num">14</span></div>
+  <div class="toc-item h2"><span>5.8 Công cụ đầu tư</span><span class="toc-page-num">15</span></div>
+  <div class="toc-item h2"><span>5.9 Cảnh báo giá</span><span class="toc-page-num">15</span></div>
+
+  <div class="toc-item h1"><span>6. Cơ Sở Dữ Liệu</span><span class="toc-page-num">16</span></div>
+  <div class="toc-item h2"><span>6.1 Schema Supabase</span><span class="toc-page-num">16</span></div>
+  <div class="toc-item h2"><span>6.2 Dual-mode Storage</span><span class="toc-page-num">17</span></div>
+
+  <div class="toc-item h1"><span>7. Xác Thực &amp; Bảo Mật</span><span class="toc-page-num">17</span></div>
+
+  <div class="toc-item h1"><span>8. TypeScript Types</span><span class="toc-page-num">18</span></div>
+
+  <div class="toc-item h1"><span>9. Hướng Dẫn Cài Đặt</span><span class="toc-page-num">19</span></div>
+  <div class="toc-item h2"><span>9.1 Yêu cầu hệ thống</span><span class="toc-page-num">19</span></div>
+  <div class="toc-item h2"><span>9.2 Cài đặt &amp; chạy local</span><span class="toc-page-num">19</span></div>
+  <div class="toc-item h2"><span>9.3 Biến môi trường</span><span class="toc-page-num">20</span></div>
+  <div class="toc-item h2"><span>9.4 Deploy lên Vercel</span><span class="toc-page-num">20</span></div>
+
+  <div class="toc-item h1"><span>10. Testing</span><span class="toc-page-num">21</span></div>
+  <div class="toc-item h1"><span>11. Lưu Ý Kỹ Thuật Quan Trọng</span><span class="toc-page-num">21</span></div>
+  <div class="toc-item h1"><span>12. Roadmap &amp; Phát Triển</span><span class="toc-page-num">22</span></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     CHAPTER 1: TỔNG QUAN DỰ ÁN
+══════════════════════════════════════════════════════════════ -->
+<h1>1. Tổng Quan Dự Án</h1>
+
+<h2>1.1 Mục Tiêu &amp; Tầm Nhìn</h2>
+
+<p>
+<strong>StockAI VN</strong> là nền tảng phân tích chứng khoán Việt Nam thế hệ mới, kết hợp
+dữ liệu thị trường thời gian thực với sức mạnh của Trí tuệ Nhân tạo (AI) để cung cấp
+cho nhà đầu tư cá nhân công cụ phân tích chuyên nghiệp — vốn trước đây chỉ có tại
+các công ty chứng khoán lớn.
+</p>
+
+<p>Ứng dụng được xây dựng với triết lý:</p>
+<ul>
+  <li><strong>Real-time first</strong> – Dữ liệu giá cập nhật mỗi 60 giây từ VPS Data Feed</li>
+  <li><strong>AI-powered insights</strong> – Phân tích đa chiều bởi Claude AI (model claude-opus-4-6)</li>
+  <li><strong>Zero-setup</strong> – Chạy ngay bằng localStorage, không cần database setup</li>
+  <li><strong>Mobile-first UI</strong> – Giao diện dark theme chuyên nghiệp, tối ưu mọi thiết bị</li>
+  <li><strong>Vietnamese-native</strong> – Toàn bộ giao diện, số liệu, phân tích bằng tiếng Việt</li>
+</ul>
+
+<h2>1.2 Số Liệu Dự Án</h2>
+
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="stat-number">108</div>
+    <div class="stat-label">Tổng số file</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number">58+</div>
+    <div class="stat-label">Custom components</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number">24</div>
+    <div class="stat-label">API Routes</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number">6</div>
+    <div class="stat-label">Custom Hooks</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number">0</div>
+    <div class="stat-label">TypeScript errors</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number">✓</div>
+    <div class="stat-label">Build passes</div>
+  </div>
+</div>
+
+<h2>1.3 Tính Năng Nổi Bật</h2>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-icon">🤖</div>
+    <div class="feature-name">Phân tích AI chuyên sâu</div>
+    <div class="feature-desc">Claude AI phân tích kỹ thuật, cơ bản, tâm lý với điểm số 1-10, khuyến nghị MUA/BÁN/GIỮ, giá mục tiêu, stop-loss và kế hoạch hành động.</div>
+  </div>
+  <div class="feature-card">
+    <div class="feature-icon">📊</div>
+    <div class="feature-name">Biểu đồ nến chuyên nghiệp</div>
+    <div class="feature-desc">Lightweight Charts v5 với nến OHLCV, SMA, Bollinger Bands, RSI, MACD. Dark theme, zoom/scroll tự nhiên.</div>
+  </div>
+  <div class="feature-card">
+    <div class="feature-icon">📋</div>
+    <div class="feature-name">Bảng giá điện tử</div>
+    <div class="feature-desc">Real-time flash animation theo ô, 3 mức giá mua/bán, giao dịch ngoại tệ, breadth bar thị trường, hỗ trợ VN30/HNX30/UPCOM.</div>
+  </div>
+  <div class="feature-card">
+    <div class="feature-icon">💬</div>
+    <div class="feature-name">Chat AI tương tác</div>
+    <div class="feature-desc">Hỏi đáp tự do về cổ phiếu với AI. Tích hợp PDF báo cáo phân tích, markdown rendering đẹp.</div>
+  </div>
+  <div class="feature-card">
+    <div class="feature-icon">💼</div>
+    <div class="feature-name">Quản lý danh mục</div>
+    <div class="feature-desc">Mua/bán ảo, tính P&amp;L realtime, pie chart phân bổ, AI tối ưu danh mục, lịch sử giao dịch.</div>
+  </div>
+  <div class="feature-card">
+    <div class="feature-icon">📰</div>
+    <div class="feature-name">Tin tức &amp; Sentiment</div>
+    <div class="feature-desc">CafeF RSS feed, AI tóm tắt thị trường hàng ngày, nhật ký thị trường, sentiment score.</div>
+  </div>
+  <div class="feature-card">
+    <div class="feature-icon">🔔</div>
+    <div class="feature-name">Cảnh báo thông minh</div>
+    <div class="feature-desc">Cảnh báo giá tùy chỉnh, push notification, cảnh báo kỹ thuật tự động (RSI, MACD, BB).</div>
+  </div>
+  <div class="feature-card">
+    <div class="feature-icon">🧮</div>
+    <div class="feature-name">Công cụ đầu tư</div>
+    <div class="feature-desc">Tính phí giao dịch, lãi/lỗ, mô phỏng DCA, định giá P/E, từ điển thuật ngữ 35 mục.</div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     CHAPTER 2: KIẾN TRÚC HỆ THỐNG
+══════════════════════════════════════════════════════════════ -->
+<h1>2. Kiến Trúc Hệ Thống</h1>
+
+<h2>2.1 Technology Stack</h2>
+
+<table>
+  <tr>
+    <th>Lớp</th>
+    <th>Công nghệ</th>
+    <th>Phiên bản</th>
+    <th>Mục đích</th>
+  </tr>
+  <tr>
+    <td><strong>Frontend Framework</strong></td>
+    <td>Next.js</td>
+    <td>14.2.x (App Router)</td>
+    <td>SSR/SSG, file-based routing, API routes</td>
+  </tr>
+  <tr>
+    <td><strong>Ngôn ngữ</strong></td>
+    <td>TypeScript</td>
+    <td>5.9.x (strict mode)</td>
+    <td>Type safety toàn bộ codebase</td>
+  </tr>
+  <tr>
+    <td><strong>Styling</strong></td>
+    <td>Tailwind CSS</td>
+    <td>3.4.x</td>
+    <td>Utility-first CSS, dark theme custom</td>
+  </tr>
+  <tr>
+    <td><strong>UI Primitives</strong></td>
+    <td>Radix UI</td>
+    <td>1.x/2.x</td>
+    <td>Accessible components (Dialog, Tabs, Select…)</td>
+  </tr>
+  <tr>
+    <td><strong>Charts</strong></td>
+    <td>Lightweight Charts</td>
+    <td>5.1.0</td>
+    <td>Biểu đồ nến OHLCV chuyên nghiệp</td>
+  </tr>
+  <tr>
+    <td><strong>AI Engine</strong></td>
+    <td>Claude AI (Anthropic)</td>
+    <td>claude-opus-4-6</td>
+    <td>Phân tích cổ phiếu, chat, tối ưu danh mục</td>
+  </tr>
+  <tr>
+    <td><strong>Database</strong></td>
+    <td>Supabase (PostgreSQL)</td>
+    <td>2.98.x</td>
+    <td>Lưu danh mục, phân tích, cảnh báo</td>
+  </tr>
+  <tr>
+    <td><strong>Local Storage</strong></td>
+    <td>localStorage API</td>
+    <td>-</td>
+    <td>Fallback khi chưa có Supabase env</td>
+  </tr>
+  <tr>
+    <td><strong>Data Fetching</strong></td>
+    <td>SWR</td>
+    <td>2.4.x</td>
+    <td>Stale-while-revalidate, auto-refresh</td>
+  </tr>
+  <tr>
+    <td><strong>Authentication</strong></td>
+    <td>JWT (jose)</td>
+    <td>6.2.x</td>
+    <td>Custom JWT auth, bcrypt password hashing</td>
+  </tr>
+  <tr>
+    <td><strong>Icons</strong></td>
+    <td>Lucide React</td>
+    <td>0.577.x</td>
+    <td>2000+ consistent SVG icons</td>
+  </tr>
+  <tr>
+    <td><strong>RSS Parser</strong></td>
+    <td>rss-parser</td>
+    <td>3.13.x</td>
+    <td>Đọc RSS feed CafeF server-side</td>
+  </tr>
+  <tr>
+    <td><strong>Push Notifications</strong></td>
+    <td>web-push</td>
+    <td>3.6.x</td>
+    <td>Browser push notifications cho cảnh báo</td>
+  </tr>
+  <tr>
+    <td><strong>Testing</strong></td>
+    <td>Vitest</td>
+    <td>4.1.x</td>
+    <td>Unit testing, coverage reports</td>
+  </tr>
+</table>
+
+<h2>2.2 Kiến Trúc Tổng Thể</h2>
+
+<pre>
+┌─────────────────────────────────────────────────────────────────────┐
+│                         BROWSER (Client)                            │
+│  ┌────────────┐  ┌───────────────┐  ┌──────────────────────────┐   │
+│  │  React UI  │  │  SWR Hooks    │  │  localStorage / Supabase │   │
+│  │ Components │  │ (auto-refresh)│  │  (dual-mode storage)     │   │
+│  └─────┬──────┘  └───────┬───────┘  └──────────────────────────┘   │
+└────────┼─────────────────┼───────────────────────────────────────── ┘
+         │ HTTP/Fetch       │ /api/...
+┌────────▼─────────────────▼───────────────────────────────────────── ┐
+│                    NEXT.JS APP ROUTER (Server)                       │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │                    API Routes (/app/api/)                    │    │
+│  │  quote │ history │ priceboard │ analyze │ chat-stock │ news  │    │
+│  │  fundamental │ optimize │ predict │ exchange │ push/...     │    │
+│  └──────┬──────────────────────────────────────┬──────────────┘    │
+└─────────┼──────────────────────────────────────┼────────────────── ┘
+          │                                        │
+┌─────────▼────────────┐            ┌─────────────▼──────────────────┐
+│  External Data APIs  │            │       Anthropic Claude API       │
+│                      │            │                                  │
+│ • VPS bgapidatafeed  │            │  Model: claude-opus-4-6          │
+│   (quote / pricebrd) │            │  • analyzeStock()                │
+│ • VPS histdatafeed   │            │  • chatStockAnalysis()           │
+│   (OHLCV history)    │            │  • optimizePortfolio()           │
+│ • Simplize API       │            │  • generatePredictions()         │
+│   (ROA/ROE/PE/PB)    │            │  • summarizeNews()               │
+│ • CafeF RSS          │            │  • analyzeReport()               │
+│   (tin tức)          │            │  Input: PDF reports (base64)     │
+│ • CafeF APIs         │            └──────────────────────────────────┘
+│   (kế hoạch, chỉ số) │
+│ • ExchangeRate-API   │            ┌──────────────────────────────────┐
+│   (USD/VND)          │            │         Supabase (PostgreSQL)    │
+└──────────────────────┘            │                                  │
+                                    │  Tables: users, analyses,        │
+                                    │  portfolio_holdings, trades,     │
+                                    │  alerts, balance, predictions    │
+                                    └──────────────────────────────────┘
+</pre>
+
+<h2>2.3 Luồng Dữ Liệu – Phân Tích Cổ Phiếu</h2>
+
+<pre>
+User nhập "FPT" → Click "Phân Tích"
+       │
+       ▼
+POST /api/analyze { symbol: "FPT" }
+       │
+       ├─── Promise.all([
+       │      fetchQuote(FPT)          → VPS API → giá, vol, nước ngoài
+       │      fetchHistory(FPT, 365)   → VPS histdata → OHLCV 365 ngày
+       │      fetchFundamental(FPT)    → Simplize + CafeF → PE/ROE/ROA
+       │      fetchCompanyPlan(FPT)    → CafeF → kế hoạch doanh thu
+       │      fetchNews(FPT)           → CafeF RSS → 20 tin gần nhất
+       │      fetchAnalystReport(FPT)  → TCBS/VPS → PDF báo cáo
+       │    ])
+       │
+       ├─── Tính toán indicators (lib/indicators.ts):
+       │      SMA(20), SMA(50), RSI(14), MACD(12,26,9), BB(20)
+       │
+       ├─── Gọi Claude AI với full context:
+       │      - Giá hiện tại, thay đổi, volume
+       │      - 52-tuần cao/thấp, momentum 1 tuần
+       │      - PE, ROE, ROA, Debt/Equity
+       │      - RSI, MACD, BB position
+       │      - 20 tin tức + sentiment
+       │      - PDF báo cáo (base64, nếu có)
+       │
+       ▼
+JSON { recommendation, confidence, targetPrice,
+       stopLoss, technicalScore, fundamentalScore,
+       sentimentScore, pros[], risks[], action }
+       │
+       ▼
+Lưu vào localStorage / Supabase → Hiển thị AnalysisResult
+</pre>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     CHAPTER 3: CẤU TRÚC THƯ MỤC
+══════════════════════════════════════════════════════════════ -->
+<h1>3. Cấu Trúc Thư Mục</h1>
+
+<div class="file-tree">
+<span class="dir">D_ToolStock/</span>
+├── <span class="dir">app/</span>                         <span class="note">← Next.js App Router</span>
+│   ├── <span class="file">layout.tsx</span>               <span class="note">Root layout, fonts, metadata, AuthProvider</span>
+│   ├── <span class="file">page.tsx</span>                 <span class="note">Single-page app – tất cả sections</span>
+│   ├── <span class="file">globals.css</span>              <span class="note">Dark theme base styles, custom CSS vars</span>
+│   ├── <span class="dir">admin/</span>
+│   │   └── <span class="file">page.tsx</span>             <span class="note">Trang quản trị (admin only)</span>
+│   ├── <span class="dir">analysis-history/</span>
+│   │   └── <span class="file">page.tsx</span>             <span class="note">Lịch sử phân tích đầy đủ</span>
+│   ├── <span class="dir">priceboard/</span>
+│   │   ├── <span class="file">layout.tsx</span>           <span class="note">Layout riêng cho priceboard</span>
+│   │   └── <span class="file">page.tsx</span>             <span class="note">Bảng giá điện tử</span>
+│   └── <span class="dir">api/</span>                     <span class="note">← 24 API Route handlers</span>
+│       ├── <span class="file">quote/route.ts</span>
+│       ├── <span class="file">history/route.ts</span>
+│       ├── <span class="file">priceboard/route.ts</span>
+│       ├── <span class="file">fundamental/route.ts</span>
+│       ├── <span class="file">analyze/route.ts</span>
+│       ├── <span class="file">chat-stock/route.ts</span>
+│       ├── <span class="file">optimize/route.ts</span>
+│       ├── <span class="file">predict/route.ts</span>
+│       ├── <span class="file">news/route.ts</span>
+│       ├── <span class="file">news-summary/route.ts</span>
+│       ├── <span class="file">market-index/route.ts</span>
+│       ├── <span class="file">market-heatmap/route.ts</span>
+│       ├── <span class="file">market-diary/route.ts</span>
+│       ├── <span class="file">company/route.ts</span>
+│       ├── <span class="file">company-detail/route.ts</span>
+│       ├── <span class="file">analyst-reports/route.ts</span>
+│       ├── <span class="file">report-analyze/route.ts</span>
+│       ├── <span class="file">report-pdf/route.ts</span>
+│       ├── <span class="file">exchange/route.ts</span>
+│       ├── <span class="file">push/notify/route.ts</span>
+│       ├── <span class="file">push/subscribe/route.ts</span>
+│       ├── <span class="file">auth/login/route.ts</span>
+│       ├── <span class="file">auth/register/route.ts</span>
+│       └── <span class="file">admin/users/route.ts</span>
+│
+├── <span class="dir">components/</span>                  <span class="note">← 42 React components</span>
+│   ├── <span class="dir">admin/</span>         UserManagement.tsx
+│   ├── <span class="dir">alerts/</span>        AlertManager.tsx, TechnicalAlerts.tsx
+│   ├── <span class="dir">analysis/</span>      AnalysisInput, AnalysisResult, AnalysisHistory,
+│   │                      AnalystReports, CafefCompanyData, CompanyProfile,
+│   │                      IndustryComparison, LoadingSteps
+│   ├── <span class="dir">auth/</span>          AuthContext.tsx, LoginModal.tsx
+│   ├── <span class="dir">chart/</span>         CandlestickChart.tsx
+│   ├── <span class="dir">dashboard/</span>     FearGreedGauge, MarketHeatmap, MarketOverview,
+│   │                      SentimentBar, StockChatAI, StockPredictions,
+│   │                      WatchlistTable
+│   ├── <span class="dir">layout/</span>        AppShell.tsx, MarketTicker.tsx, Navbar.tsx
+│   ├── <span class="dir">news/</span>          AISummary, MarketDiary, NewsCard, NewsFeed,
+│   │                      StockInfoPanel
+│   ├── <span class="dir">portfolio/</span>     AllocationChart, HoldingsTable, OptimizeModal,
+│   │                      PortfolioDashboard, TradeForm
+│   ├── <span class="dir">priceboard/</span>    PriceBoardClient.tsx, StockDetailModal.tsx
+│   └── <span class="dir">tools/</span>         DCASimulator, FeeCalculator, Glossary,
+│                          PECalculator, ProfitCalculator
+│
+├── <span class="dir">hooks/</span>                       <span class="note">← 6 Custom React Hooks</span>
+│   ├── <span class="file">useAlerts.ts</span>
+│   ├── <span class="file">useAuth.ts</span>
+│   ├── <span class="file">usePortfolio.ts</span>
+│   ├── <span class="file">useQuote.ts</span>
+│   ├── <span class="file">useTechnicalAlerts.ts</span>
+│   └── <span class="file">useWatchlist.ts</span>
+│
+├── <span class="dir">lib/</span>                         <span class="note">← 12 thư viện helper</span>
+│   ├── <span class="file">analysisCache.ts</span>         <span class="note">Cache kết quả AI để tiết kiệm token</span>
+│   ├── <span class="file">auth.ts</span>                  <span class="note">Validate JWT middleware</span>
+│   ├── <span class="file">claude.ts</span>               <span class="note">Tất cả Claude AI functions</span>
+│   ├── <span class="file">finnhub.ts</span>              <span class="note">Finnhub API (optional, cần key)</span>
+│   ├── <span class="file">indicators.ts</span>           <span class="note">SMA, EMA, RSI, MACD, Bollinger Bands</span>
+│   ├── <span class="file">jwt.ts</span>                  <span class="note">JWT sign/verify với jose</span>
+│   ├── <span class="file">priceboard-data.ts</span>      <span class="note">Danh sách mã VN30/HNX30/UPCOM + tên công ty</span>
+│   ├── <span class="file">requireAuth.ts</span>          <span class="note">Auth guard cho API routes</span>
+│   ├── <span class="file">storage.ts</span>              <span class="note">Dual-mode: localStorage + Supabase</span>
+│   ├── <span class="file">supabase.ts</span>             <span class="note">Supabase client setup</span>
+│   ├── <span class="file">tcbs.ts</span>                 <span class="note">Data layer (đã migrate sang VPS API)</span>
+│   └── <span class="file">utils.ts</span>                <span class="note">formatVND, formatPct, formatVolume, cn()</span>
+│
+├── <span class="dir">types/</span>
+│   └── <span class="file">index.ts</span>                 <span class="note">Tất cả TypeScript interfaces</span>
+│
+├── <span class="dir">supabase/</span>
+│   ├── <span class="file">schema.sql</span>               <span class="note">DDL tạo tables</span>
+│   └── <span class="file">migration.sql</span>            <span class="note">Migrations lịch sử</span>
+│
+├── <span class="dir">public/</span>
+│   ├── <span class="file">logo.svg</span>
+│   ├── <span class="file">manifest.json</span>            <span class="note">PWA manifest</span>
+│   └── <span class="file">sw.js</span>                    <span class="note">Service Worker (push notifications)</span>
+│
+└── <span class="dir">__tests__/</span>                   <span class="note">← 6 test suites (Vitest)</span>
+    ├── <span class="dir">api/</span>           analyze, history, quote
+    └── <span class="dir">lib/</span>           indicators, storage, utils
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     CHAPTER 4: NGUỒN DỮ LIỆU & API
+══════════════════════════════════════════════════════════════ -->
+<h1>4. Nguồn Dữ Liệu &amp; API</h1>
+
+<h2>4.1 Nguồn Dữ Liệu Thị Trường</h2>
+
+<div class="box-info">
+  <div class="box-title">✅ Tất cả nguồn dưới đây đang hoạt động tính đến 03/2026</div>
+  Nguồn dữ liệu được kiểm tra và cập nhật thường xuyên. Không cần API key cho VPS và Simplize.
+</div>
+
+<table>
+  <tr>
+    <th>Nguồn</th>
+    <th>Dữ liệu</th>
+    <th>Endpoint</th>
+    <th>Ghi chú</th>
+  </tr>
+  <tr>
+    <td><strong>VPS bgapidatafeed</strong></td>
+    <td>Giá realtime, orderbook 3 mức, nước ngoài</td>
+    <td><code>bgapidatafeed.vps.com.vn/getliststockdata/{SYM}</code></td>
+    <td>Giá trả về ×1000 = VNĐ. Miễn phí.</td>
+  </tr>
+  <tr>
+    <td><strong>VPS histdatafeed</strong></td>
+    <td>Lịch sử OHLCV (nến)</td>
+    <td><code>histdatafeed.vps.com.vn/tradingview/history?symbol={S}&amp;resolution=D&amp;from={ts}&amp;to={ts}</code></td>
+    <td>Hỗ trợ VNINDEX, HNXINDEX. Miễn phí.</td>
+  </tr>
+  <tr>
+    <td><strong>VPS getIndexIntraday</strong></td>
+    <td>Chỉ số VN-Index, HNX-Index intraday</td>
+    <td><code>bgapidatafeed.vps.com.vn/getIndexIntraday/{INDEX}</code></td>
+    <td>Dùng cho priceboard breadth. Miễn phí.</td>
+  </tr>
+  <tr>
+    <td><strong>Simplize API</strong></td>
+    <td>ROA, ROE, P/E, P/B, EPS, MarketCap</td>
+    <td><code>api.simplize.vn/api/company/summary/{SYM}</code></td>
+    <td>Không cần auth. Fallback nếu lỗi.</td>
+  </tr>
+  <tr>
+    <td><strong>CafeF ChiSoTaiChinh</strong></td>
+    <td>EPS, P/E, P/B, MarketCap (theo quý)</td>
+    <td><code>s.cafef.vn/DataVisualization/BaseDataVisualization.ashx?type=ChiSoTaiChinh...</code></td>
+    <td>Không có ROA/ROE. Trả về mảng quý.</td>
+  </tr>
+  <tr>
+    <td><strong>CafeF KeHoachKinhDoanh</strong></td>
+    <td>Kế hoạch doanh thu, lợi nhuận năm</td>
+    <td><code>s.cafef.vn/...?type=KeHoachKinhDoanh&amp;Symbol={SYM}</code></td>
+    <td>Ngân hàng: "Tổng LN trước thuế" thay "Doanh thu".</td>
+  </tr>
+  <tr>
+    <td><strong>CafeF RSS</strong></td>
+    <td>Tin tức thị trường, doanh nghiệp</td>
+    <td><code>s.cafef.vn/rss/{SYM}-cafef.rss</code></td>
+    <td>Parse server-side bằng rss-parser (CORS).</td>
+  </tr>
+  <tr>
+    <td><strong>ExchangeRate-API</strong></td>
+    <td>Tỷ giá USD/VND, EUR/VND</td>
+    <td><code>open.er-api.com/v6/latest/USD</code></td>
+    <td>Cần EXCHANGE_API_KEY trong .env.</td>
+  </tr>
+</table>
+
+<div class="box-danger">
+  <div class="box-title">❌ Nguồn đã chết – KHÔNG sử dụng</div>
+  <ul style="margin:0">
+    <li><strong>TCBS API v1</strong> – tất cả endpoint /api/v1/... trả 404 từ 03/2026</li>
+    <li><strong>CafeF BaoCaoTaiChinh, HistoricalFinancials</strong> – redirect 302 → 404</li>
+    <li><strong>Vietcap GraphQL</strong> – bị WAF block</li>
+  </ul>
+</div>
+
+<h2>4.2 API Routes Nội Bộ</h2>
+
+<table>
+  <tr>
+    <th>Method</th>
+    <th>Route</th>
+    <th>Mô tả</th>
+    <th>Cache</th>
+  </tr>
+  <tr>
+    <td><span class="method-get">GET</span></td>
+    <td><code>/api/quote</code></td>
+    <td>Giá realtime + thông tin cổ phiếu. Params: <code>symbol</code></td>
+    <td>60s</td>
+  </tr>
+  <tr>
+    <td><span class="method-get">GET</span></td>
+    <td><code>/api/history</code></td>
+    <td>OHLCV + indicators tính sẵn. Params: <code>symbol</code>, <code>days</code></td>
+    <td>300s</td>
+  </tr>
+  <tr>
+    <td><span class="method-get">GET</span></td>
+    <td><code>/api/priceboard</code></td>
+    <td>Giá realtime cho bảng giá. Params: <code>group</code>, <code>symbols</code>, <code>withIndex</code></td>
+    <td>no-store</td>
+  </tr>
+  <tr>
+    <td><span class="method-get">GET</span></td>
+    <td><code>/api/fundamental</code></td>
+    <td>Dữ liệu tài chính cơ bản. Params: <code>symbol</code></td>
+    <td>3600s</td>
+  </tr>
+  <tr>
+    <td><span class="method-post">POST</span></td>
+    <td><code>/api/analyze</code></td>
+    <td>Phân tích AI đầy đủ. Body: <code>{ symbol }</code></td>
+    <td>no-cache</td>
+  </tr>
+  <tr>
+    <td><span class="method-post">POST</span></td>
+    <td><code>/api/chat-stock</code></td>
+    <td>Chat AI về cổ phiếu. Body: <code>{ symbol, messages[] }</code></td>
+    <td>no-cache</td>
+  </tr>
+  <tr>
+    <td><span class="method-post">POST</span></td>
+    <td><code>/api/optimize</code></td>
+    <td>AI tối ưu danh mục. Body: <code>{ holdings[], cash }</code></td>
+    <td>no-cache</td>
+  </tr>
+  <tr>
+    <td><span class="method-post">POST</span></td>
+    <td><code>/api/predict</code></td>
+    <td>AI dự đoán top cổ phiếu. Body: <code>{ style }</code></td>
+    <td>no-cache</td>
+  </tr>
+  <tr>
+    <td><span class="method-get">GET</span></td>
+    <td><code>/api/news</code></td>
+    <td>Tin tức + sentiment. Params: <code>symbol</code> (optional)</td>
+    <td>600s</td>
+  </tr>
+  <tr>
+    <td><span class="method-post">POST</span></td>
+    <td><code>/api/news-summary</code></td>
+    <td>AI tóm tắt tin tức hôm nay</td>
+    <td>3600s</td>
+  </tr>
+  <tr>
+    <td><span class="method-get">GET</span></td>
+    <td><code>/api/market-index</code></td>
+    <td>VN-Index, HNX-Index, breadth</td>
+    <td>60s</td>
+  </tr>
+  <tr>
+    <td><span class="method-get">GET</span></td>
+    <td><code>/api/market-heatmap</code></td>
+    <td>Dữ liệu heat map thị trường</td>
+    <td>120s</td>
+  </tr>
+  <tr>
+    <td><span class="method-get">GET</span></td>
+    <td><code>/api/company</code></td>
+    <td>Hồ sơ công ty, lịch sử tài chính</td>
+    <td>3600s</td>
+  </tr>
+  <tr>
+    <td><span class="method-get">GET</span></td>
+    <td><code>/api/analyst-reports</code></td>
+    <td>Danh sách báo cáo phân tích PDF</td>
+    <td>3600s</td>
+  </tr>
+  <tr>
+    <td><span class="method-post">POST</span></td>
+    <td><code>/api/report-analyze</code></td>
+    <td>AI phân tích báo cáo PDF</td>
+    <td>no-cache</td>
+  </tr>
+  <tr>
+    <td><span class="method-get">GET</span></td>
+    <td><code>/api/exchange</code></td>
+    <td>Tỷ giá USD/VND, EUR/VND</td>
+    <td>300s</td>
+  </tr>
+  <tr>
+    <td><span class="method-post">POST</span></td>
+    <td><code>/api/push/subscribe</code></td>
+    <td>Đăng ký push notification</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td><span class="method-post">POST</span></td>
+    <td><code>/api/auth/login</code></td>
+    <td>Đăng nhập, trả JWT cookie</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td><span class="method-post">POST</span></td>
+    <td><code>/api/auth/register</code></td>
+    <td>Đăng ký tài khoản mới</td>
+    <td>-</td>
+  </tr>
+</table>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     CHAPTER 5: TÍNH NĂNG CHI TIẾT
+══════════════════════════════════════════════════════════════ -->
+<h1>5. Tính Năng Chi Tiết</h1>
+
+<h2>5.1 Dashboard &amp; Tổng Quan Thị Trường</h2>
+
+<h3>Market Ticker (<code>MarketTicker.tsx</code>)</h3>
+<p>Thanh giá chạy ngang phía trên, hiển thị 10 mã phổ biến (FPT, VNM, VCB, HPG…) với giá realtime, thay đổi % theo màu xanh/đỏ. CSS animation marquee liên tục.</p>
+
+<h3>Market Overview (<code>MarketOverview.tsx</code>)</h3>
+<p>4 stat cards: VN-Index (giá trị + thay đổi), HNX-Index, USD/VND tỷ giá, Fear &amp; Greed Index. Auto-refresh 60 giây bằng SWR.</p>
+
+<h3>Fear &amp; Greed Gauge (<code>FearGreedGauge.tsx</code>)</h3>
+<p>Đồng hồ đo tâm lý thị trường dạng arc, tính từ RSI thị trường + breadth + momentum. Hiển thị trạng thái: Sợ Hãi Cực Độ / Sợ Hãi / Trung Lập / Tham Lam / Tham Lam Cực Độ.</p>
+
+<h3>Market Heatmap (<code>MarketHeatmap.tsx</code>)</h3>
+<p>Heat map trực quan theo ngành, mỗi ô là một cổ phiếu, màu sắc theo % thay đổi giá. Click để xem chi tiết.</p>
+
+<h3>Watchlist Table (<code>WatchlistTable.tsx</code>)</h3>
+<ul>
+  <li>Bảng theo dõi danh sách cổ phiếu cá nhân</li>
+  <li>Giá realtime, thay đổi, volume, flash khi giá đổi</li>
+  <li>Thêm/xóa mã, search với auto-complete</li>
+  <li>Lưu vào localStorage/Supabase qua <code>useWatchlist</code> hook</li>
+</ul>
+
+<h3>Stock Predictions (<code>StockPredictions.tsx</code>)</h3>
+<p>AI dự đoán Top 10 cổ phiếu tiềm năng theo phong cách đầu tư: Tăng trưởng / Giá trị / Cổ tức / Đột phá. Hiển thị score, upside %, khuyến nghị, key metrics.</p>
+
+<h2>5.2 Phân Tích AI</h2>
+
+<h3>Analysis Input (<code>AnalysisInput.tsx</code>)</h3>
+<p>Ô nhập mã cổ phiếu với dropdown gợi ý từ danh sách VN30+. Validate format, enter để phân tích.</p>
+
+<h3>Loading Steps (<code>LoadingSteps.tsx</code>)</h3>
+<p>5 bước loading animation với icon, mô tả từng bước: Thu thập dữ liệu giá → Phân tích kỹ thuật → Đánh giá cơ bản → Đọc tin tức → Claude AI xử lý.</p>
+
+<h3>Analysis Result (<code>AnalysisResult.tsx</code>)</h3>
+<p>Card kết quả đầy đủ sau khi AI trả về:</p>
+<ul>
+  <li><strong>Header:</strong> Mã, khuyến nghị (MUA MẠNH/MUA/GIỮ/BÁN/BÁN MẠNH), điểm tin cậy</li>
+  <li><strong>Price targets:</strong> Giá mục tiêu, stop-loss, vùng vào hàng, thời gian nắm giữ</li>
+  <li><strong>Tabs:</strong> Kỹ thuật / Cơ bản / Tâm Lý – mỗi tab có điểm 1-10 + mô tả chi tiết</li>
+  <li><strong>Pros &amp; Risks:</strong> Danh sách điểm mạnh và rủi ro</li>
+  <li><strong>Action plan:</strong> Kế hoạch hành động cụ thể</li>
+</ul>
+
+<h3>Analysis History (<code>AnalysisHistory.tsx</code>)</h3>
+<p>Bảng 10 phân tích gần nhất, filter theo mã, sort theo ngày. Click để xem lại kết quả đầy đủ.</p>
+
+<h3>Analyst Reports (<code>AnalystReports.tsx</code>)</h3>
+<p>Danh sách báo cáo PDF từ công ty chứng khoán. AI đọc và tóm tắt báo cáo, extract key insights.</p>
+
+<h3>Company Profile (<code>CompanyProfile.tsx</code>)</h3>
+<p>Hồ sơ công ty: ngành, sàn, vốn hóa, số cổ phiếu lưu hành, 52-tuần cao/thấp. Biểu đồ tài chính nhiều năm (doanh thu, lợi nhuận, EPS).</p>
+
+<h3>Industry Comparison (<code>IndustryComparison.tsx</code>)</h3>
+<p>So sánh P/E, ROE, ROA của cổ phiếu với trung bình ngành.</p>
+
+<h2>5.3 Biểu Đồ Kỹ Thuật</h2>
+
+<h3>Candlestick Chart (<code>CandlestickChart.tsx</code>)</h3>
+<p>Biểu đồ nến OHLCV chính dùng <strong>Lightweight Charts v5</strong>:</p>
+<ul>
+  <li>Dynamic import với <code>ssr: false</code> (bắt buộc – không hỗ trợ SSR)</li>
+  <li>Dark theme: nền <code>#0b0f1a</code>, nến xanh <code>#00d4aa</code>, nến đỏ <code>#f43f5e</code></li>
+  <li>Overlay: SMA(20) vàng, SMA(50) trắng, Bollinger Bands tím</li>
+  <li>Sub-panel: Volume histogram phía dưới</li>
+  <li>RSI Panel: Đường RSI(14) + zones 30/70</li>
+  <li>MACD Panel: MACD line, Signal line, Histogram</li>
+  <li>Timeframe buttons: 1T / 3T / 6T / 1N / 2N / 5N</li>
+  <li>Crosshair, tooltips, zoom/scroll</li>
+</ul>
+
+<h2>5.4 Bảng Giá Điện Tử</h2>
+
+<h3>PriceBoard Client (<code>PriceBoardClient.tsx</code>)</h3>
+<p>Bảng giá chứng khoán realtime, thiết kế theo chuẩn iBoard SSI:</p>
+
+<table>
+  <tr>
+    <th>Cột</th>
+    <th>Mô tả</th>
+  </tr>
+  <tr>
+    <td>Mã / Sàn</td>
+    <td>Symbol, HOSE/HNX/UPCOM badge</td>
+  </tr>
+  <tr>
+    <td>TC / Trần / Sàn</td>
+    <td>Giá tham chiếu, trần (tím), sàn (xanh lam)</td>
+  </tr>
+  <tr>
+    <td>MG 1/2/3</td>
+    <td>3 mức giá mua tốt nhất + khối lượng</td>
+  </tr>
+  <tr>
+    <td>Khớp / KL</td>
+    <td>Giá khớp lệnh, khối lượng, % thay đổi</td>
+  </tr>
+  <tr>
+    <td>BG 1/2/3</td>
+    <td>3 mức giá bán tốt nhất + khối lượng</td>
+  </tr>
+  <tr>
+    <td>KLGD</td>
+    <td>Tổng khối lượng giao dịch</td>
+  </tr>
+  <tr>
+    <td>NN Mua/Bán/Ròng</td>
+    <td>Giao dịch nước ngoài (khối lượng)</td>
+  </tr>
+</table>
+
+<p><strong>Tính năng đặc biệt:</strong></p>
+<ul>
+  <li><strong>FlashTd</strong>: Flash animation per-cell (xanh khi tăng, đỏ khi giảm) – không flash cả hàng</li>
+  <li><strong>Breadth bar</strong>: Thanh tiến trình Tăng/Giảm/Không đổi phía trên bảng</li>
+  <li><strong>Sort</strong>: Click header để sort theo bất kỳ cột nào</li>
+  <li><strong>Group selector</strong>: VN30 / VN100 / HNX30 / UPCOM / theo ngành</li>
+  <li><strong>Search</strong>: Tìm kiếm theo mã trong bảng</li>
+  <li><strong>Detail Modal</strong>: Click mã → StockDetailModal với chart mini</li>
+  <li><strong>Auto-refresh</strong>: Cập nhật mỗi 10 giây</li>
+</ul>
+
+<h2>5.5 Quản Lý Danh Mục</h2>
+
+<h3>Portfolio Dashboard (<code>PortfolioDashboard.tsx</code>)</h3>
+<p>Cards tổng quan: Tổng tài sản, P&amp;L hôm nay, P&amp;L tổng cộng, Tiền mặt còn lại. Realtime cập nhật giá.</p>
+
+<h3>Trade Form (<code>TradeForm.tsx</code>)</h3>
+<p>Form mua/bán cổ phiếu ảo:</p>
+<ul>
+  <li>Nhập mã, loại lệnh (Mua/Bán), giá, số lượng</li>
+  <li>Tự động tính phí: Mua 0.15% + Bán 0.25% + thuế 0.1%</li>
+  <li>Kiểm tra đủ tiền mặt khi mua, đủ cổ phiếu khi bán</li>
+  <li>Lưu vào localStorage/Supabase</li>
+</ul>
+
+<h3>Holdings Table (<code>HoldingsTable.tsx</code>)</h3>
+<p>Bảng danh mục: mã, số lượng, giá vốn bình quân, giá hiện tại, P&amp;L (VNĐ + %). Màu xanh/đỏ theo lãi/lỗ. Realtime refresh.</p>
+
+<h3>Allocation Chart (<code>AllocationChart.tsx</code>)</h3>
+<p>Pie chart phân bổ danh mục vẽ bằng Canvas API. Màu sắc theo từng mã. Tooltip hiển thị % và giá trị.</p>
+
+<h3>Optimize Modal (<code>OptimizeModal.tsx</code>)</h3>
+<p>Modal AI tối ưu danh mục: Claude phân tích danh mục hiện tại, đề xuất mua thêm/cắt lỗ/tái cơ cấu dựa trên rủi ro và kỳ vọng người dùng.</p>
+
+<h2>5.6 Tin Tức &amp; Sentiment</h2>
+
+<h3>News Feed (<code>NewsFeed.tsx</code>)</h3>
+<p>3 tabs: Thị Trường (tin tổng hợp) / Theo Mã (nhập mã cụ thể) / Quốc Tế (Finnhub nếu có key). Mỗi tin có điểm sentiment (-1 đến +1) được tính bằng keyword matching.</p>
+
+<h3>AI Summary (<code>AISummary.tsx</code>)</h3>
+<p>Claude AI tóm tắt 20 tin tức quan trọng nhất trong ngày thành bản nhận định thị trường súc tích, có highlight từ khóa và rating ngành.</p>
+
+<h3>Market Diary (<code>MarketDiary.tsx</code>)</h3>
+<p>Nhật ký thị trường: ghi chú sự kiện quan trọng theo ngày, có thể thêm nhận xét cá nhân.</p>
+
+<h2>5.7 Chat AI</h2>
+
+<h3>Stock Chat AI (<code>StockChatAI.tsx</code>)</h3>
+<p>Cửa sổ chat tương tác với Claude AI về cổ phiếu cụ thể:</p>
+
+<p><strong>Context được inject tự động:</strong></p>
+<ul>
+  <li>Giá hiện tại, thay đổi, volume</li>
+  <li>52-tuần cao/thấp, vị trí hiện tại trong range</li>
+  <li>Momentum 1 tuần</li>
+  <li>P/E, ROE, ROA, Debt/Equity</li>
+  <li>RSI, MACD, vị trí Bollinger Bands</li>
+  <li>PDF báo cáo phân tích (inject vào tin nhắn đầu tiên)</li>
+</ul>
+
+<p><strong>Markdown rendering:</strong> AI trả lời được render đẹp với heading, bold, bullet list, numbered list. Không dùng thư viện ngoài – custom <code>MarkdownText</code> component.</p>
+
+<p><strong>Lưu lịch sử chat:</strong> Mỗi cuộc trò chuyện theo mã cổ phiếu, lưu localStorage. Xóa khi đổi mã.</p>
+
+<h2>5.8 Công Cụ Đầu Tư</h2>
+
+<table>
+  <tr>
+    <th>Công cụ</th>
+    <th>Mô tả</th>
+    <th>Input</th>
+    <th>Output</th>
+  </tr>
+  <tr>
+    <td><strong>Tính Phí GD</strong></td>
+    <td>FeeCalculator.tsx</td>
+    <td>Giá, Số lượng</td>
+    <td>Phí MG mua (0.15%), Tổng trả; Phí MG bán (0.25%) + thuế (0.1%), Tổng nhận</td>
+  </tr>
+  <tr>
+    <td><strong>Tính Lãi/Lỗ</strong></td>
+    <td>ProfitCalculator.tsx</td>
+    <td>Giá mua, Giá bán, Số lượng, Số ngày</td>
+    <td>Lãi/lỗ (VNĐ), ROI (%), ROI quy năm (%)</td>
+  </tr>
+  <tr>
+    <td><strong>Mô phỏng DCA</strong></td>
+    <td>DCASimulator.tsx</td>
+    <td>Số tiền/tháng, Tháng, Lãi suất kỳ vọng</td>
+    <td>Tổng đầu tư, Tổng tài sản, Lãi, Biểu đồ tích lũy</td>
+  </tr>
+  <tr>
+    <td><strong>Định giá P/E</strong></td>
+    <td>PECalculator.tsx</td>
+    <td>EPS, P/E kỳ vọng, P/E ngành</td>
+    <td>Giá hợp lý, so sánh với giá thị trường, nhận định</td>
+  </tr>
+  <tr>
+    <td><strong>Từ điển</strong></td>
+    <td>Glossary.tsx</td>
+    <td>Search keyword</td>
+    <td>35 thuật ngữ chứng khoán Việt Nam + giải thích</td>
+  </tr>
+</table>
+
+<div class="box-info">
+  <div class="box-title">💡 Format số tiền</div>
+  Tất cả input tiền tệ sử dụng <strong>useDotInput hook</strong> – tự động format dấu chấm phân cách hàng nghìn khi nhập: <code>1000000</code> → hiển thị <code>1.000.000</code>.
+</div>
+
+<h2>5.9 Cảnh Báo Giá</h2>
+
+<h3>Alert Manager (<code>AlertManager.tsx</code>)</h3>
+<p>CRUD cảnh báo giá:</p>
+<ul>
+  <li>Tạo cảnh báo: Mã + Điều kiện (Trên/Dưới) + Giá mục tiêu</li>
+  <li>Bảng danh sách: Mã, điều kiện, giá, trạng thái (Đang theo dõi / Đã kích hoạt)</li>
+  <li>Toggle bật/tắt từng cảnh báo</li>
+  <li>Check tự động mỗi 60 giây</li>
+  <li>Push notification khi trigger (nếu đã cấp quyền)</li>
+</ul>
+
+<h3>Technical Alerts (<code>TechnicalAlerts.tsx</code>)</h3>
+<p>Cảnh báo kỹ thuật tự động: RSI vượt 70/30, MACD cắt, giá chạm Bollinger Band. Không cần thiết lập thủ công.</p>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     CHAPTER 6: CƠ SỞ DỮ LIỆU
+══════════════════════════════════════════════════════════════ -->
+<h1>6. Cơ Sở Dữ Liệu</h1>
+
+<h2>6.1 Schema Supabase (PostgreSQL)</h2>
+
+<table>
+  <tr>
+    <th>Table</th>
+    <th>Cột chính</th>
+    <th>Mục đích</th>
+  </tr>
+  <tr>
+    <td><strong>users</strong></td>
+    <td>id, email, password_hash, role, created_at</td>
+    <td>Tài khoản người dùng, role: user/admin</td>
+  </tr>
+  <tr>
+    <td><strong>watchlist</strong></td>
+    <td>id, user_id, symbol, created_at</td>
+    <td>Danh sách theo dõi cổ phiếu</td>
+  </tr>
+  <tr>
+    <td><strong>analyses</strong></td>
+    <td>id, user_id, symbol, recommendation, confidence, target_price, stop_loss, full_result (JSONB), analyzed_at</td>
+    <td>Lịch sử phân tích AI</td>
+  </tr>
+  <tr>
+    <td><strong>portfolio_holdings</strong></td>
+    <td>id, user_id, symbol, qty, avg_cost, total_cost, created_at, updated_at</td>
+    <td>Danh mục đang nắm giữ</td>
+  </tr>
+  <tr>
+    <td><strong>trades</strong></td>
+    <td>id, user_id, symbol, type (BUY/SELL), qty, price, fee, tax, total, traded_at</td>
+    <td>Lịch sử giao dịch</td>
+  </tr>
+  <tr>
+    <td><strong>alerts</strong></td>
+    <td>id, user_id, symbol, condition (ABOVE/BELOW), target_price, is_active, triggered_at, created_at</td>
+    <td>Cảnh báo giá cổ phiếu</td>
+  </tr>
+  <tr>
+    <td><strong>balance</strong></td>
+    <td>user_id (PK), cash, updated_at</td>
+    <td>Số dư tiền mặt ảo</td>
+  </tr>
+  <tr>
+    <td><strong>predictions</strong></td>
+    <td>id, user_id, style, predictions (JSONB), predicted_at</td>
+    <td>Lịch sử dự đoán AI</td>
+  </tr>
+  <tr>
+    <td><strong>push_subscriptions</strong></td>
+    <td>id, user_id, endpoint, keys (JSONB), created_at</td>
+    <td>Push notification subscriptions</td>
+  </tr>
+  <tr>
+    <td><strong>market_diary</strong></td>
+    <td>id, user_id, date, notes, created_at</td>
+    <td>Nhật ký thị trường cá nhân</td>
+  </tr>
+</table>
+
+<h2>6.2 Dual-Mode Storage (<code>lib/storage.ts</code>)</h2>
+
+<p>Hệ thống lưu trữ hai chế độ tự động:</p>
+
+<pre>
+// Tự động detect: Supabase khi có env, localStorage khi không có
+const useSupabase = !!(
+  process.env.NEXT_PUBLIC_SUPABASE_URL &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
+
+// Cùng interface cho cả hai mode
+export async function getWatchlist(userId: string): Promise&lt;string[]&gt;
+export async function saveAnalysis(data: SavedAnalysis): Promise&lt;void&gt;
+export async function getPortfolio(userId: string): Promise&lt;PortfolioHolding[]&gt;
+export async function saveTrade(trade: Trade): Promise&lt;void&gt;
+export async function getBalance(userId: string): Promise&lt;Balance&gt;
+export async function saveAlert(alert: Alert): Promise&lt;void&gt;
+</pre>
+
+<div class="box-info">
+  <div class="box-title">💡 Zero-setup experience</div>
+  Khi chạy lần đầu không cần setup Supabase — ứng dụng tự dùng localStorage. User ID được generate ngẫu nhiên và lưu localStorage. Khi thêm Supabase env sau, chỉ cần chạy migration SQL là chuyển sang cloud.
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     CHAPTER 7: XÁC THỰC & BẢO MẬT
+══════════════════════════════════════════════════════════════ -->
+<h1>7. Xác Thực &amp; Bảo Mật</h1>
+
+<h2>7.1 Hệ Thống Auth</h2>
+<p>Custom JWT authentication (không dùng NextAuth hay Supabase Auth):</p>
+
+<table>
+  <tr>
+    <th>File</th>
+    <th>Chức năng</th>
+  </tr>
+  <tr>
+    <td><code>lib/jwt.ts</code></td>
+    <td>Sign/verify JWT với jose (HS256), payload: userId, email, role</td>
+  </tr>
+  <tr>
+    <td><code>lib/auth.ts</code></td>
+    <td>Validate token từ cookie <code>auth-token</code>, trả UserInfo</td>
+  </tr>
+  <tr>
+    <td><code>lib/requireAuth.ts</code></td>
+    <td>Guard function cho API routes bảo vệ</td>
+  </tr>
+  <tr>
+    <td><code>components/auth/AuthContext.tsx</code></td>
+    <td>React Context, global user state, login/logout functions</td>
+  </tr>
+  <tr>
+    <td><code>components/auth/LoginModal.tsx</code></td>
+    <td>Modal đăng nhập/đăng ký, Radix UI Dialog</td>
+  </tr>
+</table>
+
+<p><strong>Password security:</strong> bcryptjs với salt rounds = 12.</p>
+<p><strong>JWT expiry:</strong> 7 ngày. Cookie: HttpOnly, Secure, SameSite=Strict.</p>
+<p><strong>Admin role:</strong> Route <code>/admin</code> và <code>/api/admin/users</code> chỉ cho role="admin".</p>
+
+<h2>7.2 Row-Level Security (Supabase RLS)</h2>
+<p>Tất cả tables có policy: <code>user_id = auth.uid()</code>. User chỉ đọc/ghi được data của mình.</p>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     CHAPTER 8: TYPESCRIPT TYPES
+══════════════════════════════════════════════════════════════ -->
+<h1>8. TypeScript Types (<code>types/index.ts</code>)</h1>
+
+<table>
+  <tr>
+    <th>Interface</th>
+    <th>Cột/Field chính</th>
+    <th>Dùng ở</th>
+  </tr>
+  <tr>
+    <td><strong>QuoteData</strong></td>
+    <td>symbol, name, price, change, changePct, volume, high52w, low52w, marketCap, exchange, industry, foreignBuyVol, foreignSellVol</td>
+    <td>useQuote, /api/quote</td>
+  </tr>
+  <tr>
+    <td><strong>CandleData</strong></td>
+    <td>time, open, high, low, close, volume</td>
+    <td>CandlestickChart, /api/history</td>
+  </tr>
+  <tr>
+    <td><strong>IndicatorData</strong></td>
+    <td>sma20[], sma50[], rsi[], macd[]{macd,signal,histogram}, bb[]{upper,middle,lower}</td>
+    <td>CandlestickChart, RSIPane, MACDPane</td>
+  </tr>
+  <tr>
+    <td><strong>FundamentalData</strong></td>
+    <td>pe, eps, roe, roa, debtEquity, revenueGrowth, profitGrowth, dividendYield, bookValue</td>
+    <td>/api/fundamental, analyze</td>
+  </tr>
+  <tr>
+    <td><strong>AnalysisResult</strong></td>
+    <td>recommendation, confidence, targetPrice, stopLoss, entryZone, holdingPeriod, technicalScore(1-10), fundamentalScore(1-10), sentimentScore(1-10), pros[], risks[], action, nextReview</td>
+    <td>AnalysisResult, /api/analyze</td>
+  </tr>
+  <tr>
+    <td><strong>PortfolioHolding</strong></td>
+    <td>id, user_id, symbol, qty, avg_cost, total_cost + computed: currentPrice, pnl, pnlPct</td>
+    <td>HoldingsTable, usePortfolio</td>
+  </tr>
+  <tr>
+    <td><strong>Trade</strong></td>
+    <td>id, user_id, symbol, type(BUY/SELL), qty, price, fee, tax, total, traded_at</td>
+    <td>TradeForm, usePortfolio</td>
+  </tr>
+  <tr>
+    <td><strong>Alert</strong></td>
+    <td>id, user_id, symbol, condition(ABOVE/BELOW), target_price, is_active, triggered_at</td>
+    <td>AlertManager, useAlerts</td>
+  </tr>
+  <tr>
+    <td><strong>MarketIndexData</strong></td>
+    <td>vnindex{value,change,changePct,volume}, hnxindex{...}, breadth{advancing,declining,unchanged}</td>
+    <td>MarketOverview, /api/market-index</td>
+  </tr>
+  <tr>
+    <td><strong>PredictionItem</strong></td>
+    <td>rank, symbol, score, recommendation, targetPrice, currentPrice, upsidePct, reason, keyMetrics{pe,roe,growth}, riskLevel, entryZone</td>
+    <td>StockPredictions, /api/predict</td>
+  </tr>
+  <tr>
+    <td><strong>CompanyData</strong></td>
+    <td>symbol, companyName, industry, exchange, overview{marketCap, shares}, yearly[]{revenue,netIncome,eps,roe,roa,debtEquity,pe,pb}, currentRatios</td>
+    <td>CompanyProfile, /api/company</td>
+  </tr>
+  <tr>
+    <td><strong>OptimizeResult</strong></td>
+    <td>analysis, marketContext, stockRecommendations[], suggestions[], rebalancePlan, riskWarnings[]</td>
+    <td>OptimizeModal, /api/optimize</td>
+  </tr>
+</table>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     CHAPTER 9: HƯỚNG DẪN CÀI ĐẶT
+══════════════════════════════════════════════════════════════ -->
+<h1>9. Hướng Dẫn Cài Đặt</h1>
+
+<h2>9.1 Yêu Cầu Hệ Thống</h2>
+
+<table>
+  <tr>
+    <th>Thành phần</th>
+    <th>Yêu cầu</th>
+    <th>Ghi chú</th>
+  </tr>
+  <tr>
+    <td>Node.js</td>
+    <td>≥ 18.17.0 (LTS)</td>
+    <td>Next.js 14 yêu cầu tối thiểu Node 18</td>
+  </tr>
+  <tr>
+    <td>npm</td>
+    <td>≥ 9.x</td>
+    <td>Hoặc yarn/pnpm tương đương</td>
+  </tr>
+  <tr>
+    <td>CLAUDE_API_KEY</td>
+    <td>Bắt buộc</td>
+    <td>Lấy tại console.anthropic.com</td>
+  </tr>
+  <tr>
+    <td>Supabase</td>
+    <td>Tùy chọn</td>
+    <td>Bỏ qua → dùng localStorage</td>
+  </tr>
+  <tr>
+    <td>EXCHANGE_API_KEY</td>
+    <td>Tùy chọn</td>
+    <td>open.er-api.com (free tier: 1500 req/tháng)</td>
+  </tr>
+  <tr>
+    <td>FINNHUB_KEY</td>
+    <td>Tùy chọn</td>
+    <td>Tin tức quốc tế – bỏ qua nếu không cần</td>
+  </tr>
+</table>
+
+<h2>9.2 Cài Đặt &amp; Chạy Local</h2>
+
+<pre>
+# 1. Clone hoặc mở thư mục dự án
+cd D_ToolStock
+
+# 2. Cài đặt dependencies
+npm install
+
+# 3. Copy và điền biến môi trường
+cp .env.example .env.local
+# Mở .env.local, điền CLAUDE_API_KEY tối thiểu
+
+# 4. Chạy development server
+npm run dev
+# → Mở http://localhost:3000
+
+# 5. Build production
+npm run build
+npm start
+
+# 6. Chạy tests
+npm test
+# Hoặc với coverage:
+npm run test:coverage
+</pre>
+
+<h2>9.3 Biến Môi Trường (<code>.env.local</code>)</h2>
+
+<pre>
+# ── BẮT BUỘC ──────────────────────────────────────────────────
+CLAUDE_API_KEY=sk-ant-api03-...           # Anthropic Console
+
+# ── TÙY CHỌN: Database ────────────────────────────────────────
+NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+# ── TÙY CHỌN: Auth ────────────────────────────────────────────
+JWT_SECRET=super-secret-key-min-32-chars
+
+# ── TÙY CHỌN: Tỷ giá ─────────────────────────────────────────
+EXCHANGE_API_KEY=...                      # open.er-api.com
+
+# ── TÙY CHỌN: Tin tức quốc tế ────────────────────────────────
+FINNHUB_KEY=...                           # finnhub.io
+
+# ── TÙY CHỌN: Push Notifications ─────────────────────────────
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+VAPID_EMAIL=mailto:your@email.com
+</pre>
+
+<h2>9.4 Setup Supabase (Tùy Chọn)</h2>
+
+<pre>
+-- Chạy file supabase/schema.sql trong Supabase SQL Editor
+-- Tạo tất cả tables, indexes, và RLS policies
+
+-- Sau đó chạy migration (nếu cần):
+-- supabase/migration.sql
+</pre>
+
+<p>Sau khi setup Supabase và thêm env vào <code>.env.local</code>, restart server. Storage tự động chuyển từ localStorage sang Supabase.</p>
+
+<h2>9.5 Deploy Lên Vercel</h2>
+
+<pre>
+# Cài Vercel CLI
+npm i -g vercel
+
+# Deploy
+vercel --prod
+
+# Hoặc connect GitHub repo tại vercel.com
+# → Tự động deploy khi push to main
+</pre>
+
+<div class="box-warn">
+  <div class="box-title">⚠️ Lưu ý Vercel Free Plan</div>
+  API routes timeout sau 10 giây. Claude API phân tích có thể mất 8-15 giây. Nâng lên Pro plan (timeout 60s) hoặc sử dụng Edge Runtime nếu cần.
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     CHAPTER 10: TESTING
+══════════════════════════════════════════════════════════════ -->
+<h1>10. Testing</h1>
+
+<p>Sử dụng <strong>Vitest</strong> + <strong>@testing-library/react</strong> + <strong>jsdom</strong>.</p>
+
+<table>
+  <tr>
+    <th>Test Suite</th>
+    <th>File</th>
+    <th>Phạm vi kiểm thử</th>
+  </tr>
+  <tr>
+    <td>Quote API</td>
+    <td><code>__tests__/api/quote.test.ts</code></td>
+    <td>GET /api/quote, cache, error handling</td>
+  </tr>
+  <tr>
+    <td>History API</td>
+    <td><code>__tests__/api/history.test.ts</code></td>
+    <td>GET /api/history, OHLCV transform, indicators</td>
+  </tr>
+  <tr>
+    <td>Analyze API</td>
+    <td><code>__tests__/api/analyze.test.ts</code></td>
+    <td>POST /api/analyze, mock Claude response</td>
+  </tr>
+  <tr>
+    <td>Indicators</td>
+    <td><code>__tests__/lib/indicators.test.ts</code></td>
+    <td>SMA, EMA, RSI, MACD, Bollinger Bands accuracy</td>
+  </tr>
+  <tr>
+    <td>Storage</td>
+    <td><code>__tests__/lib/storage.test.ts</code></td>
+    <td>localStorage CRUD, dual-mode switching</td>
+  </tr>
+  <tr>
+    <td>Utils</td>
+    <td><code>__tests__/lib/utils.test.ts</code></td>
+    <td>formatVND, formatPct, formatVolume, cn()</td>
+  </tr>
+</table>
+
+<pre>
+# Chạy tất cả tests
+npm test
+
+# Watch mode
+npm run test:watch
+
+# Coverage report
+npm run test:coverage
+# → Mở coverage/index.html trong browser
+</pre>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     CHAPTER 11: LƯU Ý KỸ THUẬT
+══════════════════════════════════════════════════════════════ -->
+<h1>11. Lưu Ý Kỹ Thuật Quan Trọng</h1>
+
+<table>
+  <tr>
+    <th>#</th>
+    <th>Vấn đề</th>
+    <th>Giải pháp</th>
+  </tr>
+  <tr>
+    <td>1</td>
+    <td><strong>Lightweight Charts không hỗ trợ SSR</strong></td>
+    <td>Bắt buộc dùng <code>dynamic(() =&gt; import('...'), { ssr: false })</code>. Không import trực tiếp.</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td><strong>VPS giá trả về ×1000</strong></td>
+    <td>API trả về đơn vị nghìn VNĐ. Phải nhân ×1000 khi hiển thị. (85 → 85.000 VNĐ)</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td><strong>TCBS API chết hoàn toàn (03/2026)</strong></td>
+    <td>Đã migrate toàn bộ sang VPS API. File <code>lib/tcbs.ts</code> bây giờ thực ra gọi VPS.</td>
+  </tr>
+  <tr>
+    <td>4</td>
+    <td><strong>CafeF RSS phải parse server-side</strong></td>
+    <td>CORS block client-side fetch. Luôn gọi qua <code>/api/news</code>. Dùng <code>rss-parser</code> trong Node.</td>
+  </tr>
+  <tr>
+    <td>5</td>
+    <td><strong>useRef TypeScript strict</strong></td>
+    <td>Phải viết <code>useRef&lt;number | undefined&gt;(undefined)</code>, không được dùng <code>useRef()</code> không có argument.</td>
+  </tr>
+  <tr>
+    <td>6</td>
+    <td><strong>ChunkLoadError lightweight-charts</strong></td>
+    <td>Khi gặp lỗi này: xóa <code>.next/</code> cache và restart: <code>rm -rf .next &amp;&amp; npm run dev</code></td>
+  </tr>
+  <tr>
+    <td>7</td>
+    <td><strong>Tailwind CSS v4 không tương thích</strong></td>
+    <td>Dự án dùng v3. Không nâng cấp lên v4 — syntax config thay đổi hoàn toàn.</td>
+  </tr>
+  <tr>
+    <td>8</td>
+    <td><strong>Claude API model cũ bị xóa</strong></td>
+    <td>Model <code>claude-opus-4-5-20250514</code> đã bị xóa. Dùng <code>claude-opus-4-6</code>.</td>
+  </tr>
+  <tr>
+    <td>9</td>
+    <td><strong>PDF injection cho Chat AI</strong></td>
+    <td>PDF chỉ inject vào tin nhắn đầu tiên (isFirstQuestion). Subsequent messages không repeat PDF.</td>
+  </tr>
+  <tr>
+    <td>10</td>
+    <td><strong>Analysis cache</strong></td>
+    <td><code>lib/analysisCache.ts</code> cache kết quả 1 tiếng để tránh gọi Claude API lặp lại cho cùng mã.</td>
+  </tr>
+  <tr>
+    <td>11</td>
+    <td><strong>Radix UI thay shadcn CLI</strong></td>
+    <td>Không dùng <code>npx shadcn@latest add</code>. Cài trực tiếp package <code>@radix-ui/react-*</code> và viết style thủ công.</td>
+  </tr>
+  <tr>
+    <td>12</td>
+    <td><strong>Bảng giá – ngân hàng UPCOM</strong></td>
+    <td>Một số mã UPCOM không có trần/sàn từ VPS → tự tính: HOSE ±7%, HNX ±10%, UPCOM ±15%.</td>
+  </tr>
+</table>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     CHAPTER 12: ROADMAP
+══════════════════════════════════════════════════════════════ -->
+<h1>12. Roadmap &amp; Phát Triển</h1>
+
+<h2>Phiên Bản 1.0 (Hiện tại – 03/2026) ✅</h2>
+<ul>
+  <li>✅ Dashboard thị trường realtime</li>
+  <li>✅ Phân tích AI đa chiều (kỹ thuật + cơ bản + tâm lý)</li>
+  <li>✅ Biểu đồ nến + 4 indicator (SMA, BB, RSI, MACD)</li>
+  <li>✅ Bảng giá điện tử flash animation</li>
+  <li>✅ Chat AI tương tác với PDF báo cáo</li>
+  <li>✅ Danh mục ảo + tính P&amp;L realtime</li>
+  <li>✅ Tin tức + AI tóm tắt</li>
+  <li>✅ 5 công cụ đầu tư</li>
+  <li>✅ Cảnh báo giá + push notification</li>
+  <li>✅ Auth hệ thống + admin panel</li>
+  <li>✅ Dual-mode storage (localStorage + Supabase)</li>
+  <li>✅ PWA (Progressive Web App)</li>
+  <li>✅ Responsive mobile UI</li>
+  <li>✅ 6 test suites</li>
+</ul>
+
+<h2>Phiên Bản 1.1 (Đề xuất tiếp theo)</h2>
+<ul>
+  <li>🔲 Screener cổ phiếu theo bộ lọc nâng cao (PE &lt; X, ROE &gt; Y, volume &gt; Z)</li>
+  <li>🔲 Backtest chiến lược đơn giản</li>
+  <li>🔲 So sánh multi-chart (nhiều mã cùng lúc)</li>
+  <li>🔲 Export danh mục ra Excel/CSV</li>
+  <li>🔲 Thông báo email (khi cảnh báo trigger)</li>
+  <li>🔲 API public cho developer (rate-limited)</li>
+</ul>
+
+<h2>Phiên Bản 2.0 (Dài hạn)</h2>
+<ul>
+  <li>🔲 AI Agent tự động scan thị trường mỗi sáng, gửi báo cáo</li>
+  <li>🔲 Social features: chia sẻ phân tích, follow trader</li>
+  <li>🔲 Paper trading với matching engine</li>
+  <li>🔲 Mobile app (React Native)</li>
+  <li>🔲 Tích hợp broker API (thực chiến)</li>
+</ul>
+
+<!-- ══════════════════════════════════════════════════════════════
+     FOOTER
+══════════════════════════════════════════════════════════════ -->
+<div class="page-footer">
+  <p>
+    <strong>StockAI VN</strong> – Tài liệu kỹ thuật v1.0.0<br>
+    Cập nhật lần cuối: 16/03/2026 &nbsp;|&nbsp;
+    Build: <span class="badge badge-green">✓ Passing</span> &nbsp;|&nbsp;
+    TypeScript: <span class="badge badge-green">0 errors</span> &nbsp;|&nbsp;
+    Stack: <span class="badge badge-blue">Next.js 14</span> <span class="badge badge-blue">Claude AI</span> <span class="badge badge-blue">Supabase</span>
+  </p>
+</div>
+
+</body>
+</html>

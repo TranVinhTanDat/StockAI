@@ -7,16 +7,17 @@ import {
   removeFromWatchlist,
 } from '@/lib/storage'
 
-export function useWatchlist() {
+export function useWatchlist(userId?: string) {
   const [symbols, setSymbols] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    setIsLoading(true)
     getWatchlist().then((list) => {
       setSymbols(list)
       setIsLoading(false)
     })
-  }, [])
+  }, [userId])
 
   const add = useCallback(async (symbol: string) => {
     const upper = symbol.toUpperCase()

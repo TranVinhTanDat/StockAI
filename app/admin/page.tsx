@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuthContext } from '@/components/auth/AuthContext'
 import UserManagement from '@/components/admin/UserManagement'
+import DatabaseViewer from '@/components/admin/DatabaseViewer'
 import {
   ArrowLeft, TrendingUp, Shield, Users,
-  BarChart2, Bell,
+  BarChart2, Bell, Database,
 } from 'lucide-react'
 
 // ── Stats card ─────────────────────────────────────────────────────────────────
@@ -112,6 +113,11 @@ export default function AdminPage() {
         {/* User management */}
         <div className="bg-surface rounded-2xl border border-border/40 p-5">
           <UserManagement />
+        </div>
+
+        {/* Database viewer */}
+        <div className="bg-surface rounded-2xl border border-border/40 p-5">
+          <DatabaseViewer />
         </div>
 
       </div>

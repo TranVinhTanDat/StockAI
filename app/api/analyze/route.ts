@@ -22,7 +22,7 @@ async function getCachedResult(symbol: string, noHolding: boolean) {
     .gt('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
   return data?.data ?? null
 }
 

@@ -72,7 +72,11 @@ export async function addToWatchlist(symbol: string): Promise<void> {
   if (shouldUseSupabase()) {
     const sb = getSupabase()
     if (sb) {
-      const { error } = await sb.from('watchlist').upsert({ user_id: userId, symbol })
+      const { error } = await sb.from('watchlist').upsert(
+        { user_id: userId, symbol },
+        { onConflict: 'user_id,symbol' }
+      )
+      if (error) console.error('[Watchlist] Supabase upsert error:', error)
       if (!error) return
     }
   }
@@ -93,6 +97,7 @@ export async function removeFromWatchlist(symbol: string): Promise<void> {
         .delete()
         .eq('user_id', userId)
         .eq('symbol', symbol)
+      if (error) console.error('[Watchlist] Supabase delete error:', error)
       if (!error) return
     }
   }
@@ -133,7 +138,7 @@ export async function upsertHolding(
         .select('*')
         .eq('user_id', userId)
         .eq('symbol', holding.symbol)
-        .single()
+        .maybeSingle()
 
       if (!existing.error && existing.data) {
         const { error } = await sb
@@ -244,16 +249,12 @@ export async function getBalance(): Promise<Balance> {
         .from('balance')
         .select('*')
         .eq('user_id', userId)
-        .single()
-      if (error) {
-        // Table doesn't exist yet → fall through to localStorage
-      } else if (data) {
+        .maybeSingle()
+      if (!error && data) {
         return data as Balance
-      } else {
-        // Table exists but no row → create default
-        await sb.from('balance').insert({ user_id: userId, cash: 500_000_000 })
-        return { user_id: userId, cash: 500_000_000, updated_at: new Date().toISOString() }
       }
+      // No row or error → return in-memory default (row will be created on first updateBalance call)
+      // Do NOT write here to avoid race condition 409 from concurrent mounts
     }
   }
   return getLocal<Balance>(getLocalKey('stockai_balance'), {
@@ -270,11 +271,10 @@ export async function updateBalance(cash: number): Promise<void> {
     if (sb) {
       const { error } = await sb
         .from('balance')
-        .upsert({
-          user_id: userId,
-          cash,
-          updated_at: new Date().toISOString(),
-        })
+        .upsert(
+          { user_id: userId, cash, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id' }
+        )
       if (!error) return
     }
   }
@@ -305,11 +305,29 @@ export async function getAnalyses(): Promise<SavedAnalysis[]> {
   return getLocal<SavedAnalysis[]>(getLocalKey('stockai_analyses'), [])
 }
 
+// Prevent concurrent saves for same (user, symbol)
+const _savingSet = new Set<string>()
+
 export async function saveAnalysis(
   symbol: string,
   result: AnalysisResult
 ): Promise<void> {
   const userId = getEffectiveUserId()
+  const saveKey = `${userId}_${symbol}`
+  if (_savingSet.has(saveKey)) return
+  _savingSet.add(saveKey)
+  try {
+    await _saveAnalysisInner(symbol, result, userId)
+  } finally {
+    _savingSet.delete(saveKey)
+  }
+}
+
+async function _saveAnalysisInner(
+  symbol: string,
+  result: AnalysisResult,
+  userId: string
+): Promise<void> {
   const entry: SavedAnalysis = {
     id: generateId(),
     user_id: userId,
@@ -325,9 +343,11 @@ export async function saveAnalysis(
   if (shouldUseSupabase()) {
     const sb = getSupabase()
     if (sb) {
-      // Remove old entry for same user+symbol before inserting (upsert by symbol)
+      // Delete existing row for this (user_id, symbol), then insert fresh
+      // _savingSet above ensures no concurrent calls can race here
       await sb.from('analyses').delete().eq('user_id', userId).eq('symbol', symbol)
       const { error } = await sb.from('analyses').insert(entry)
+      if (error) console.error('[Analysis] Supabase insert error:', error.code, error.message)
       if (!error) return
     }
   }
@@ -434,7 +454,7 @@ export async function getOptimizeResult(): Promise<SavedOptimizeResult | null> {
         .eq('user_id', userId)
         .order('analyzed_at', { ascending: false })
         .limit(1)
-        .single()
+        .maybeSingle()
       if (!error && data) return data as SavedOptimizeResult
     }
   }
@@ -491,7 +511,7 @@ export async function getPredictions(style: string): Promise<SavedPrediction | n
         .eq('style', style)
         .order('predicted_at', { ascending: false })
         .limit(1)
-        .single()
+        .maybeSingle()
       if (!error && data) return data as SavedPrediction
     }
   }

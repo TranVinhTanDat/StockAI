@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import useSWR from 'swr'
 import { useWatchlist } from '@/hooks/useWatchlist'
+import { useAuthContext } from '@/components/auth/AuthContext'
 import { useMultiQuote } from '@/hooks/useQuote'
 import {
   formatVND,
@@ -70,7 +71,8 @@ function Sparkline({ symbol }: { symbol: string }) {
 }
 
 export default function WatchlistTable({ onAnalyze }: WatchlistTableProps) {
-  const { symbols, add, remove, has } = useWatchlist()
+  const { user } = useAuthContext()
+  const { symbols, add, remove, has } = useWatchlist(user?.id)
   const { quotes, isLoading } = useMultiQuote(symbols)
   const [searchInput, setSearchInput] = useState('')
   const [adding, setAdding] = useState(false)

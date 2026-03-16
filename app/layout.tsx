@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Be_Vietnam_Pro, Playfair_Display } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/components/auth/AuthContext'
@@ -25,6 +25,9 @@ export const metadata: Metadata = {
   keywords: 'chứng khoán, phân tích kỹ thuật, AI, VN-Index, cổ phiếu',
   manifest: '/manifest.json',
   icons: { icon: '/logo.svg', apple: '/logo.svg' },
+}
+
+export const viewport: Viewport = {
   themeColor: '#00d4aa',
 }
 

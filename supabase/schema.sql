@@ -138,6 +138,23 @@ ALTER TABLE public.predictions        DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.push_subscriptions DISABLE ROW LEVEL SECURITY;
 
 -- ============================================================
+-- GRANT permissions for anon key (client-side browser access)
+-- Required because tables are created via SQL, not Supabase dashboard
+-- Without these, anon key gets 406 Not Acceptable on all queries
+-- ============================================================
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.app_users          TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.watchlist          TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.portfolio          TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.trades             TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.balance            TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.analyses           TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.alerts             TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.analysis_cache     TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.optimize_results   TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.predictions        TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.push_subscriptions TO anon, authenticated;
+
+-- ============================================================
 -- Indexes
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_watchlist_user    ON public.watchlist(user_id);

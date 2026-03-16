@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { setJwtUserId } from '@/lib/storage'
+import { setJwtUserId, setStorageUserId } from '@/lib/storage'
 
 export interface AuthUser {
   id: string
@@ -58,6 +58,7 @@ export function useAuth() {
       const user = decodeToken(stored)
       if (user) {
         setJwtUserId(user.id)
+        setStorageUserId(user.id)
         setState({
           user,
           isAdmin: user.role === 'admin',
@@ -85,6 +86,7 @@ export function useAuth() {
     localStorage.setItem(TOKEN_KEY, token)
     const user = decodeToken(token)!
     setJwtUserId(user.id)
+    setStorageUserId(user.id)
     setState({
       user,
       isAdmin: user.role === 'admin',
@@ -107,6 +109,7 @@ export function useAuth() {
     localStorage.setItem(TOKEN_KEY, token)
     const user = decodeToken(token)!
     setJwtUserId(user.id)
+    setStorageUserId(user.id)
     setState({
       user,
       isAdmin: user.role === 'admin',
@@ -120,6 +123,7 @@ export function useAuth() {
   const signOut = useCallback(() => {
     if (typeof window !== 'undefined') localStorage.removeItem(TOKEN_KEY)
     setJwtUserId(null)
+    setStorageUserId(null)
     setState({ user: null, isAdmin: false, isLoading: false, isAuthEnabled: true, daysRemaining: null, token: null })
   }, [])
 
