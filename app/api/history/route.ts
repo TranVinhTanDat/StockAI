@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchHistory } from '@/lib/tcbs'
 import { calcSMA, calcRSI, calcMACD, calcBB } from '@/lib/indicators'
 
+export const maxDuration = 60
+
 export async function GET(request: NextRequest) {
   const symbol = request.nextUrl.searchParams.get('symbol')
   const days = parseInt(request.nextUrl.searchParams.get('days') || '90', 10) || 90
@@ -42,8 +44,14 @@ export async function GET(request: NextRequest) {
       indicators: { sma20, sma50, rsi, macd, bb },
     })
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Failed to fetch history'
+    // On timeout or network error, return empty candles instead of 500
+    // so the chart just shows "no data" rather than breaking
+    if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('abort'))) {
+      return NextResponse.json(
+        { candles: [], indicators: { sma20: [], sma50: [], rsi: [], macd: [], bb: [] }, warning: 'Data source timeout' }
+      )
+    }
+    const message = error instanceof Error ? error.message : 'Failed to fetch history'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

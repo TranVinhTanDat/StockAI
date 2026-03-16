@@ -4,7 +4,7 @@ import type { QuoteData, CandleData, FundamentalData } from '@/types'
 const VPS_QUOTE_URL = 'https://bgapidatafeed.vps.com.vn/getliststockdata'
 const VPS_HISTORY_URL = 'https://histdatafeed.vps.com.vn/tradingview/history'
 const VIETCAP_GRAPHQL = 'https://trading.vietcap.com.vn/data-mt/graphql'
-const FETCH_TIMEOUT = 8000
+const FETCH_TIMEOUT = 12000
 
 // Browser-like headers required to bypass Vietcap WAF
 const VIETCAP_HEADERS = {
