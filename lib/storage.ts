@@ -50,39 +50,81 @@ function setLocal<T>(key: string, value: T): void {
 
 const DEFAULT_WATCHLIST = ['FPT', 'VNM', 'VIC', 'HPG', 'MWG', 'VHM', 'TCB', 'BID', 'VCB', 'GAS']
 
+// Delta localStorage keys — separate added/removed from admin defaults
+function wlAddedKey(): string  { return getLocalKey('stockai_wl_added')   }
+function wlRemovedKey(): string { return getLocalKey('stockai_wl_removed') }
+
+// Fetch admin's default watchlist symbols (public API, no auth needed)
+async function fetchAdminDefaults(): Promise<string[]> {
+  if (typeof window === 'undefined') return DEFAULT_WATCHLIST
+  try {
+    const res = await fetch('/api/admin/default-watchlist', {
+      signal: AbortSignal.timeout(3000),
+    })
+    if (!res.ok) return DEFAULT_WATCHLIST
+    const data = await res.json()
+    if (Array.isArray(data.items) && data.items.length > 0) {
+      return data.items.map((i: { symbol: string }) => i.symbol)
+    }
+  } catch { /* network error — use fallback */ }
+  return DEFAULT_WATCHLIST
+}
+
 export async function getWatchlist(): Promise<string[]> {
   const userId = getEffectiveUserId()
   if (shouldUseSupabase()) {
     const sb = getSupabase()
     if (sb) {
-      const { data, error } = await sb
-        .from('watchlist')
-        .select('symbol')
-        .eq('user_id', userId)
-        .order('added_at', { ascending: true })
-      if (error) return getLocal<string[]>(getLocalKey('stockai_watchlist'), DEFAULT_WATCHLIST)
-      const symbols = data?.map((d) => d.symbol) ?? []
-      // Auto-copy default watchlist on first login (0 rows)
-      if (symbols.length === 0) {
-        const { data: defaults } = await sb
-          .from('default_watchlist')
-          .select('symbol')
-          .order('sort_order', { ascending: true })
-        if (defaults && defaults.length > 0) {
-          const rows = defaults.map((d) => ({ user_id: userId, symbol: d.symbol }))
-          await sb.from('watchlist').insert(rows)
-          return defaults.map((d) => d.symbol)
-        }
-        return DEFAULT_WATCHLIST
+      // Load user's watchlist and admin defaults in parallel
+      const [watchlistRes, defaultsRes] = await Promise.all([
+        sb.from('watchlist').select('symbol').eq('user_id', userId).order('added_at', { ascending: true }),
+        sb.from('default_watchlist').select('symbol').order('sort_order', { ascending: true }),
+      ])
+      if (watchlistRes.error) return getLocal<string[]>(getLocalKey('stockai_watchlist'), DEFAULT_WATCHLIST)
+
+      const symbols    = watchlistRes.data?.map((d) => d.symbol) ?? []
+      const adminSyms  = defaultsRes.data?.map((d) => d.symbol) ?? []
+
+      // Use localStorage "removed" list so user can permanently hide a default
+      const removed = getLocal<string[]>(wlRemovedKey(), [])
+
+      // Find admin defaults not yet in user's watchlist (and not explicitly removed by user)
+      const newFromAdmin = adminSyms.filter(s => !symbols.includes(s) && !removed.includes(s))
+
+      if (newFromAdmin.length > 0) {
+        // Upsert new defaults into user's watchlist table
+        await sb.from('watchlist').upsert(
+          newFromAdmin.map(s => ({ user_id: userId, symbol: s })),
+          { onConflict: 'user_id,symbol' }
+        )
+        return [...symbols, ...newFromAdmin]
       }
-      return symbols
+
+      // First time user with no symbols and no admin defaults
+      if (symbols.length === 0 && adminSyms.length === 0) return DEFAULT_WATCHLIST
+
+      return symbols.length > 0 ? symbols : adminSyms
     }
   }
-  return getLocal<string[]>(getLocalKey('stockai_watchlist'), DEFAULT_WATCHLIST)
+
+  // ── localStorage delta model ──────────────────────────
+  // Display = adminDefaults + userAdded - userRemoved
+  const adminDefaults = await fetchAdminDefaults()
+  const added   = getLocal<string[]>(wlAddedKey(),   [])
+  const removed = getLocal<string[]>(wlRemovedKey(), [])
+  const merged = adminDefaults.concat(added).filter((s, i, arr) => arr.indexOf(s) === i)
+  const combined = merged.filter(s => !removed.includes(s))
+  return combined.length > 0 ? combined : DEFAULT_WATCHLIST
 }
 
 export async function addToWatchlist(symbol: string): Promise<void> {
   const userId = getEffectiveUserId()
+  // Always remove from "removed" list when user explicitly re-adds
+  const removed = getLocal<string[]>(wlRemovedKey(), []).filter(s => s !== symbol)
+  setLocal(wlRemovedKey(), removed)
+  const added = getLocal<string[]>(wlAddedKey(), [])
+  if (!added.includes(symbol)) setLocal(wlAddedKey(), [...added, symbol])
+
   if (shouldUseSupabase()) {
     const sb = getSupabase()
     if (sb) {
@@ -91,18 +133,20 @@ export async function addToWatchlist(symbol: string): Promise<void> {
         { onConflict: 'user_id,symbol' }
       )
       if (error) console.error('[Watchlist] Supabase upsert error:', error)
-      if (!error) return
     }
+    return
   }
-  const list = [...getLocal<string[]>(getLocalKey('stockai_watchlist'), DEFAULT_WATCHLIST)]
-  if (!list.includes(symbol)) {
-    list.push(symbol)
-    setLocal(getLocalKey('stockai_watchlist'), list)
-  }
+  // localStorage-only mode: delta keys already updated above
 }
 
 export async function removeFromWatchlist(symbol: string): Promise<void> {
   const userId = getEffectiveUserId()
+  // Always track user's explicit removals in localStorage (prevents auto-re-add from admin defaults)
+  const removedList = getLocal<string[]>(wlRemovedKey(), [])
+  if (!removedList.includes(symbol)) setLocal(wlRemovedKey(), [...removedList, symbol])
+  const addedList = getLocal<string[]>(wlAddedKey(), []).filter(s => s !== symbol)
+  setLocal(wlAddedKey(), addedList)
+
   if (shouldUseSupabase()) {
     const sb = getSupabase()
     if (sb) {
@@ -112,14 +156,10 @@ export async function removeFromWatchlist(symbol: string): Promise<void> {
         .eq('user_id', userId)
         .eq('symbol', symbol)
       if (error) console.error('[Watchlist] Supabase delete error:', error)
-      if (!error) return
     }
+    return
   }
-  const list = getLocal<string[]>(getLocalKey('stockai_watchlist'), DEFAULT_WATCHLIST)
-  setLocal(
-    getLocalKey('stockai_watchlist'),
-    list.filter((s) => s !== symbol)
-  )
+  // localStorage-only mode: delta keys already updated above
 }
 
 // ─── Portfolio ───────────────────────────────────────────

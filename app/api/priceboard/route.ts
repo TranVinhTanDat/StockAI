@@ -3,7 +3,7 @@ import {
   VN30, VN100, VN_MIDCAP, VN_SMALLCAP, VN_DIAMOND,
   VN_FIN_LEAD, VN_FIN_SELECT, VN_DIVIDEND, VN_MITECH,
   VN_FIN, VN_IND, VN_MAT, VN_IT, VN_REAL, VN_CONS, VN_ENE, VN_HEAL,
-  HNX30, HNX_ALL, UPCOM_POPULAR, EXTENDED,
+  HNX30, HNX_ALL, UPCOM_POPULAR, EXTENDED, HOSE_FULL,
   COMPANY_NAMES,
 } from '@/lib/priceboard-data'
 import type { StockBoard } from '@/lib/priceboard-data'
@@ -132,8 +132,8 @@ export async function GET(req: NextRequest) {
       case 'vn100':       symbols = VN100; break
       case 'vnmidcap':    symbols = VN_MIDCAP; break
       case 'vnsmallcap':  symbols = VN_SMALLCAP; break
-      case 'vnallshare':  symbols = Array.from(new Set([...VN100, ...VN_MIDCAP])); break
-      case 'hose':        symbols = Array.from(new Set([...VN100, ...VN_MIDCAP, ...VN_FIN, ...VN_REAL, ...VN_ENE])); break
+      case 'vnallshare':  symbols = Array.from(new Set([...VN100, ...VN_MIDCAP, ...VN_SMALLCAP])); break
+      case 'hose':        symbols = HOSE_FULL; break
       case 'vndiamond':   symbols = VN_DIAMOND; break
       case 'vnfinlead':   symbols = VN_FIN_LEAD; break
       case 'vnfinselect': symbols = VN_FIN_SELECT; break
@@ -142,6 +142,7 @@ export async function GET(req: NextRequest) {
       case 'hnx30':       symbols = HNX30; break
       case 'hnx':         symbols = HNX_ALL; break
       case 'upcom':       symbols = UPCOM_POPULAR; break
+      case 'upcom_all':   symbols = UPCOM_POPULAR; break
       case 'vnfin':       symbols = VN_FIN; break
       case 'vnind':       symbols = VN_IND; break
       case 'vnmat':       symbols = VN_MAT; break
@@ -150,7 +151,7 @@ export async function GET(req: NextRequest) {
       case 'vncons':      symbols = VN_CONS; break
       case 'vnene':       symbols = VN_ENE; break
       case 'vnheal':      symbols = VN_HEAL; break
-      case 'all':         symbols = Array.from(new Set([...VN30, ...HNX30, ...UPCOM_POPULAR, ...EXTENDED])); break
+      case 'all':         symbols = Array.from(new Set([...HOSE_FULL, ...HNX_ALL, ...UPCOM_POPULAR])); break
       case 'extended':    symbols = EXTENDED; break
       default:            symbols = VN30
     }

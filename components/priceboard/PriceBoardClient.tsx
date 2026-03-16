@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
+import Image from 'next/image'
 import useSWR from 'swr'
 import Link from 'next/link'
 import {
-  Search, Star, StarOff, RefreshCw, TrendingUp,
+  Search, Star, StarOff, RefreshCw,
   X, ChevronUp, ChevronDown, ArrowLeft, Clock,
   Activity,
 } from 'lucide-react'
@@ -382,6 +383,16 @@ export default function PriceBoardClient() {
     { refreshInterval: isMarketOpen() ? 5000 : 30000, revalidateOnFocus: false }
   )
 
+  // Global symbol lookup — fires when search looks like a stock code (2-8 uppercase letters/digits)
+  const searchCode = search.trim().toUpperCase()
+  const isCodeLike = /^[A-Z][A-Z0-9]{1,7}$/.test(searchCode)
+  const globalSearchUrl = isCodeLike ? `/api/priceboard?symbols=${encodeURIComponent(searchCode)}` : null
+  const { data: globalSearchData } = useSWR<{ stocks: StockBoard[] }>(
+    globalSearchUrl,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 3000 }
+  )
+
   // Filter + sort
   const stocks = useMemo(() => {
     let list = data?.stocks ?? []
@@ -390,7 +401,12 @@ export default function PriceBoardClient() {
     }
     if (search.trim()) {
       const q = search.trim().toUpperCase()
-      list = list.filter(s => s.sym.includes(q) || s.name.toLowerCase().includes(search.toLowerCase()))
+      const localMatches = list.filter(s => s.sym.includes(q) || s.name.toLowerCase().includes(search.toLowerCase()))
+      // Merge: local results first, then any global search results not already in local
+      const globalExtra = (globalSearchData?.stocks ?? []).filter(
+        gs => !localMatches.some(ls => ls.sym === gs.sym)
+      )
+      list = [...localMatches, ...globalExtra]
     }
     return [...list].sort((a, b) => {
       let diff = 0
@@ -444,9 +460,7 @@ export default function PriceBoardClient() {
       <header className="flex items-center gap-3 px-4 py-2 bg-surface border-b border-border/60 flex-shrink-0 flex-wrap">
         <Link href="/" className="flex items-center gap-2 flex-shrink-0 hover:opacity-80 transition-opacity mr-1">
           <ArrowLeft className="w-4 h-4 text-muted" />
-          <div className="w-6 h-6 rounded-lg bg-accent/15 flex items-center justify-center">
-            <TrendingUp className="w-3 h-3 text-accent" />
-          </div>
+          <Image src="/logo.png" alt="StockAI VN" width={28} height={28} className="rounded-lg" priority />
           <span className="text-sm font-bold text-gray-100">StockAI VN</span>
         </Link>
 
