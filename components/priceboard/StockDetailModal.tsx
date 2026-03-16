@@ -96,6 +96,47 @@ function fmtPct(v: number): string {
   return `${pct.toFixed(1)}%`
 }
 
+// ─── Tooltip ──────────────────────────────────────────────────────────────────
+
+function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <span className="relative group/tip cursor-help inline-flex items-center gap-0.5">
+      {children}
+      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[220px] px-2.5 py-1.5 bg-gray-950 border border-border/60 rounded-lg text-[11px] text-gray-200 leading-relaxed shadow-2xl z-[999] opacity-0 pointer-events-none group-hover/tip:opacity-100 transition-opacity duration-150 text-center whitespace-normal font-normal normal-case tracking-normal">
+        {text}
+        <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-950" />
+      </span>
+    </span>
+  )
+}
+
+const TERM_TIPS: Record<string, string> = {
+  'EPS':        'Thu nhập trên mỗi cổ phiếu (Earnings Per Share). Lợi nhuận sau thuế ÷ số CP lưu hành. EPS cao = sinh lời tốt hơn.',
+  'P/E':        'Hệ số Giá / Lợi nhuận (Price to Earnings). Số năm hoàn vốn tại mức giá hiện tại. P/E thấp thường có nghĩa cổ phiếu đang rẻ hơn so với lợi nhuận.',
+  'BVPS':       'Giá trị sổ sách trên mỗi cổ phiếu (Book Value Per Share). Vốn chủ sở hữu ÷ số CP lưu hành.',
+  'P/B':        'Hệ số Giá / Giá trị sổ sách (Price to Book). P/B < 1 nghĩa là cổ phiếu đang giao dịch dưới giá trị tài sản ròng.',
+  'ROE':        'Tỷ suất sinh lợi trên vốn chủ sở hữu (Return on Equity). Lợi nhuận sau thuế ÷ vốn CSH. ROE cao = dùng vốn hiệu quả.',
+  'ROA':        'Tỷ suất sinh lợi trên tổng tài sản (Return on Assets). Lợi nhuận sau thuế ÷ tổng tài sản. ROA cao = quản lý tài sản hiệu quả.',
+  'Vốn hóa':   'Tổng giá trị thị trường của công ty = Giá cổ phiếu × Số CP đang lưu hành.',
+  'EBITDA':     'Lợi nhuận trước lãi vay, thuế, khấu hao tài sản hữu hình và vô hình. Dùng để so sánh hiệu quả hoạt động giữa các công ty.',
+  'Trần':       'Giá trần: mức giá tối đa được phép giao dịch trong phiên hôm nay (+7% so với TC tại HOSE, +10% tại HNX/UPCOM).',
+  'TC':         'Giá Tham Chiếu: giá đóng cửa của phiên giao dịch trước, là mốc tính biên độ dao động.',
+  'Sàn':        'Giá sàn: mức giá tối thiểu được phép giao dịch trong phiên hôm nay (-7% so với TC tại HOSE, -10% tại HNX/UPCOM).',
+  'Mở cửa':     'Giá khớp lệnh đầu tiên trong phiên giao dịch hôm nay.',
+  'Cao nhất':   'Giá cao nhất trong phiên giao dịch hôm nay.',
+  'Thấp nhất':  'Giá thấp nhất trong phiên giao dịch hôm nay.',
+  'KL Khớp':   'Khối lượng cổ phiếu đã được khớp lệnh trong phiên giao dịch hôm nay.',
+  'NN Mua':     'Khối lượng cổ phiếu nhà đầu tư nước ngoài mua vào trong phiên.',
+  'NN Bán':     'Khối lượng cổ phiếu nhà đầu tư nước ngoài bán ra trong phiên.',
+  'Tỷ lệ NN sở hữu': 'Tỷ lệ % số cổ phiếu đang được nhà đầu tư nước ngoài (NĐTNN) nắm giữ. Room tối đa thường là 49% (một số ngành đặc thù khác).',
+}
+
+function TipLabel({ label }: { label: string }) {
+  const tip = Object.entries(TERM_TIPS).find(([k]) => label.includes(k))?.[1]
+  if (!tip) return <>{label}</>
+  return <Tooltip text={tip}>{label}</Tooltip>
+}
+
 function priceClass(price: number, ref: number, ceil: number, floor: number): string {
   if (!price || !ref) return 'text-gray-300'
   const eps = 50
@@ -456,7 +497,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
 
   const KV = ({ label, value, cls = '' }: { label: string; value: string | number; cls?: string }) => (
     <div className="bg-surface2/50 rounded-lg p-3 space-y-0.5">
-      <p className="text-[10px] text-muted uppercase tracking-wider">{label}</p>
+      <p className="text-[10px] text-muted uppercase tracking-wider"><TipLabel label={label} /></p>
       <p className={`text-sm font-semibold font-mono ${cls || 'text-gray-200'}`}>{typeof value === 'number' ? fmtN(value) : value}</p>
     </div>
   )
@@ -535,7 +576,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
               { label: 'KL Khớp', value: fmtN(stock.vol),    cls: 'text-gray-300 border-border/30 bg-surface2/40'           },
             ].map(({ label, value, cls }) => (
               <div key={label} className={`flex flex-col items-center px-3 py-1.5 rounded-lg border text-center ${cls}`}>
-                <span className="text-[9px] text-muted uppercase tracking-wider">{label}</span>
+                <span className="text-[9px] text-muted uppercase tracking-wider"><TipLabel label={label} /></span>
                 <span className="text-xs font-bold font-mono">{value}</span>
               </div>
             ))}
@@ -713,7 +754,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {/* NN Mua: use VPS today, fallback to CafeF recent */}
                   <div className="bg-green-400/5 border border-green-400/20 rounded-xl p-3">
-                    <p className="text-[10px] text-green-400 uppercase tracking-wider font-semibold">NN Mua</p>
+                    <p className="text-[10px] text-green-400 uppercase tracking-wider font-semibold"><TipLabel label="NN Mua" /></p>
                     {stock.foreignBuy > 0 ? (
                       <>
                         <p className="text-sm font-bold text-green-400 font-mono mt-1">{fmtN(stock.foreignBuy)} CP</p>
@@ -730,7 +771,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
                   </div>
                   {/* NN Bán */}
                   <div className="bg-red-400/5 border border-red-400/20 rounded-xl p-3">
-                    <p className="text-[10px] text-red-400 uppercase tracking-wider font-semibold">NN Bán</p>
+                    <p className="text-[10px] text-red-400 uppercase tracking-wider font-semibold"><TipLabel label="NN Bán" /></p>
                     {stock.foreignSell > 0 ? (
                       <>
                         <p className="text-sm font-bold text-red-400 font-mono mt-1">{fmtN(stock.foreignSell)} CP</p>
@@ -747,7 +788,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
                   </div>
                   {/* Room */}
                   <div className="bg-surface2/50 border border-border/30 rounded-xl p-3">
-                    <p className="text-[10px] text-muted uppercase tracking-wider font-semibold">Tỷ lệ NN sở hữu</p>
+                    <p className="text-[10px] text-muted uppercase tracking-wider font-semibold"><TipLabel label="Tỷ lệ NN sở hữu" /></p>
                     {foreignData?.holdingPct ? (
                       <>
                         <p className="text-sm font-bold text-yellow-400 font-mono mt-1">{foreignData.holdingPct.toFixed(2)}%</p>
@@ -769,7 +810,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
                       <thead className="bg-surface2">
                         <tr>
                           {['Kỳ', 'EPS', 'P/E', 'BVPS', 'P/B', 'ROE %', 'ROA %'].map(h => (
-                            <th key={h} className="px-3 py-2 text-right text-muted font-semibold first:text-left">{h}</th>
+                            <th key={h} className="px-3 py-2 text-right text-muted font-semibold first:text-left"><TipLabel label={h} /></th>
                           ))}
                         </tr>
                       </thead>
