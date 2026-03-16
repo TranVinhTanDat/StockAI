@@ -44,6 +44,43 @@ async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe:
   } catch { return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0 } }
 }
 
+// Fetch CafeF profit growth — 3s hard timeout so it never blocks predict
+async function fetchCafeFGrowth(symbol: string): Promise<{ revenueGrowth: number; profitGrowth: number }> {
+  try {
+    const res = await fetch(
+      `https://cafef.vn/du-lieu/Ajax/PageNew/KeHoachKinhDoanh.ashx?Symbol=${symbol}`,
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(3000) }
+    )
+    if (!res.ok) return { revenueGrowth: 0, profitGrowth: 0 }
+    const data = await res.json()
+    const inner = data?.Data || data?.data || data
+    let yearEntries: Array<{ Year: number; Values: Array<{ Name: string; Value: string }> }> = []
+    if (Array.isArray(inner)) yearEntries = inner
+    else if (Array.isArray(inner?.ListYear)) yearEntries = inner.ListYear
+    else if (inner?.Year) yearEntries = [inner]
+    yearEntries.sort((a, b) => b.Year - a.Year)
+    if (yearEntries.length < 2) return { revenueGrowth: 0, profitGrowth: 0 }
+    const curr = yearEntries[0], prev = yearEntries[1]
+    const REVENUE_NAMES = ['Doanh thu', 'Tổng doanh thu', 'Tổng thu nhập hoạt động', 'Tổng thu nhập thuần', 'Thu nhập lãi và tương đương', 'Thu nhập lãi thuần']
+    const PROFIT_NAMES = ['Lợi nhuận trước thuế', 'Lợi nhuận sau thuế', 'LNTT', 'LNST', 'Tổng Lợi nhuận trước thuế']
+    const findVal = (entry: typeof curr, names: string[]): number => {
+      for (const name of names) {
+        const item = (entry.Values || []).find(v => v.Name?.includes(name))
+        if (item?.Value && item.Value !== 'N/A') {
+          const n = parseFloat(String(item.Value).replace(/\./g, '').replace(',', '.'))
+          if (!isNaN(n) && n > 0) return n
+        }
+      }
+      return 0
+    }
+    const currRev = findVal(curr, REVENUE_NAMES), prevRev = findVal(prev, REVENUE_NAMES)
+    const currProfit = findVal(curr, PROFIT_NAMES), prevProfit = findVal(prev, PROFIT_NAMES)
+    const revenueGrowth = prevRev > 0 && currRev > 0 ? Math.round(((currRev - prevRev) / prevRev) * 1000) / 10 : 0
+    const profitGrowth = prevProfit !== 0 && currProfit !== 0 ? Math.round(((currProfit - prevProfit) / Math.abs(prevProfit)) * 1000) / 10 : 0
+    return { revenueGrowth, profitGrowth }
+  } catch { return { revenueGrowth: 0, profitGrowth: 0 } }
+}
+
 // Fetch VN-Index 30-day trend for market context
 async function fetchVNIndexContext(): Promise<{ trend30d: number; currentLevel: number; rsi: number }> {
   try {
@@ -95,15 +132,17 @@ export async function GET(request: NextRequest) {
     const [vnIndex, ...stockResults] = await Promise.all([
       fetchVNIndexContext(),
       ...symbols.map(async (symbol) => {
-        const [quoteRes, candlesRes, simplizeRes] = await Promise.allSettled([
+        const [quoteRes, candlesRes, simplizeRes, cafeGrowthRes] = await Promise.allSettled([
           fetchQuote(symbol),
           fetchHistory(symbol, 60).catch(() => []),
           fetchSimplizeSummary(symbol),
+          fetchCafeFGrowth(symbol),
         ])
 
         const q = quoteRes.status === 'fulfilled' ? quoteRes.value : null
         const candles = candlesRes.status === 'fulfilled' ? candlesRes.value : []
         const s = simplizeRes.status === 'fulfilled' ? simplizeRes.value : { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0 }
+        const g = cafeGrowthRes.status === 'fulfilled' ? cafeGrowthRes.value : { revenueGrowth: 0, profitGrowth: 0 }
 
         if (!q || q.price <= 0) return null
 
@@ -205,8 +244,8 @@ export async function GET(request: NextRequest) {
           roe: Math.round((s.roe || 0) * 10) / 10,
           roa: Math.round((s.roa || 0) * 10) / 10,
           pb: Math.round((s.pb || 0) * 100) / 100,
-          revenueGrowth: 0,
-          profitGrowth: 0,
+          revenueGrowth: g.revenueGrowth,
+          profitGrowth: g.profitGrowth,
           debtEquity: 0,
           dividendYield: 0,
           // Foreign investor flows
