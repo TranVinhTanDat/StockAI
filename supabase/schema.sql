@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS public.push_subscriptions (
 -- ============================================================
 -- RLS: DISABLED — App uses service_role key on server.
 -- Custom JWT auth is NOT Supabase Auth → auth.uid() = NULL → RLS blocks.
--- All writes go through API routes with service_role key.
+-- All writes go through API routes with service_role key. 
 -- ============================================================
 ALTER TABLE public.app_users          DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.watchlist          DISABLE ROW LEVEL SECURITY;
