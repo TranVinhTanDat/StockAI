@@ -7,6 +7,11 @@ import type { PredictionItem } from '@/types'
 
 export const maxDuration = 60
 
+// In-memory cache per style (20 min TTL) — survives within the same warm Vercel instance.
+// Prevents repeated 504s: first call computes + caches, subsequent calls (SWR refetch on focus) return instantly.
+const _cache = new Map<string, { data: PredictionItem[]; ts: number }>()
+const CACHE_TTL_MS = 20 * 60 * 1000
+
 const VALID_STYLES: InvestmentStyle[] = ['longterm', 'dca', 'swing', 'dividend', 'etf']
 
 // Reduced to 12 symbols per style — keeps execution under Vercel 10s limit
@@ -49,7 +54,7 @@ async function fetchCafeFGrowth(symbol: string): Promise<{ revenueGrowth: number
   try {
     const res = await fetch(
       `https://cafef.vn/du-lieu/Ajax/PageNew/KeHoachKinhDoanh.ashx?Symbol=${symbol}`,
-      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(3000) }
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(3000), next: { revalidate: 3600 } as RequestInit['next'] }
     )
     if (!res.ok) return { revenueGrowth: 0, profitGrowth: 0 }
     const data = await res.json()
@@ -121,6 +126,12 @@ export async function GET(request: NextRequest) {
       { error: 'Claude API key not configured' },
       { status: 500 }
     )
+  }
+
+  // Serve from in-memory cache if available (same Vercel instance, within TTL)
+  const cached = _cache.get(style)
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    return NextResponse.json(cached.data)
   }
 
   try {
@@ -267,6 +278,9 @@ export async function GET(request: NextRequest) {
     }
 
     const predictions: PredictionItem[] = await predictStocks({ style, stocks, vnIndex })
+
+    // Store in cache so SWR refetch on tab focus returns instantly
+    _cache.set(style, { data: predictions, ts: Date.now() })
 
     return NextResponse.json(predictions)
   } catch (error) {
