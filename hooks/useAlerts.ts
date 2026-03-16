@@ -175,6 +175,16 @@ export function useAlerts(token?: string) {
         if (!triggered) continue
 
         anyTriggered = true
+
+        // Fire email notification via server (non-blocking, best-effort)
+        if (token) {
+          fetch('/api/alerts/trigger', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ alertId: alert.id, currentPrice: price }),
+          }).catch(() => {/* silent */})
+        }
+
         await updateAlert(alert.id, {
           triggered_at: new Date().toISOString(),
           is_active: false,

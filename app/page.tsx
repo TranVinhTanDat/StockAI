@@ -41,6 +41,7 @@ import { getCachedAnalysis, setCachedAnalysis, clearCachedAnalysis } from '@/lib
 import { TrendingUp, Bot, Newspaper, Briefcase, Wrench, Bell, BarChart3, Map, History, Shield } from 'lucide-react'
 import { useAuthContext } from '@/components/auth/AuthContext'
 const LoginModal = dynamic(() => import('@/components/auth/LoginModal'), { ssr: false })
+const ChangePasswordModal = dynamic(() => import('@/components/auth/ChangePasswordModal'), { ssr: false })
 const UserManagement = dynamic(() => import('@/components/admin/UserManagement'), { ssr: false })
 
 const CandlestickChart = dynamic(
@@ -84,6 +85,7 @@ export default function Home() {
   const [analysisState, setAnalysisState] = useState<AnalysisState>({ status: 'idle' })
   const [chartSymbol, setChartSymbol] = useState('FPT')
   const [showLogin, setShowLogin] = useState(false)
+  const [showChangePassword, setShowChangePassword] = useState(false)
 
   const { user, isAdmin, isAuthEnabled, signOut } = useAuthContext()
   const [pendingSymbol, setPendingSymbol] = useState<string | null>(null)
@@ -266,6 +268,7 @@ export default function Home() {
   return (
     <>
     {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
+    {showChangePassword && user && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
     <AppShell
       activeSection={activeSection}
       onSectionChange={handleSectionChange}
@@ -275,6 +278,7 @@ export default function Home() {
       isAuthEnabled={isAuthEnabled}
       onLoginClick={() => setShowLogin(true)}
       onLogout={signOut}
+      onChangePassword={user ? () => setShowChangePassword(true) : undefined}
     >
       {/* ══════════════════════════════════════════════════
           THỊ TRƯỜNG

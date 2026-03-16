@@ -5,7 +5,8 @@ import Link from 'next/link'
 import {
   TrendingUp, Bot, Newspaper, Briefcase, Wrench, Bell,
   Table2, BarChart2, History, MoreHorizontal, X,
-  LogIn, LogOut, User, Shield,
+  LogIn, LogOut, User, Shield, KeyRound, ChevronLeft, ChevronRight,
+  AlertTriangle,
 } from 'lucide-react'
 import MarketTicker from './MarketTicker'
 
@@ -42,6 +43,7 @@ interface AppShellProps {
   isAuthEnabled?: boolean
   onLoginClick?: () => void
   onLogout?: () => void
+  onChangePassword?: () => void
 }
 
 export default function AppShell({
@@ -54,13 +56,26 @@ export default function AppShell({
   isAuthEnabled = false,
   onLoginClick,
   onLogout,
+  onChangePassword,
 }: AppShellProps) {
   const [moreOpen, setMoreOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const current = NAV_ITEMS.find(n => n.key === activeSection)
 
   const handleNav = (key: SectionKey) => {
     onSectionChange(key)
     setMoreOpen(false)
+  }
+
+  const handleLogoutClick = () => {
+    setMoreOpen(false)
+    setShowLogoutConfirm(true)
+  }
+
+  const confirmLogout = () => {
+    setShowLogoutConfirm(false)
+    onLogout?.()
   }
 
   const mobileMainItems = NAV_ITEMS.filter(n => MOBILE_MAIN.includes(n.key))
@@ -71,31 +86,104 @@ export default function AppShell({
     <div className="flex h-dvh overflow-hidden bg-bg">
 
       {/* ═══════════════════════════════════════
+          LOGOUT CONFIRM DIALOG
+      ═══════════════════════════════════════ */}
+      {showLogoutConfirm && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <div
+            className="w-full max-w-xs bg-surface rounded-2xl border border-border/60 shadow-2xl p-6 space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-400/10 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-100">Đăng xuất</h3>
+                <p className="text-xs text-muted mt-0.5">Bạn có chắc muốn đăng xuất không?</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 py-2 rounded-xl text-xs font-medium bg-surface2 text-muted hover:text-gray-200 transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={confirmLogout}
+                className="flex-1 py-2 rounded-xl text-xs font-semibold bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25 transition-colors"
+              >
+                Đăng xuất
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════
           DESKTOP SIDEBAR  (hidden on mobile)
       ═══════════════════════════════════════ */}
-      <aside className="hidden md:flex flex-col w-56 flex-shrink-0 bg-surface border-r border-border/60">
+      <aside
+        className={`hidden md:flex flex-col flex-shrink-0 bg-surface border-r border-border/60 relative transition-all duration-300 ${
+          collapsed ? 'w-[60px]' : 'w-56'
+        }`}
+      >
+        {/* Collapse toggle button */}
+        <button
+          onClick={() => setCollapsed(v => !v)}
+          className="absolute -right-3 top-[52px] z-10 w-6 h-6 rounded-full bg-surface border border-border/60 flex items-center justify-center text-muted hover:text-accent hover:border-accent/40 transition-all shadow-sm"
+          title={collapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
+        >
+          {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
+        </button>
 
         {/* Brand */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-border/40 flex-shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-accent/15 flex items-center justify-center ring-1 ring-accent/20 flex-shrink-0">
-            <TrendingUp className="w-4.5 h-4.5 text-accent" />
+        <div className={`flex items-center border-b border-border/40 flex-shrink-0 ${collapsed ? 'px-3 py-5 justify-center' : 'gap-3 px-5 py-5'}`}>
+          {/* Logo image — fallback to TrendingUp icon if /logo.svg missing */}
+          <div className="w-9 h-9 rounded-xl bg-accent/15 flex items-center justify-center ring-1 ring-accent/20 flex-shrink-0 overflow-hidden">
+            <img
+              src="/logo.svg"
+              alt="StockAI VN"
+              className="w-full h-full object-contain"
+              onError={e => {
+                const target = e.currentTarget
+                target.style.display = 'none'
+                const parent = target.parentElement
+                if (parent) {
+                  parent.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-accent" style="color:#00d4aa"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>'
+                }
+              }}
+            />
           </div>
-          <div className="min-w-0">
-            <div className="text-sm font-bold text-gray-100 leading-tight">StockAI VN</div>
-            <div className="text-[10px] text-muted leading-tight">AI · VPS · Vietcap</div>
-          </div>
+          {!collapsed && (
+            <div className="min-w-0">
+              <div className="text-sm font-bold text-gray-100 leading-tight">StockAI VN</div>
+              <div className="text-[10px] text-muted leading-tight">AI · VPS · Vietcap</div>
+            </div>
+          )}
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
           {/* Bảng Giá — at top, separate page link */}
           <Link
             href="/priceboard"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted hover:bg-surface2 hover:text-gray-200 transition-all w-full mb-1"
+            title="Bảng Giá Live"
+            className={`flex items-center rounded-lg text-sm font-medium text-muted hover:bg-surface2 hover:text-gray-200 transition-all w-full mb-1 ${
+              collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
+            }`}
           >
             <Table2 className="w-[18px] h-[18px] flex-shrink-0" />
-            <span className="truncate">Bảng Giá</span>
-            <span className="ml-auto text-[10px] px-1.5 py-0.5 bg-accent/20 text-accent rounded font-semibold">Live</span>
+            {!collapsed && (
+              <>
+                <span className="truncate">Bảng Giá</span>
+                <span className="ml-auto text-[10px] px-1.5 py-0.5 bg-accent/20 text-accent rounded font-semibold">Live</span>
+              </>
+            )}
           </Link>
           <div className="border-t border-border/40 mb-1" />
           {NAV_ITEMS.map(({ key, label, icon: Icon }) => {
@@ -104,13 +192,21 @@ export default function AppShell({
               <button
                 key={key}
                 onClick={() => onSectionChange(key)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                  isActive ? 'bg-accent/10 text-accent' : 'text-muted hover:bg-surface2 hover:text-gray-200'
-                }`}
+                title={collapsed ? label : undefined}
+                className={`w-full flex items-center rounded-lg text-sm font-medium transition-all ${
+                  collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
+                } ${isActive ? 'bg-accent/10 text-accent' : 'text-muted hover:bg-surface2 hover:text-gray-200'}`}
               >
                 <Icon className={`w-[18px] h-[18px] flex-shrink-0 ${isActive ? 'text-accent' : ''}`} />
-                <span className="truncate">{label}</span>
-                {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />}
+                {!collapsed && (
+                  <>
+                    <span className="truncate">{label}</span>
+                    {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />}
+                  </>
+                )}
+                {collapsed && isActive && (
+                  <span className="absolute right-1 w-1 h-4 rounded-full bg-accent" />
+                )}
               </button>
             )
           })}
@@ -121,59 +217,92 @@ export default function AppShell({
               <div className="border-t border-border/40 my-1" />
               <button
                 onClick={() => onSectionChange('admin')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                  activeSection === 'admin' ? 'bg-accent/10 text-accent' : 'text-muted hover:bg-surface2 hover:text-gray-200'
-                }`}
+                title={collapsed ? 'Quản Lý' : undefined}
+                className={`w-full flex items-center rounded-lg text-sm font-medium transition-all ${
+                  collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
+                } ${activeSection === 'admin' ? 'bg-accent/10 text-accent' : 'text-muted hover:bg-surface2 hover:text-gray-200'}`}
               >
                 <Shield className="w-[18px] h-[18px] flex-shrink-0" />
-                <span>Quản Lý</span>
-                {activeSection === 'admin' && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />}
+                {!collapsed && (
+                  <>
+                    <span>Quản Lý</span>
+                    {activeSection === 'admin' && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />}
+                  </>
+                )}
               </button>
             </>
           )}
         </nav>
 
         {/* Credit */}
-        <div className="px-5 py-2 flex-shrink-0">
-          <p className="text-[10px] text-muted/40 text-center tracking-wide">
-            Designed by{' '}
-            <span className="text-accent/60 font-semibold" style={{ fontStyle: 'italic' }}>
-              Trần Đạt
-            </span>
-          </p>
-        </div>
+        {!collapsed && (
+          <div className="px-5 py-2 flex-shrink-0">
+            <p className="text-[10px] text-muted/40 text-center tracking-wide">
+              Designed by{' '}
+              <span className="text-accent/60 font-semibold" style={{ fontStyle: 'italic' }}>
+                Trần Đạt
+              </span>
+            </p>
+          </div>
+        )}
 
         {/* Sidebar footer — auth section (always visible) */}
-        <div className="px-3 py-3 border-t border-border/40 flex-shrink-0">
+        <div className={`py-3 border-t border-border/40 flex-shrink-0 ${collapsed ? 'px-2' : 'px-3'}`}>
           {userName ? (
             <div className="space-y-1">
-              <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-surface2/60">
-                <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
-                  <span className="text-accent text-[10px] font-bold">{userName.charAt(0).toUpperCase()}</span>
+              {!collapsed && (
+                <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-surface2/60">
+                  <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
+                    <span className="text-accent text-[10px] font-bold">{userName.charAt(0).toUpperCase()}</span>
+                  </div>
+                  <span className="text-xs text-gray-300 truncate flex-1">{userName}</span>
+                  {isAdmin && <Shield className="w-3 h-3 text-accent flex-shrink-0" />}
                 </div>
-                <span className="text-xs text-gray-300 truncate flex-1">{userName}</span>
-                {isAdmin && <Shield className="w-3 h-3 text-accent flex-shrink-0" />}
-              </div>
+              )}
+              {collapsed && (
+                <div className="flex justify-center py-1">
+                  <div className="w-7 h-7 rounded-full bg-accent/20 flex items-center justify-center">
+                    <span className="text-accent text-[10px] font-bold">{userName.charAt(0).toUpperCase()}</span>
+                  </div>
+                </div>
+              )}
+              {onChangePassword && !collapsed && (
+                <button
+                  onClick={onChangePassword}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-muted hover:text-accent hover:bg-accent/5 transition-colors"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  Đổi mật khẩu
+                </button>
+              )}
               <button
-                onClick={onLogout}
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-muted hover:text-red-400 hover:bg-red-400/5 transition-colors"
+                onClick={handleLogoutClick}
+                title={collapsed ? 'Đăng xuất' : undefined}
+                className={`w-full flex items-center gap-2 py-1.5 rounded-lg text-xs text-muted hover:text-red-400 hover:bg-red-400/5 transition-colors ${
+                  collapsed ? 'justify-center px-2' : 'px-2'
+                }`}
               >
                 <LogOut className="w-3.5 h-3.5" />
-                Đăng xuất
+                {!collapsed && 'Đăng xuất'}
               </button>
             </div>
           ) : isAuthEnabled ? (
             <button
               onClick={onLoginClick}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
+              title={collapsed ? 'Đăng nhập' : undefined}
+              className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors ${
+                collapsed ? 'px-2' : 'px-3'
+              }`}
             >
               <LogIn className="w-3.5 h-3.5" />
-              Đăng nhập
+              {!collapsed && 'Đăng nhập'}
             </button>
           ) : (
-            <p className="text-[10px] text-muted/50 leading-relaxed text-center">
-              Dữ liệu realtime · Chỉ để tham khảo
-            </p>
+            !collapsed && (
+              <p className="text-[10px] text-muted/50 leading-relaxed text-center">
+                Dữ liệu realtime · Chỉ để tham khảo
+              </p>
+            )
           )}
         </div>
       </aside>
@@ -187,8 +316,20 @@ export default function AppShell({
         <header className="md:hidden flex items-center h-12 px-3 border-b border-border/40 bg-surface flex-shrink-0 gap-2">
           {/* Logo — left */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            <div className="w-7 h-7 rounded-lg bg-accent/15 flex items-center justify-center">
-              <TrendingUp className="w-3.5 h-3.5 text-accent" />
+            <div className="w-7 h-7 rounded-lg bg-accent/15 flex items-center justify-center overflow-hidden ring-1 ring-accent/20">
+              <img
+                src="/logo.svg"
+                alt="StockAI VN"
+                className="w-full h-full object-contain"
+                onError={e => {
+                  const target = e.currentTarget
+                  target.style.display = 'none'
+                  const parent = target.parentElement
+                  if (parent) {
+                    parent.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#00d4aa"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>'
+                  }
+                }}
+              />
             </div>
             <span className="text-sm font-bold text-gray-100">StockAI VN</span>
           </div>
@@ -214,7 +355,7 @@ export default function AppShell({
             {/* Auth */}
             {userName ? (
               <button
-                onClick={onLogout}
+                onClick={handleLogoutClick}
                 title={`Đăng xuất (${userName})`}
                 className="w-8 h-8 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center flex-shrink-0"
               >
@@ -367,8 +508,17 @@ export default function AppShell({
                   <span className="text-sm text-gray-300 flex-1 truncate">{userName}</span>
                   {isAdmin && <Shield className="w-3.5 h-3.5 text-accent flex-shrink-0" />}
                 </div>
+                {onChangePassword && (
+                  <button
+                    onClick={() => { setMoreOpen(false); onChangePassword() }}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-muted hover:bg-accent/5 hover:text-accent transition-all"
+                  >
+                    <KeyRound className="w-5 h-5 flex-shrink-0" />
+                    <span>Đổi mật khẩu</span>
+                  </button>
+                )}
                 <button
-                  onClick={() => { setMoreOpen(false); onLogout?.() }}
+                  onClick={handleLogoutClick}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-400/80 hover:bg-red-400/5 hover:text-red-400 transition-all"
                 >
                   <LogOut className="w-5 h-5 flex-shrink-0" />

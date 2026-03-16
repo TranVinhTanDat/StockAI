@@ -61,7 +61,21 @@ export async function getWatchlist(): Promise<string[]> {
         .eq('user_id', userId)
         .order('added_at', { ascending: true })
       if (error) return getLocal<string[]>(getLocalKey('stockai_watchlist'), DEFAULT_WATCHLIST)
-      return data?.map((d) => d.symbol) ?? DEFAULT_WATCHLIST
+      const symbols = data?.map((d) => d.symbol) ?? []
+      // Auto-copy default watchlist on first login (0 rows)
+      if (symbols.length === 0) {
+        const { data: defaults } = await sb
+          .from('default_watchlist')
+          .select('symbol')
+          .order('sort_order', { ascending: true })
+        if (defaults && defaults.length > 0) {
+          const rows = defaults.map((d) => ({ user_id: userId, symbol: d.symbol }))
+          await sb.from('watchlist').insert(rows)
+          return defaults.map((d) => d.symbol)
+        }
+        return DEFAULT_WATCHLIST
+      }
+      return symbols
     }
   }
   return getLocal<string[]>(getLocalKey('stockai_watchlist'), DEFAULT_WATCHLIST)

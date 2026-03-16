@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useAuthContext } from '@/components/auth/AuthContext'
 import UserManagement from '@/components/admin/UserManagement'
 import DatabaseViewer from '@/components/admin/DatabaseViewer'
+import DefaultWatchlistManager from '@/components/admin/DefaultWatchlistManager'
 import {
   ArrowLeft, TrendingUp, Shield, Users,
   BarChart2, Bell, Database,
@@ -113,6 +114,11 @@ export default function AdminPage() {
         {/* User management */}
         <div className="bg-surface rounded-2xl border border-border/40 p-5">
           <UserManagement />
+        </div>
+
+        {/* Default watchlist */}
+        <div className="bg-surface rounded-2xl border border-border/40 p-5">
+          <DefaultWatchlistManager />
         </div>
 
         {/* Database viewer */}

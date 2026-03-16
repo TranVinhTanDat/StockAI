@@ -111,6 +111,25 @@ CREATE TABLE IF NOT EXISTS public.predictions (
   UNIQUE(user_id, style)
 );
 
+-- ── Default Watchlist (Admin-managed, auto-copied to new users) ──
+CREATE TABLE IF NOT EXISTS public.default_watchlist (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  symbol     TEXT NOT NULL UNIQUE,
+  sort_order INT NOT NULL DEFAULT 0,
+  added_by   UUID NOT NULL,
+  added_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ── Password Reset OTPs ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.password_reset_otps (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email      TEXT NOT NULL,
+  otp        TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at    TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ── Push Subscriptions (Web Push API) ────────────────────────
 CREATE TABLE IF NOT EXISTS public.push_subscriptions (
   endpoint     TEXT PRIMARY KEY,
@@ -136,6 +155,8 @@ ALTER TABLE public.analysis_cache     DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.optimize_results   DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.predictions        DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.push_subscriptions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.default_watchlist   DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.password_reset_otps DISABLE ROW LEVEL SECURITY;
 
 -- ============================================================
 -- GRANT permissions for anon key (client-side browser access)
@@ -153,6 +174,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.analysis_cache     TO anon, authe
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.optimize_results   TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.predictions        TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.push_subscriptions TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.default_watchlist   TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE        ON public.password_reset_otps  TO anon, authenticated;
 
 -- ============================================================
 -- Indexes
@@ -168,3 +191,5 @@ CREATE INDEX IF NOT EXISTS idx_optimize_user     ON public.optimize_results(user
 CREATE INDEX IF NOT EXISTS idx_predictions_user  ON public.predictions(user_id);
 CREATE INDEX IF NOT EXISTS idx_push_user         ON public.push_subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_push_anonymous    ON public.push_subscriptions(anonymous_id);
+CREATE INDEX IF NOT EXISTS idx_default_wl_sort   ON public.default_watchlist(sort_order);
+CREATE INDEX IF NOT EXISTS idx_otp_email         ON public.password_reset_otps(email, expires_at);
