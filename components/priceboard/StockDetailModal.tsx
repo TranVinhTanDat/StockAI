@@ -405,6 +405,9 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
         exchange: stock.exchange,
         industry: basicInfo?.industry || '',
         timestamp: new Date().toISOString(),
+        // Foreign investor flows — essential for AI analysis
+        foreignBuyVol: stock.foreignBuy || 0,
+        foreignSellVol: stock.foreignSell || 0,
       }
 
       // Build fundamental from financialRatios
@@ -440,6 +443,11 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
           symbol: stock.sym,
           quote,
           indicators: histData.indicators,
+          // OHLCV arrays — required for ADX, momentum, volume signal, support/resistance
+          closes:  histData.candles.map((c: { close: number }) => c.close),
+          highs:   histData.candles.map((c: { high: number }) => c.high),
+          lows:    histData.candles.map((c: { low: number }) => c.low),
+          volumes: histData.candles.map((c: { volume: number }) => c.volume),
           fundamental,
           news,
           forceRefresh,
