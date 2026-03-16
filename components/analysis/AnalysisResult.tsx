@@ -273,25 +273,25 @@ export default function AnalysisResult({
 
       {/* ── Score Tabs + Body (collapsible) ────────────────────────────────── */}
       {!collapsed && (<>
-      <div className="border-b border-border">
-        <div className="flex">
+      <div className="border-b border-border overflow-x-auto">
+        <div className="flex min-w-full">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex-1 py-3 text-sm font-medium text-center border-b-2 transition-colors ${
+              className={`flex-1 min-w-0 py-3 text-sm font-medium text-center border-b-2 transition-colors whitespace-nowrap px-2 ${
                 activeTab === tab.key
                   ? 'border-accent text-accent'
                   : 'border-transparent text-muted hover:text-gray-300'
               }`}
             >
               <span>{tab.label}</span>
-              <span className="ml-1.5 text-xs">
+              <span className="hidden sm:inline ml-1.5 text-xs">
                 {Array.from({ length: 10 }, (_, i) => (
                   <span key={i} className={i < tab.score ? (activeTab === tab.key ? 'text-accent' : 'text-gray-500') : 'text-border'}>●</span>
                 ))}
               </span>
-              <span className="ml-1">{tab.score}/10</span>
+              <span className="ml-1 text-xs">{tab.score}/10</span>
             </button>
           ))}
         </div>

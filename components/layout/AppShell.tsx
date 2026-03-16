@@ -256,20 +256,15 @@ export default function AppShell({
             <button
               key={key}
               onClick={() => { handleNav(key) }}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all ${
+              className={`flex-1 flex items-center justify-center transition-all ${
                 isActive ? 'text-accent' : 'text-muted active:text-gray-300'
               }`}
             >
-              <div className={`relative flex items-center justify-center w-8 h-5 ${
+              <div className={`relative flex items-center justify-center w-8 h-8 ${
                 isActive ? 'after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-accent after:rounded-full' : ''
               }`}>
                 <Icon className={`w-5 h-5 transition-transform ${isActive ? 'scale-110' : ''}`} />
               </div>
-              <span className={`text-[10px] font-medium leading-none transition-colors ${
-                isActive ? 'text-accent' : 'text-muted'
-              }`}>
-                {short}
-              </span>
             </button>
           )
         })}
@@ -277,11 +272,11 @@ export default function AppShell({
         {/* Thêm / More button */}
         <button
           onClick={() => setMoreOpen(v => !v)}
-          className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all ${
+          className={`flex-1 flex items-center justify-center transition-all ${
             moreIsActive || moreOpen ? 'text-accent' : 'text-muted active:text-gray-300'
           }`}
         >
-          <div className={`relative flex items-center justify-center w-8 h-5 ${
+          <div className={`relative flex items-center justify-center w-8 h-8 ${
             moreIsActive || moreOpen ? 'after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-accent after:rounded-full' : ''
           }`}>
             {moreOpen
@@ -289,11 +284,6 @@ export default function AppShell({
               : <MoreHorizontal className="w-5 h-5" />
             }
           </div>
-          <span className={`text-[10px] font-medium leading-none ${
-            moreIsActive || moreOpen ? 'text-accent' : 'text-muted'
-          }`}>
-            Thêm
-          </span>
         </button>
       </nav>
 
