@@ -15,6 +15,8 @@ export interface QuoteData {
   foreignBuyVol?: number
   foreignSellVol?: number
   foreignRoom?: number   // remaining foreign ownership room (%)
+  // 365-day OHLCV candles (populated by fetchQuote for reuse in predict route)
+  candles?: CandleData[]
 }
 
 export interface CandleData {

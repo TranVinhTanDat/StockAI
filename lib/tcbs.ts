@@ -68,14 +68,26 @@ export async function fetchQuote(symbol: string): Promise<QuoteData> {
   const change = price - refPrice
   const changePct = refPrice > 0 ? (change / refPrice) * 100 : 0
 
-  // 52-week high/low from history
+  // 52-week high/low + full candle array from history (reused by predict route)
   let high52w = price
   let low52w = price
+  let candles: CandleData[] | undefined
   if (histRes && histRes.ok) {
     const h = await histRes.json()
     if (h.s === 'ok' && h.h && h.l && h.h.length > 0) {
       high52w = Math.max(...h.h) * 1000
       low52w = Math.min(...h.l) * 1000
+      // Build OHLCV array so callers (predict route) can skip a second fetchHistory call
+      if (h.t && h.o && h.c && h.v) {
+        candles = (h.t as number[]).map((ts: number, i: number) => ({
+          time: new Date(ts * 1000).toISOString().split('T')[0],
+          open: (h.o[i] || 0) * 1000,
+          high: (h.h[i] || 0) * 1000,
+          low: (h.l[i] || 0) * 1000,
+          close: (h.c[i] || 0) * 1000,
+          volume: h.v[i] || 0,
+        }))
+      }
     }
   }
 
@@ -96,6 +108,7 @@ export async function fetchQuote(symbol: string): Promise<QuoteData> {
     foreignBuyVol: q.fBVol || 0,
     foreignSellVol: q.fSVol || 0,
     foreignRoom: typeof q.fRoom === 'number' ? q.fRoom : undefined,
+    candles,
   }
 }
 

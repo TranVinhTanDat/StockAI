@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchQuote, fetchHistory } from '@/lib/tcbs'
+import { fetchQuote } from '@/lib/tcbs'
 import { predictStocks, type InvestmentStyle } from '@/lib/claude'
 import { requireAuth } from '@/lib/requireAuth'
 import { INDUSTRY_MAP } from '@/lib/utils'
@@ -147,15 +147,15 @@ export async function GET(request: NextRequest) {
     const [vnIndex, ...stockResults] = await Promise.all([
       fetchVNIndexContext(),
       ...symbols.map(async (symbol) => {
-        const [quoteRes, candlesRes, simplizeRes, cafeGrowthRes] = await Promise.allSettled([
+        const [quoteRes, simplizeRes, cafeGrowthRes] = await Promise.allSettled([
           fetchQuote(symbol),
-          fetchHistory(symbol, 90).catch(() => []),
           fetchSimplizeSummary(symbol),
           fetchCafeFGrowth(symbol),
         ])
 
         const q = quoteRes.status === 'fulfilled' ? quoteRes.value : null
-        const candles = candlesRes.status === 'fulfilled' ? candlesRes.value : []
+        // Reuse the 365d candles already fetched inside fetchQuote (saves 1 VPS request per stock)
+        const candles = q?.candles?.slice(-90) || []
         const s = simplizeRes.status === 'fulfilled' ? simplizeRes.value : { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 }
         const g = cafeGrowthRes.status === 'fulfilled' ? cafeGrowthRes.value : { revenueGrowth: 0, profitGrowth: 0 }
 
