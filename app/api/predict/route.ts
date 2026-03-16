@@ -6,16 +6,18 @@ import { INDUSTRY_MAP } from '@/lib/utils'
 import { calcRSI, calcMACD, calcBB, calcADX, calcSMA } from '@/lib/indicators'
 import type { PredictionItem } from '@/types'
 
-export const maxDuration = 60
+// Edge runtime: 30s hard cap on Vercel Hobby (vs 10s for serverless) — prevents 504 on cold starts
+export const runtime = 'edge'
+export const maxDuration = 30
 
-// In-memory cache per style (20 min TTL) — survives within the same warm Vercel instance.
-// Prevents repeated 504s: first call computes + caches, subsequent calls (SWR refetch on focus) return instantly.
+// In-memory cache (best-effort on edge isolates; very effective on local dev + same-isolate reuse).
+// Primary protection against 504 is now the 30s edge timeout above.
 const _cache = new Map<string, { data: PredictionItem[]; ts: number }>()
 const CACHE_TTL_MS = 20 * 60 * 1000
 
 const VALID_STYLES: InvestmentStyle[] = ['longterm', 'dca', 'swing', 'dividend', 'etf']
 
-// Reduced to 12 symbols per style — keeps execution under Vercel 10s limit
+// 12 symbols per style — data fetched in parallel, total execution ~8-12s (edge 30s limit)
 const STYLE_SYMBOLS: Record<InvestmentStyle, string[]> = {
   // Dài hạn: bluechip tăng trưởng bền vững, ROE cao, lợi thế cạnh tranh
   longterm: ['FPT', 'VNM', 'VCB', 'BID', 'HPG', 'GAS', 'MSN', 'MWG', 'REE', 'PNJ', 'ACB', 'TCB'],

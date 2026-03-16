@@ -1,13 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { chatStockAnalysis, type ChatMessage, type InvestmentStyle } from '@/lib/claude'
 import { requireAuth } from '@/lib/requireAuth'
-import { fetchQuote, fetchHistory } from '@/lib/tcbs'
+import { fetchQuote } from '@/lib/tcbs'
 import { calcRSI, calcMACD, calcSMA, calcBB, calcADX } from '@/lib/indicators'
 
-export const maxDuration = 60
+// Edge runtime: 30s hard cap on Vercel Hobby (vs 10s for serverless) — prevents 504
+export const runtime = 'edge'
+export const maxDuration = 30
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL
   || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+
+// Edge-compatible base64 encoding (replaces Node.js Buffer.from().toString('base64'))
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  const chunks: string[] = []
+  const CHUNK = 0x8000 // 32KB chunks to avoid call stack overflow
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    chunks.push(String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK))))
+  }
+  return btoa(chunks.join(''))
+}
 
 async function fetchVNIndexContext(): Promise<{ trend30d: number; currentLevel: number; rsi: number } | null> {
   try {
@@ -33,7 +46,7 @@ async function fetchSimplize(symbol: string): Promise<{ roa: number; roe: number
   try {
     const res = await fetch(`https://api.simplize.vn/api/company/summary/${symbol}`, {
       headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://simplize.vn/' },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(4000),
       next: { revalidate: 3600 } as RequestInit['next'],
     })
     if (!res.ok) return { roa: 0, roe: 0, pe: 0, pb: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 }
@@ -53,7 +66,7 @@ async function fetchCafeFQuarterlyRatios(symbol: string): Promise<Array<{ period
   try {
     const res = await fetch(
       `https://cafef.vn/du-lieu/Ajax/PageNew/ChiSoTaiChinh.ashx?Symbol=${symbol}&TotalRow=4&ReportType=Q&Sort=DESC`,
-      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(4000), next: { revalidate: 86400 } as RequestInit['next'] }
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(3000), next: { revalidate: 86400 } as RequestInit['next'] }
     )
     if (!res.ok) return []
     const data = await res.json()
@@ -72,7 +85,7 @@ async function fetchCafeFGrowth(symbol: string): Promise<{ revenueGrowth: number
   try {
     const res = await fetch(
       `https://cafef.vn/du-lieu/Ajax/PageNew/KeHoachKinhDoanh.ashx?Symbol=${symbol}`,
-      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(5000), next: { revalidate: 86400 } as RequestInit['next'] }
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(3000), next: { revalidate: 86400 } as RequestInit['next'] }
     )
     if (!res.ok) return { revenueGrowth: 0, profitGrowth: 0 }
     const data = await res.json()
@@ -114,13 +127,14 @@ async function fetchNewsHeadlines(symbol: string): Promise<string[]> {
   } catch { return [] }
 }
 
+// Fetch analyst report PDF — 2s timeout (best-effort, don't block response)
 async function fetchLatestAnalystReportPdf(symbol: string): Promise<{ pdfBase64: string | null; reportTitle: string }> {
   try {
     const res = await fetch(
       `https://cafef.vn/du-lieu/Ajax/PageNew/BaoCaoPhanTich.ashx?Symbol=${symbol}&PageIndex=1&PageSize=3`,
       {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Referer': 'https://cafef.vn/' },
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(2000),
       }
     )
     if (!res.ok) return { pdfBase64: null, reportTitle: '' }
@@ -139,12 +153,12 @@ async function fetchLatestAnalystReportPdf(symbol: string): Promise<{ pdfBase64:
       try {
         const pdfRes = await fetch(cdnUrl, {
           headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StockAI/1.0)' },
-          signal: AbortSignal.timeout(8000),
+          signal: AbortSignal.timeout(2000),
         })
         if (!pdfRes.ok) continue
         const buf = await pdfRes.arrayBuffer()
-        if (buf.byteLength > 10 * 1024 * 1024) continue
-        return { pdfBase64: Buffer.from(buf).toString('base64'), reportTitle: r.Title || '' }
+        if (buf.byteLength > 3 * 1024 * 1024) continue // 3MB max (was 10MB)
+        return { pdfBase64: arrayBufferToBase64(buf), reportTitle: r.Title || '' }
       } catch { continue }
     }
     return { pdfBase64: null, reportTitle: '' }
@@ -171,10 +185,10 @@ export async function POST(request: NextRequest) {
 
     const sym = String(symbol).trim().toUpperCase()
 
-    // Fetch all data in parallel (including quarterly EPS for earnings acceleration analysis)
-    const [quoteRes, histRes, simplizeRes, cafeGrowthRes, newsRes, vnIndexRes, analystReportRes, quarterlyRes] = await Promise.allSettled([
+    // Fetch all data in parallel — fetchQuote already fetches 365d history internally,
+    // so we reuse quote.candles instead of a separate fetchHistory call (saves 1 VPS request)
+    const [quoteRes, simplizeRes, cafeGrowthRes, newsRes, vnIndexRes, analystReportRes, quarterlyRes] = await Promise.allSettled([
       fetchQuote(sym),
-      fetchHistory(sym, 90).catch(() => []),
       fetchSimplize(sym),
       fetchCafeFGrowth(sym),
       fetchNewsHeadlines(sym),
@@ -184,7 +198,8 @@ export async function POST(request: NextRequest) {
     ])
 
     const quote = quoteRes.status === 'fulfilled' ? quoteRes.value : null
-    const candles = histRes.status === 'fulfilled' ? histRes.value : []
+    // Reuse 365d candles from fetchQuote — no separate fetchHistory call needed
+    const candles = quote?.candles?.slice(-90) || []
     const simplize = simplizeRes.status === 'fulfilled' ? simplizeRes.value : { roa: 0, roe: 0, pe: 0, pb: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 }
     const cafeGrowth = cafeGrowthRes.status === 'fulfilled' ? cafeGrowthRes.value : { revenueGrowth: 0, profitGrowth: 0 }
     const newsHeadlines = newsRes.status === 'fulfilled' ? newsRes.value : []

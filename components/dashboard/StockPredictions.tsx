@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import type { PredictionItem } from '@/types'
 import { formatVND, getRecommendationBg } from '@/lib/utils'
 import type { InvestmentStyle } from '@/lib/claude'
@@ -15,6 +15,13 @@ const STYLES: { key: InvestmentStyle; label: string; icon: React.ComponentType<{
   { key: 'swing',    label: 'Lướt Sóng',  icon: Zap,        desc: '1-4 tuần',             color: 'text-gold' },
   { key: 'dividend', label: 'Cổ Tức',     icon: Coins,      desc: 'Thu nhập thụ động',    color: 'text-emerald-400' },
   { key: 'etf',      label: 'VN30 Style', icon: BarChart3,  desc: 'Blue-chip chỉ số',     color: 'text-purple-400' },
+]
+
+// Loading stage messages — cycle through as analysis runs
+const LOADING_STAGES = [
+  'Thu thập dữ liệu VPS + Simplize...',
+  'Claude đang phân tích 12 mã...',
+  'Hoàn thiện kết quả...',
 ]
 
 const RISK_COLORS: Record<string, string> = {
@@ -34,9 +41,24 @@ export default function StockPredictions() {
   const [predictions, setPredictions] = useState<PredictionItem[] | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [retryMsg, setRetryMsg] = useState<string | null>(null)
+  const [loadingStage, setLoadingStage] = useState(0)
+  const stageTimers = useRef<ReturnType<typeof setTimeout>[]>([])
   const [error, setError] = useState(false)
   const [fromStorage, setFromStorage] = useState(false)
   const [predictedAt, setPredictedAt] = useState<string | null>(null)
+
+  // Cycle through loading stage messages while analysis runs
+  useEffect(() => {
+    stageTimers.current.forEach(clearTimeout)
+    stageTimers.current = []
+    if (!isLoading) { setLoadingStage(0); return }
+    setLoadingStage(0)
+    stageTimers.current = [
+      setTimeout(() => setLoadingStage(1), 3500),
+      setTimeout(() => setLoadingStage(2), 14000),
+    ]
+    return () => stageTimers.current.forEach(clearTimeout)
+  }, [isLoading])
 
   // On style change: load from storage (no auto-fetch)
   useEffect(() => {
@@ -123,7 +145,7 @@ export default function StockPredictions() {
               title="Chạy phân tích AI sâu (mất ~30-60s)"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              {isLoading ? (retryMsg ?? 'Đang phân tích...') : 'Phân tích AI'}
+              {isLoading ? (retryMsg ?? LOADING_STAGES[loadingStage]) : 'Phân tích AI'}
             </button>
           </div>
         )}
@@ -193,26 +215,38 @@ export default function StockPredictions() {
 
       {/* Prediction content — hidden in chat mode */}
       {style !== 'chat' && isLoading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="card-glass p-5 animate-pulse space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-border" />
-                <div className="flex-1 space-y-1.5">
-                  <div className="h-4 w-24 bg-border rounded" />
-                  <div className="h-3 w-32 bg-border rounded" />
-                </div>
-                <div className="h-6 w-16 bg-border rounded" />
-              </div>
-              <div className="h-3 w-full bg-border rounded" />
-              <div className="h-3 w-3/4 bg-border rounded" />
-              <div className="flex gap-4">
-                <div className="h-3 w-16 bg-border rounded" />
-                <div className="h-3 w-16 bg-border rounded" />
-                <div className="h-3 w-16 bg-border rounded" />
-              </div>
+        <div className="space-y-3">
+          {/* Stage progress indicator */}
+          <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-accent/5 border border-accent/20 text-xs text-accent">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
+            <span className="transition-all">{retryMsg ?? LOADING_STAGES[loadingStage]}</span>
+            <div className="ml-auto flex gap-1">
+              {LOADING_STAGES.map((_, i) => (
+                <div key={i} className={`h-1 w-6 rounded-full transition-colors ${i <= loadingStage ? 'bg-accent' : 'bg-border'}`} />
+              ))}
             </div>
-          ))}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="card-glass p-5 animate-pulse space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-border" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-4 w-24 bg-border rounded" />
+                    <div className="h-3 w-32 bg-border rounded" />
+                  </div>
+                  <div className="h-6 w-16 bg-border rounded" />
+                </div>
+                <div className="h-3 w-full bg-border rounded" />
+                <div className="h-3 w-3/4 bg-border rounded" />
+                <div className="flex gap-4">
+                  <div className="h-3 w-16 bg-border rounded" />
+                  <div className="h-3 w-16 bg-border rounded" />
+                  <div className="h-3 w-16 bg-border rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
