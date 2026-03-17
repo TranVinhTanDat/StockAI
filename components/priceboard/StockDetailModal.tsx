@@ -11,7 +11,8 @@ import {
 } from 'lucide-react'
 import type { StockBoard } from '@/lib/priceboard-data'
 import type { AnalysisResult as AnalysisResultType, QuoteData } from '@/types'
-import { saveAnalysis, saveReportAnalysis, getLocalReportAnalyses, loadReportAnalysesFromCloud } from '@/lib/storage'
+import { saveAnalysis, saveReportAnalysis, getLocalReportAnalyses, loadReportAnalysesFromCloud, loadAnalysisFromCloud } from '@/lib/storage'
+import { getCachedAnalysis, setCachedAnalysis } from '@/lib/analysisCache'
 import { getClientToken } from '@/lib/requireAuth'
 
 // Dynamic import — CandlestickChart uses lightweight-charts (no SSR)
@@ -453,9 +454,20 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
     return () => { document.body.style.overflow = '' }
   }, [])
 
+  // Auto-load AI result from cache on mount (localStorage first, then Supabase)
+  useEffect(() => {
+    const sym = stock.sym
+    const cached = getCachedAnalysis(sym)
+    if (cached) { setAiResult(cached.result); return }
+    loadAnalysisFromCloud(sym).then(cloud => {
+      if (cloud) setAiResult(cloud.result)
+    })
+  }, [stock.sym])
+
   // ── AI Analysis ──────────────────────────────────────────────────────────────
 
   const runAnalysis = useCallback(async (forceRefresh = false) => {
+    if (!forceRefresh && aiResult) return  // already have cached result
     setAiLoading(true)
     setAiError('')
     if (forceRefresh) setAiResult(null)
@@ -531,6 +543,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       setAiResult(data)
+      setCachedAnalysis(stock.sym, data, quote)
 
       // Save analysis
       await saveAnalysis(stock.sym, data)
@@ -540,7 +553,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
     } finally {
       setAiLoading(false)
     }
-  }, [stock, detail, newsData])
+  }, [stock, detail, newsData, aiResult])
 
   // Build QuoteData for AnalysisResult component
   const quoteForResult: QuoteData = {

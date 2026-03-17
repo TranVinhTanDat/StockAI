@@ -42,6 +42,7 @@ import { useMultiQuote } from '@/hooks/useQuote'
 import { useAlerts } from '@/hooks/useAlerts'
 import type { AnalysisResult as AnalysisResultType, QuoteData, HistoryData, FundamentalData, NewsItem, SavedAnalysis } from '@/types'
 import { getCachedAnalysis, setCachedAnalysis, clearCachedAnalysis } from '@/lib/analysisCache'
+import { loadAnalysisFromCloud } from '@/lib/storage'
 import { TrendingUp, Bot, Newspaper, Briefcase, Wrench, Bell, BarChart3, Map, History, Shield } from 'lucide-react'
 import { useAuthContext } from '@/components/auth/AuthContext'
 const LoginModal = dynamic(() => import('@/components/auth/LoginModal'), { ssr: false })
@@ -229,6 +230,26 @@ export default function Home() {
         })
         return
       }
+      // localStorage miss → check Supabase cross-device cache
+      setAnalysisState({ status: 'loading', step: 0 })
+      const cloudAnalysis = await loadAnalysisFromCloud(upper)
+      if (cloudAnalysis) {
+        const quoteRes = await fetch(`/api/quote?symbol=${upper}`).catch(() => null)
+        const quote: QuoteData = quoteRes?.ok ? await quoteRes.json() : null
+        if (quote) {
+          setCachedAnalysis(upper, cloudAnalysis.result, quote)
+          const h = holdings.find(hh => hh.symbol === upper)
+          setChartSymbol(upper)
+          setAnalysisState({
+            status: 'done', result: cloudAnalysis.result, quote, symbol: upper,
+            fromCache: true, cachedAt: cloudAnalysis.analyzedAt,
+            expiresAt: new Date(new Date(cloudAnalysis.analyzedAt).getTime() + 4 * 60 * 60 * 1000).toISOString(),
+            currentHolding: h ? { qty: h.qty, avgCost: h.avg_cost, totalCost: h.total_cost } : null,
+          })
+          return
+        }
+      }
+      // No cache found anywhere — fall through to run full AI
     }
 
     if (forceRefresh) clearCachedAnalysis(upper)

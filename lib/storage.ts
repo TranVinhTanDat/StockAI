@@ -509,6 +509,31 @@ export async function deleteAlert(id: string): Promise<void> {
   )
 }
 
+/** Load analysis result for a specific symbol from Supabase (cross-device cache). */
+export async function loadAnalysisFromCloud(symbol: string): Promise<{ result: AnalysisResult; analyzedAt: string } | null> {
+  if (!isSupabaseConfigured()) return null
+  await Promise.race([
+    getAuthReadyPromise(),
+    new Promise<void>(resolve => setTimeout(resolve, 3000)),
+  ])
+  if (!shouldUseSupabase()) return null
+  const sb = getSupabase()
+  if (!sb) return null
+  try {
+    const userId = getEffectiveUserId()
+    const { data, error } = await sb
+      .from('analyses')
+      .select('full_result, analyzed_at')
+      .eq('user_id', userId)
+      .eq('symbol', symbol.toUpperCase())
+      .order('analyzed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error || !data) return null
+    return { result: data.full_result as AnalysisResult, analyzedAt: data.analyzed_at }
+  } catch { return null }
+}
+
 // ─── Expose scoped key helper (for analysisCache.ts) ─────────────────────────
 export function getScopedStorageKey(base: string): string {
   return getLocalKey(base)
