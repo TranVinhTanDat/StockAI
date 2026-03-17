@@ -118,3 +118,18 @@ CREATE INDEX IF NOT EXISTS idx_optimize_user    ON public.optimize_results(user_
 CREATE INDEX IF NOT EXISTS idx_predictions_user ON public.predictions(user_id);
 CREATE INDEX IF NOT EXISTS idx_push_user        ON public.push_subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_push_anonymous   ON public.push_subscriptions(anonymous_id);
+
+-- ── Report Analyses Cache (new table) ────────────────────────
+CREATE TABLE IF NOT EXISTS public.report_analyses (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL,
+  report_id   TEXT NOT NULL,
+  symbol      TEXT NOT NULL,
+  source      TEXT NOT NULL,
+  analysis    JSONB NOT NULL,
+  cached_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, report_id)
+);
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.report_analyses TO anon, authenticated;
+CREATE INDEX IF NOT EXISTS idx_report_analyses_user   ON public.report_analyses(user_id, cached_at DESC);
+CREATE INDEX IF NOT EXISTS idx_report_analyses_symbol ON public.report_analyses(user_id, symbol);

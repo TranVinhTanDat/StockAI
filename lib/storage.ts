@@ -630,3 +630,111 @@ export function clearChatHistory(symbol: string): void {
 export function getAllChatSessions(): ChatSessionEntry[] {
   return getLocal<ChatSessionEntry[]>(getLocalKey('stockai_chat_history'), [])
 }
+
+// ─── Report Analyses Cache ─────────────────────────────────────────────────────
+// Stores AI analysis results for analyst reports.
+// Pattern: localStorage (instant) + Supabase (cross-device persistence).
+
+export interface ReportAnalysisEntry {
+  id: string
+  user_id: string
+  report_id: string   // e.g. "cafef_FPT_0" or Vietcap report id
+  symbol: string
+  source: string      // 'cafef' | 'vietcap'
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  analysis: Record<string, any>
+  cached_at: string
+}
+
+function reportCacheLocalKey(source: string, symbol: string): string {
+  return getLocalKey(`stockai_rpt_${source}_${symbol}`)
+}
+
+/** Load all cached analyses for a given source+symbol (from localStorage). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getLocalReportAnalyses(source: string, symbol: string): Record<string, any> {
+  if (typeof window === 'undefined') return {}
+  try {
+    return JSON.parse(localStorage.getItem(reportCacheLocalKey(source, symbol)) || '{}')
+  } catch { return {} }
+}
+
+/** Save an analysis result — localStorage immediately + Supabase async. */
+export async function saveReportAnalysis(
+  reportId: string,
+  symbol: string,
+  source: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  analysis: Record<string, any>
+): Promise<void> {
+  const userId = getEffectiveUserId()
+
+  // 1. Save to localStorage immediately (instant UX)
+  const localCache = getLocalReportAnalyses(source, symbol)
+  localCache[reportId] = { ...analysis, cachedAt: analysis.cachedAt || new Date().toISOString() }
+  // Evict oldest if > 20 entries
+  const keys = Object.keys(localCache)
+  if (keys.length > 20) {
+    const oldest = keys.sort((a, b) =>
+      (localCache[a]?.cachedAt ?? '').localeCompare(localCache[b]?.cachedAt ?? '')
+    )[0]
+    delete localCache[oldest]
+  }
+  try { localStorage.setItem(reportCacheLocalKey(source, symbol), JSON.stringify(localCache)) } catch {}
+
+  // 2. Save to Supabase async (background, non-blocking)
+  if (!shouldUseSupabase()) return
+  const sb = getSupabase()
+  if (!sb) return
+
+  const entry: ReportAnalysisEntry = {
+    id: generateId(),
+    user_id: userId,
+    report_id: reportId,
+    symbol,
+    source,
+    analysis,
+    cached_at: analysis.cachedAt || new Date().toISOString(),
+  }
+
+  // upsert: update if exists, insert if not
+  sb.from('report_analyses')
+    .upsert(entry, { onConflict: 'user_id,report_id' })
+    .then(({ error }) => {
+      if (error) console.error('[ReportAnalysis] Supabase upsert error:', error.message)
+    })
+}
+
+/** Load cached analyses from Supabase for a given symbol (for cross-device sync on mount). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function loadReportAnalysesFromCloud(symbol: string): Promise<Record<string, any>> {
+  if (!shouldUseSupabase()) return {}
+  const sb = getSupabase()
+  if (!sb) return {}
+
+  try {
+    const userId = getEffectiveUserId()
+    const { data, error } = await sb
+      .from('report_analyses')
+      .select('report_id, source, analysis, cached_at')
+      .eq('user_id', userId)
+      .eq('symbol', symbol)
+      .order('cached_at', { ascending: false })
+      .limit(50)
+
+    if (error || !data) return {}
+
+    // Group by source and populate localStorage cache
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result: Record<string, any> = {}
+    for (const row of data) {
+      const entry = { ...row.analysis, cachedAt: row.cached_at }
+      result[row.report_id] = entry
+      // Sync back to localStorage for instant load next time
+      const localCache = getLocalReportAnalyses(row.source, symbol)
+      localCache[row.report_id] = entry
+      try { localStorage.setItem(reportCacheLocalKey(row.source, symbol), JSON.stringify(localCache)) } catch {}
+    }
+    return result
+  } catch { return {} }
+}

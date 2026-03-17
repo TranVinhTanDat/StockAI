@@ -130,6 +130,20 @@ CREATE TABLE IF NOT EXISTS public.password_reset_otps (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- ── Report Analyses Cache ──────────────────────────────────
+-- Stores AI analysis results for analyst reports (CafeF + Vietcap).
+-- Hybrid model: localStorage (instant) + Supabase (cross-device persistence).
+CREATE TABLE IF NOT EXISTS public.report_analyses (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL,
+  report_id   TEXT NOT NULL,       -- e.g. "cafef_FPT_0" or "0" (Vietcap index)
+  symbol      TEXT NOT NULL,       -- e.g. "FPT"
+  source      TEXT NOT NULL,       -- 'cafef' | 'vietcap'
+  analysis    JSONB NOT NULL,      -- full AIAnalysis object
+  cached_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, report_id)
+);
+
 -- ── Push Subscriptions (Web Push API) ────────────────────────
 CREATE TABLE IF NOT EXISTS public.push_subscriptions (
   endpoint     TEXT PRIMARY KEY,
@@ -176,6 +190,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.predictions        TO anon, authe
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.push_subscriptions TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.default_watchlist   TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE        ON public.password_reset_otps  TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.report_analyses     TO anon, authenticated;
 
 -- ============================================================
 -- Indexes
@@ -193,3 +208,5 @@ CREATE INDEX IF NOT EXISTS idx_push_user         ON public.push_subscriptions(us
 CREATE INDEX IF NOT EXISTS idx_push_anonymous    ON public.push_subscriptions(anonymous_id);
 CREATE INDEX IF NOT EXISTS idx_default_wl_sort   ON public.default_watchlist(sort_order);
 CREATE INDEX IF NOT EXISTS idx_otp_email         ON public.password_reset_otps(email, expires_at);
+CREATE INDEX IF NOT EXISTS idx_report_analyses_user   ON public.report_analyses(user_id, cached_at DESC);
+CREATE INDEX IF NOT EXISTS idx_report_analyses_symbol ON public.report_analyses(user_id, symbol);

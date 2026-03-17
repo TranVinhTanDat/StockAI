@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import useSWR from 'swr'
 import {
   Building2, Users, PieChart, BarChart2, Target, Landmark, FileText,
@@ -8,7 +8,7 @@ import {
   Bot, Loader2, RefreshCw, Search,
 } from 'lucide-react'
 import { getClientToken } from '@/lib/requireAuth'
-import { getScopedStorageKey } from '@/lib/storage'
+import { getLocalReportAnalyses, saveReportAnalysis, loadReportAnalysesFromCloud } from '@/lib/storage'
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => {
@@ -441,7 +441,7 @@ function PlanEventsTab({ businessPlan, events }: {
   )
 }
 
-// ── AI analysis cache helpers (scoped per user + symbol) ─────────────────────
+// ── AI analysis types ─────────────────────────────────────────────────────────
 interface AIAnalysis {
   summary: string; keyPoints: string[]; recommendation: string
   targetPrice: number | null; sentiment: string
@@ -449,16 +449,8 @@ interface AIAnalysis {
   hasFullContent?: boolean; cachedAt?: string; error?: string
 }
 
-function rptCacheKey(symbol: string) {
-  return getScopedStorageKey(`stockai_rpt_cafef_${symbol}`)
-}
 function loadRptCache(symbol: string): Record<string, AIAnalysis> {
-  if (typeof window === 'undefined') return {}
-  try { return JSON.parse(localStorage.getItem(rptCacheKey(symbol)) || '{}') } catch { return {} }
-}
-function saveRptCache(symbol: string, cache: Record<string, AIAnalysis>) {
-  if (typeof window === 'undefined') return
-  try { localStorage.setItem(rptCacheKey(symbol), JSON.stringify(cache)) } catch {}
+  return getLocalReportAnalyses('cafef', symbol) as Record<string, AIAnalysis>
 }
 
 function SentimentIcon({ s }: { s: string }) {
@@ -475,8 +467,15 @@ function AnalystReportsTab({ reports, symbol }: {
   const [aiMap, setAiMap]         = useState<Record<string, AIAnalysis | null>>(() => loadRptCache(symbol))
   const [loadingAI, setLoadingAI] = useState<Record<string, boolean>>({})
   const [pdfLoading, setPdfLoading] = useState<string | null>(null)
-  // AI section collapse: key = report index string
   const [aiCollapsed, setAiCollapsed] = useState<Record<string, boolean>>({})
+
+  // Sync from Supabase on mount (cross-device cache)
+  useEffect(() => {
+    loadReportAnalysesFromCloud(symbol).then(cloud => {
+      if (Object.keys(cloud).length > 0)
+        setAiMap(prev => ({ ...cloud, ...prev }))
+    })
+  }, [symbol])
 
   if (reports.length === 0) return <EmptyState text="Không có báo cáo phân tích" />
 
@@ -519,20 +518,11 @@ function AnalystReportsTab({ reports, symbol }: {
       })
       const data = await res.json()
       const result: AIAnalysis = { ...data, cachedAt: new Date().toISOString() }
-      setAiMap(prev => {
-        const next = { ...prev, [id]: result }
-        if (!data.error) {
-          const cache = loadRptCache(symbol)
-          cache[id] = result
-          const keys = Object.keys(cache)
-          if (keys.length > 20) {
-            const oldest = keys.sort((a, b) => (cache[a]?.cachedAt ?? '').localeCompare(cache[b]?.cachedAt ?? ''))[0]
-            delete cache[oldest]
-          }
-          saveRptCache(symbol, cache)
-        }
-        return next
-      })
+      setAiMap(prev => ({ ...prev, [id]: result }))
+      if (!data.error) {
+        // Save to localStorage + Supabase (non-blocking)
+        await saveReportAnalysis(id, symbol, 'cafef', result)
+      }
     } catch {
       setAiMap(prev => ({
         ...prev, [id]: {

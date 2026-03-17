@@ -9,7 +9,11 @@ import {
   TrendingUp, TrendingDown, Minus, RefreshCw, Search,
 } from 'lucide-react'
 import { getClientToken } from '@/lib/requireAuth'
-import { getScopedStorageKey } from '@/lib/storage'
+import {
+  getLocalReportAnalyses,
+  saveReportAnalysis,
+  loadReportAnalysesFromCloud,
+} from '@/lib/storage'
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => {
@@ -71,17 +75,9 @@ function RecommendBadge({ rec }: { rec: string }) {
   )
 }
 
-// ── localStorage helpers ──────────────────────────────────────────────────────
-function cacheKey(prefix: string, symbol: string) {
-  return getScopedStorageKey(`stockai_rpt_${prefix}_${symbol}`)
-}
+// ── Cache helpers — delegates to lib/storage (localStorage + Supabase) ────────
 function loadCache(prefix: string, symbol: string): Record<string, AIAnalysis> {
-  if (typeof window === 'undefined') return {}
-  try { return JSON.parse(localStorage.getItem(cacheKey(prefix, symbol)) || '{}') } catch { return {} }
-}
-function saveCache(prefix: string, symbol: string, cache: Record<string, AIAnalysis>) {
-  if (typeof window === 'undefined') return
-  try { localStorage.setItem(cacheKey(prefix, symbol), JSON.stringify(cache)) } catch {}
+  return getLocalReportAnalyses(prefix, symbol) as Record<string, AIAnalysis>
 }
 
 // ── Shared AI analysis panel ───────────────────────────────────────────────────
@@ -122,22 +118,11 @@ function AIPanel({
       })
       const data = await res.json()
       const result: AIAnalysis = { ...data, cachedAt: new Date().toISOString() }
-      setAiMap(prev => {
-        const next = { ...prev, [id]: result }
-        if (!data.error) {
-          const cache = loadCache(cachePrefix, symbol)
-          cache[id] = result
-          const keys = Object.keys(cache)
-          if (keys.length > 20) {
-            const oldest = keys.sort((a, b) =>
-              (cache[a]?.cachedAt ?? '').localeCompare(cache[b]?.cachedAt ?? '')
-            )[0]
-            delete cache[oldest]
-          }
-          saveCache(cachePrefix, symbol, cache)
-        }
-        return next
-      })
+      setAiMap(prev => ({ ...prev, [id]: result }))
+      if (!data.error) {
+        // Save to localStorage + Supabase (non-blocking)
+        await saveReportAnalysis(id, symbol, cachePrefix, result)
+      }
     } catch {
       setAiMap(prev => ({
         ...prev, [id]: {
@@ -297,8 +282,13 @@ function CafefReportsSection({ symbol }: { symbol: string }) {
   const [loadingMap, setLoadingMap] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
-    const cache = loadCache('cafef', symbol)
-    if (Object.keys(cache).length > 0) setAiMap(prev => ({ ...cache, ...prev }))
+    // 1. Load from localStorage instantly
+    const local = loadCache('cafef', symbol)
+    if (Object.keys(local).length > 0) setAiMap(prev => ({ ...local, ...prev }))
+    // 2. Sync from Supabase (fills in analyses done on other devices)
+    loadReportAnalysesFromCloud(symbol).then(cloud => {
+      if (Object.keys(cloud).length > 0) setAiMap(prev => ({ ...cloud, ...prev }))
+    })
   }, [symbol])
 
   if (isLoading) return (
@@ -417,8 +407,13 @@ function VietcapReportsSection({ symbol }: { symbol: string }) {
   const [loadingMap, setLoadingMap] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
-    const cache = loadCache('vietcap', symbol)
-    if (Object.keys(cache).length > 0) setAiMap(prev => ({ ...cache, ...prev }))
+    // 1. Load from localStorage instantly
+    const local = loadCache('vietcap', symbol)
+    if (Object.keys(local).length > 0) setAiMap(prev => ({ ...local, ...prev }))
+    // 2. Sync from Supabase (fills in analyses done on other devices)
+    loadReportAnalysesFromCloud(symbol).then(cloud => {
+      if (Object.keys(cloud).length > 0) setAiMap(prev => ({ ...cloud, ...prev }))
+    })
   }, [symbol])
 
   if (isLoading) return (
