@@ -153,7 +153,7 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 
 interface ReportAnalysis { summary: string; keyPoints: string[]; recommendation: string; sentiment: string; riskFactors: string[]; catalysts: string[]; conclusion: string; readPdf?: boolean; hasFullContent?: boolean; targetPrice?: number }
 
-function ReportCard({ report }: { report: CompanyDetail['analystReports'][0] }) {
+function ReportCard({ report, symbol }: { report: CompanyDetail['analystReports'][0]; symbol: string }) {
   const [analysis, setAnalysis] = useState<ReportAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -163,13 +163,16 @@ function ReportCard({ report }: { report: CompanyDetail['analystReports'][0] }) 
   const openPdf = async () => {
     if (!report.url || pdfLoading) return
     setPdfLoading(true)
+    // Open window synchronously within user gesture (avoids mobile popup blocker).
+    // Must NOT use 'noopener' here — that returns null and kills our reference.
+    const win = window.open('', '_blank')
     try {
       const res = await fetch(`/api/report-pdf?url=${encodeURIComponent(report.url)}`)
       const data = await res.json()
       const pdfUrl = data.pdfUrl || report.url
-      window.open(pdfUrl, '_blank', 'noopener,noreferrer')
+      if (win) { win.location.href = pdfUrl } else { window.open(pdfUrl, '_blank') }
     } catch {
-      window.open(report.url, '_blank', 'noopener,noreferrer')
+      if (win) { win.location.href = report.url } else { window.open(report.url, '_blank') }
     } finally {
       setPdfLoading(false)
     }
@@ -185,7 +188,7 @@ function ReportCard({ report }: { report: CompanyDetail['analystReports'][0] }) 
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ url: report.url, title: report.title, symbol: '', reportType: 'Báo cáo phân tích', date: report.date }),
+        body: JSON.stringify({ url: report.url, title: report.title, symbol, reportType: report.source || 'Báo cáo phân tích', date: report.date }),
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
@@ -1027,7 +1030,7 @@ export default function StockDetailModal({ stock, onClose }: { stock: StockBoard
                   Đang tải báo cáo...
                 </div>
               ) : detail.analystReports?.length ? (
-                detail.analystReports.map((r, i) => <ReportCard key={i} report={r} />)
+                detail.analystReports.map((r, i) => <ReportCard key={i} report={r} symbol={stock.sym} />)
               ) : (
                 <div className="text-center py-16 text-muted">
                   <BookOpen className="w-8 h-8 mx-auto mb-2 opacity-30" />

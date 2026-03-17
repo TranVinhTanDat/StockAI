@@ -16,7 +16,7 @@ async function fetchIndexFromVPS(symbol: string, fallback: number): Promise<{
     const fromTs = toTs - 5 * 86400
     const res = await fetch(
       `${VPS_HISTORY_URL}?symbol=${symbol}&resolution=D&from=${fromTs}&to=${toTs}`,
-      { next: { revalidate: 60 } }
+      { next: { revalidate: 60 }, signal: AbortSignal.timeout(8000) }
     )
     if (!res.ok) throw new Error('VPS fetch failed')
     const data = await res.json()

@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ error: 'PDF not found in page' }, { status: 404 })
+    return NextResponse.json({ pdfUrl: null })
   } catch {
     return NextResponse.json({ error: 'Failed to fetch report page' }, { status: 500 })
   }

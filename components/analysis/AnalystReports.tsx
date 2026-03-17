@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import useSWR from 'swr'
 import type { AnalystReport } from '@/app/api/analyst-reports/route'
 import {
   FileText, ExternalLink, ChevronRight, ChevronDown, X, Bot, Loader2,
-  TrendingUp, TrendingDown, Minus, File,
+  TrendingUp, TrendingDown, Minus, RefreshCw,
 } from 'lucide-react'
 import { getClientToken } from '@/lib/requireAuth'
+import { getScopedStorageKey } from '@/lib/storage'
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => {
@@ -45,15 +46,9 @@ interface AIAnalysis {
   catalysts: string[]
   conclusion: string
   hasFullContent?: boolean
+  parseError?: boolean
   error?: string
-}
-
-interface PdfModal {
-  open: boolean
-  loading: boolean
-  url: string
-  title: string
-  error: string
+  cachedAt?: string
 }
 
 interface Props {
@@ -81,6 +76,26 @@ function RecommendBadge({ rec }: { rec: string }) {
   )
 }
 
+// ── localStorage helpers for report analysis cache ────────────────────────────
+function getCacheKey(symbol: string): string {
+  return getScopedStorageKey(`stockai_rpt_${symbol}`)
+}
+
+function loadCache(symbol: string): Record<string, AIAnalysis> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(getCacheKey(symbol))
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+function saveCache(symbol: string, cache: Record<string, AIAnalysis>): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(getCacheKey(symbol), JSON.stringify(cache))
+  } catch {}
+}
+
 export default function AnalystReports({ symbol }: Props) {
   const { data: reports, isLoading } = useSWR<AnalystReport[]>(
     symbol ? `/api/analyst-reports?symbol=${symbol}` : null,
@@ -92,11 +107,22 @@ export default function AnalystReports({ symbol }: Props) {
   const [showAll, setShowAll] = useState(false)
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, AIAnalysis | null>>({})
   const [loadingAI, setLoadingAI] = useState<Record<string, boolean>>({})
-  const [pdfLoadingId, setPdfLoadingId] = useState<string | null>(null)
+  // Track which report's AI section is collapsed (true = collapsed)
+  const [collapsedAI, setCollapsedAI] = useState<Record<string, boolean>>({})
 
-  const analyzeReport = async (report: AnalystReport) => {
-    if (aiAnalyses[report.id] || loadingAI[report.id]) return
+  // Load cached analyses from localStorage on mount / symbol change
+  useEffect(() => {
+    const cache = loadCache(symbol)
+    if (Object.keys(cache).length > 0) {
+      setAiAnalyses(prev => ({ ...cache, ...prev }))
+    }
+  }, [symbol])
+
+  const analyzeReport = async (report: AnalystReport, forceRefresh = false) => {
+    if (!forceRefresh && (aiAnalyses[report.id] || loadingAI[report.id])) return
     setLoadingAI(prev => ({ ...prev, [report.id]: true }))
+    // Expand AI section when analysis starts
+    setCollapsedAI(prev => ({ ...prev, [report.id]: false }))
     try {
       const token = getClientToken()
       const res = await fetch('/api/report-analyze', {
@@ -114,7 +140,27 @@ export default function AnalystReports({ symbol }: Props) {
         }),
       })
       const data = await res.json()
-      setAiAnalyses(prev => ({ ...prev, [report.id]: data }))
+      const result: AIAnalysis = { ...data, cachedAt: new Date().toISOString() }
+      setAiAnalyses(prev => {
+        const next = { ...prev, [report.id]: result }
+        // Persist to localStorage (only save successful non-error analyses)
+        if (!data.error) {
+          const cache = loadCache(symbol)
+          cache[report.id] = result
+          // Keep max 20 cached analyses per symbol
+          const keys = Object.keys(cache)
+          if (keys.length > 20) {
+            const oldest = keys.sort((a, b) => {
+              const ta = cache[a]?.cachedAt ?? ''
+              const tb = cache[b]?.cachedAt ?? ''
+              return ta.localeCompare(tb)
+            })[0]
+            delete cache[oldest]
+          }
+          saveCache(symbol, cache)
+        }
+        return next
+      })
     } catch {
       setAiAnalyses(prev => ({
         ...prev,
@@ -130,20 +176,8 @@ export default function AnalystReports({ symbol }: Props) {
     }
   }
 
-  const openPdf = async (report: AnalystReport, e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!report.url || pdfLoadingId === report.id) return
-    setPdfLoadingId(report.id)
-    try {
-      const res = await fetch(`/api/report-pdf?url=${encodeURIComponent(report.url)}`)
-      const data = await res.json()
-      window.open(data.pdfUrl || report.url, '_blank', 'noopener,noreferrer')
-    } catch {
-      window.open(report.url, '_blank', 'noopener,noreferrer')
-    } finally {
-      setPdfLoadingId(null)
-    }
-  }
+  // Whether the URL is a direct PDF (not just an article page)
+  const isPdfUrl = (url: string | null) => /\.pdf(\?.*)?$/i.test(url || '')
 
   if (isLoading) {
     return (
@@ -185,6 +219,9 @@ export default function AnalystReports({ symbol }: Props) {
             const isExpanded = expandedId === r.id
             const ai = aiAnalyses[r.id]
             const isLoadingAI = loadingAI[r.id]
+            const isAICollapsed = collapsedAI[r.id] ?? false
+            const hasCachedAI = !!(ai && !ai.error)
+
             return (
               <div key={r.id}>
                 {/* Clickable row */}
@@ -198,10 +235,15 @@ export default function AnalystReports({ symbol }: Props) {
                   <span className="text-xs text-muted tabular-nums whitespace-nowrap">
                     {formatReportDate(r.date)}
                   </span>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex items-center gap-2">
                     <p className="text-xs text-gray-200 truncate" title={r.title}>
                       {r.title}
                     </p>
+                    {hasCachedAI && (
+                      <span className="flex-shrink-0 text-[9px] bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium">
+                        AI
+                      </span>
+                    )}
                   </div>
                   <div className="flex justify-end">
                     <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${getTypeColor(r.reportType)}`}>
@@ -243,6 +285,7 @@ export default function AnalystReports({ symbol }: Props) {
                     <div className="flex items-center gap-2 px-4 pb-4 flex-wrap">
                       {r.url && (
                         <>
+                          {/* "Đọc báo cáo" — always an <a> tag (no popup blocker risk) */}
                           <a
                             href={r.url}
                             target="_blank"
@@ -251,33 +294,51 @@ export default function AnalystReports({ symbol }: Props) {
                             className="inline-flex items-center gap-1.5 text-xs bg-surface text-muted hover:text-gray-200 border border-border px-3 py-1.5 rounded-lg transition-colors"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
-                            Đọc bản gốc
+                            Đọc báo cáo
                           </a>
-                          <button
-                            onClick={(e) => openPdf(r, e)}
-                            disabled={pdfLoadingId === r.id}
-                            className="inline-flex items-center gap-1.5 text-xs bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                          >
-                            {pdfLoadingId === r.id
-                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              : <File className="w-3.5 h-3.5" />}
-                            Xem PDF
-                          </button>
+                          {/* Show "Tải PDF" only for actual PDF URLs */}
+                          {isPdfUrl(r.url) && (
+                            <a
+                              href={r.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1.5 text-xs bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              Tải PDF
+                            </a>
+                          )}
                         </>
                       )}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); analyzeReport(r) }}
-                        disabled={isLoadingAI || !!ai}
-                        className="inline-flex items-center gap-1.5 text-xs bg-accent/10 hover:bg-accent/20 text-accent border border-accent/20 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                      >
-                        {isLoadingAI
-                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          : <Bot className="w-3.5 h-3.5" />}
-                        {ai ? 'Đã phân tích' : isLoadingAI ? 'Đang phân tích...' : 'Phân tích AI'}
-                      </button>
+                      {/* AI analyze / re-analyze button */}
+                      {!hasCachedAI ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); analyzeReport(r) }}
+                          disabled={isLoadingAI}
+                          className="inline-flex items-center gap-1.5 text-xs bg-accent/10 hover:bg-accent/20 text-accent border border-accent/20 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {isLoadingAI
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Bot className="w-3.5 h-3.5" />}
+                          {isLoadingAI ? 'Đang phân tích...' : 'Phân tích AI'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); analyzeReport(r, true) }}
+                          disabled={isLoadingAI}
+                          className="inline-flex items-center gap-1.5 text-xs bg-surface text-muted hover:text-accent border border-border px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                          title="Phân tích lại"
+                        >
+                          {isLoadingAI
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <RefreshCw className="w-3.5 h-3.5" />}
+                          {isLoadingAI ? 'Đang phân tích...' : 'Phân tích lại'}
+                        </button>
+                      )}
                     </div>
 
-                    {/* AI Analysis Result */}
+                    {/* AI Analysis loading */}
                     {isLoadingAI && (
                       <div className="mx-4 mb-4 bg-bg/40 rounded-lg p-4 flex items-center gap-3">
                         <Loader2 className="w-5 h-5 text-accent animate-spin flex-shrink-0" />
@@ -285,84 +346,107 @@ export default function AnalystReports({ symbol }: Props) {
                       </div>
                     )}
 
-                    {ai && !ai.error && (
-                      <div className="mx-4 mb-4 bg-bg/40 rounded-lg p-4 space-y-3 border border-accent/10">
-                        {/* Header */}
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                    {/* AI Analysis Result */}
+                    {ai && !ai.error && !isLoadingAI && (
+                      <div className="mx-4 mb-4 bg-bg/40 rounded-lg border border-accent/10 overflow-hidden">
+                        {/* Collapsible header */}
+                        <button
+                          className="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-surface2/30 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setCollapsedAI(prev => ({ ...prev, [r.id]: !isAICollapsed }))
+                          }}
+                        >
                           <div className="flex items-center gap-2">
                             <Bot className="w-3.5 h-3.5 text-accent" />
                             <span className="text-xs font-semibold text-accent">Phân tích AI</span>
                             {!ai.hasFullContent && (
                               <span className="text-[10px] text-muted/60 italic">(dựa trên tiêu đề)</span>
                             )}
+                            {ai.parseError && (
+                              <span className="text-[10px] text-gold/70 italic">(tóm tắt cơ bản)</span>
+                            )}
+                            {ai.cachedAt && (
+                              <span className="text-[10px] text-muted/40">
+                                · {new Date(ai.cachedAt).toLocaleDateString('vi-VN')}
+                              </span>
+                            )}
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-3">
                             <RecommendBadge rec={ai.recommendation} />
                             <span className="text-[10px] text-muted flex items-center">
                               <SentimentIcon s={ai.sentiment} />
                               {ai.sentiment}
                             </span>
+                            {isAICollapsed
+                              ? <ChevronRight className="w-3.5 h-3.5 text-muted/60" />
+                              : <ChevronDown className="w-3.5 h-3.5 text-muted/60" />}
                           </div>
-                        </div>
+                        </button>
 
-                        {/* Summary */}
-                        <p className="text-xs text-gray-300 leading-relaxed">{ai.summary}</p>
+                        {/* Collapsible body */}
+                        {!isAICollapsed && (
+                          <div className="px-4 pb-4 pt-1 space-y-3">
+                            {/* Summary */}
+                            <p className="text-xs text-gray-300 leading-relaxed">{ai.summary}</p>
 
-                        {/* Key points */}
-                        {ai.keyPoints?.length > 0 && (
-                          <div>
-                            <p className="text-[10px] text-muted font-semibold uppercase mb-1">Điểm chính</p>
-                            <ul className="space-y-1">
-                              {ai.keyPoints.map((pt, i) => (
-                                <li key={i} className="text-xs text-gray-300 flex gap-1.5">
-                                  <span className="text-accent flex-shrink-0 mt-0.5">→</span>
-                                  <span>{pt}</span>
-                                </li>
-                              ))}
-                            </ul>
+                            {/* Key points */}
+                            {ai.keyPoints?.length > 0 && (
+                              <div>
+                                <p className="text-[10px] text-muted font-semibold uppercase mb-1.5">Điểm chính</p>
+                                <ul className="space-y-1">
+                                  {ai.keyPoints.map((pt, i) => (
+                                    <li key={i} className="text-xs text-gray-300 flex gap-1.5">
+                                      <span className="text-accent flex-shrink-0 mt-0.5">→</span>
+                                      <span>{pt}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Catalysts & Risks */}
+                            <div className="grid grid-cols-2 gap-3">
+                              {ai.catalysts?.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] text-accent font-semibold uppercase mb-1">Động lực tăng</p>
+                                  <ul className="space-y-0.5">
+                                    {ai.catalysts.map((c, i) => (
+                                      <li key={i} className="text-[11px] text-gray-400">{c}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {ai.riskFactors?.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] text-danger font-semibold uppercase mb-1">Rủi ro</p>
+                                  <ul className="space-y-0.5">
+                                    {ai.riskFactors.map((rf, i) => (
+                                      <li key={i} className="text-[11px] text-gray-400">{rf}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Conclusion */}
+                            {ai.conclusion && (
+                              <p className="text-xs text-gray-400 bg-surface/50 rounded p-2 italic leading-relaxed border-l-2 border-accent/30">
+                                {ai.conclusion}
+                              </p>
+                            )}
+
+                            {ai.targetPrice ? (
+                              <p className="text-xs text-gold">
+                                Giá mục tiêu: <span className="font-semibold">{ai.targetPrice.toLocaleString('vi-VN')}₫</span>
+                              </p>
+                            ) : null}
                           </div>
-                        )}
-
-                        {/* Catalysts & Risks */}
-                        <div className="grid grid-cols-2 gap-3">
-                          {ai.catalysts?.length > 0 && (
-                            <div>
-                              <p className="text-[10px] text-accent font-semibold uppercase mb-1">Động lực tăng</p>
-                              <ul className="space-y-0.5">
-                                {ai.catalysts.map((c, i) => (
-                                  <li key={i} className="text-[11px] text-gray-400">{c}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {ai.riskFactors?.length > 0 && (
-                            <div>
-                              <p className="text-[10px] text-danger font-semibold uppercase mb-1">Rủi ro</p>
-                              <ul className="space-y-0.5">
-                                {ai.riskFactors.map((rf, i) => (
-                                  <li key={i} className="text-[11px] text-gray-400">{rf}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Conclusion */}
-                        {ai.conclusion && (
-                          <p className="text-xs text-gray-400 bg-surface/50 rounded p-2 italic leading-relaxed border-l-2 border-accent/30">
-                            {ai.conclusion}
-                          </p>
-                        )}
-
-                        {ai.targetPrice && (
-                          <p className="text-xs text-gold">
-                            Giá mục tiêu: <span className="font-semibold">{ai.targetPrice.toLocaleString('vi-VN')}₫</span>
-                          </p>
                         )}
                       </div>
                     )}
 
-                    {ai?.error && (
+                    {ai?.error && !isLoadingAI && (
                       <div className="mx-4 mb-4 text-xs text-danger bg-danger/10 rounded-lg p-3">
                         {ai.error}
                       </div>
