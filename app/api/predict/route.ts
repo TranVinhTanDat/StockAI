@@ -164,11 +164,10 @@ export async function GET(request: NextRequest) {
     const [vnIndex, ...stockResults] = await Promise.all([
       fetchVNIndexContext(),
       ...symbols.map(async (symbol) => {
-        const [quoteRes, simplizeRes, cafeGrowthRes, newsRes] = await Promise.allSettled([
+        const [quoteRes, simplizeRes, cafeGrowthRes] = await Promise.allSettled([
           fetchQuote(symbol),
           fetchSimplizeSummary(symbol),
           fetchCafeFGrowth(symbol),
-          fetchStockNewsHeadlines(symbol),
         ])
 
         const q = quoteRes.status === 'fulfilled' ? quoteRes.value : null
@@ -176,7 +175,7 @@ export async function GET(request: NextRequest) {
         const candles = q?.candles?.slice(-90) || []
         const s = simplizeRes.status === 'fulfilled' ? simplizeRes.value : { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 }
         const g = cafeGrowthRes.status === 'fulfilled' ? cafeGrowthRes.value : { revenueGrowth: 0, profitGrowth: 0 }
-        const newsHeadlines = newsRes.status === 'fulfilled' ? newsRes.value : []
+        const newsHeadlines: string[] = []
 
         if (!q || q.price <= 0) return null
 
