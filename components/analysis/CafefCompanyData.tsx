@@ -5,7 +5,10 @@ import useSWR from 'swr'
 import {
   Building2, Users, PieChart, BarChart2, Target, Landmark, FileText,
   ExternalLink, Globe, Calendar, TrendingUp, TrendingDown, ChevronDown, ChevronUp,
+  Bot, Loader2, RefreshCw, Search,
 } from 'lucide-react'
+import { getClientToken } from '@/lib/requireAuth'
+import { getScopedStorageKey } from '@/lib/storage'
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => {
@@ -438,55 +441,302 @@ function PlanEventsTab({ businessPlan, events }: {
   )
 }
 
-function AnalystReportsTab({ reports }: { reports: CompanyDetailData['analystReports'] }) {
-  const [expanded, setExpanded] = useState<number | null>(null)
+// ── AI analysis cache helpers (scoped per user + symbol) ─────────────────────
+interface AIAnalysis {
+  summary: string; keyPoints: string[]; recommendation: string
+  targetPrice: number | null; sentiment: string
+  riskFactors: string[]; catalysts: string[]; conclusion: string
+  hasFullContent?: boolean; cachedAt?: string; error?: string
+}
+
+function rptCacheKey(symbol: string) {
+  return getScopedStorageKey(`stockai_rpt_cafef_${symbol}`)
+}
+function loadRptCache(symbol: string): Record<string, AIAnalysis> {
+  if (typeof window === 'undefined') return {}
+  try { return JSON.parse(localStorage.getItem(rptCacheKey(symbol)) || '{}') } catch { return {} }
+}
+function saveRptCache(symbol: string, cache: Record<string, AIAnalysis>) {
+  if (typeof window === 'undefined') return
+  try { localStorage.setItem(rptCacheKey(symbol), JSON.stringify(cache)) } catch {}
+}
+
+function SentimentIcon({ s }: { s: string }) {
+  if (s === 'TÍCH CỰC') return <TrendingUp className="w-3 h-3 text-accent inline mr-0.5" />
+  if (s === 'TIÊU CỰC') return <TrendingDown className="w-3 h-3 text-danger inline mr-0.5" />
+  return null
+}
+
+function AnalystReportsTab({ reports, symbol }: {
+  reports: CompanyDetailData['analystReports']
+  symbol: string
+}) {
+  const [expanded, setExpanded]   = useState<number | null>(null)
+  const [aiMap, setAiMap]         = useState<Record<string, AIAnalysis | null>>(() => loadRptCache(symbol))
+  const [loadingAI, setLoadingAI] = useState<Record<string, boolean>>({})
+  const [pdfLoading, setPdfLoading] = useState<string | null>(null)
+  // AI section collapse: key = report index string
+  const [aiCollapsed, setAiCollapsed] = useState<Record<string, boolean>>({})
 
   if (reports.length === 0) return <EmptyState text="Không có báo cáo phân tích" />
 
+  const rptId = (i: number) => `${symbol}_${i}`
+
+  const openPdf = async (r: CompanyDetailData['analystReports'][0], id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!r.url || pdfLoading === id) return
+    setPdfLoading(id)
+    // Open window synchronously (within user gesture) — must NOT use noopener (kills reference)
+    const win = window.open('', '_blank')
+    try {
+      const res  = await fetch(`/api/report-pdf?url=${encodeURIComponent(r.url)}`)
+      const data = await res.json()
+      const url  = data.pdfUrl || r.url
+      if (win) { win.location.href = url } else { window.open(url, '_blank') }
+    } catch {
+      if (win) { win.location.href = r.url } else { window.open(r.url, '_blank') }
+    } finally {
+      setPdfLoading(null)
+    }
+  }
+
+  const analyzeReport = async (r: CompanyDetailData['analystReports'][0], id: string, force = false) => {
+    if (!force && (aiMap[id] || loadingAI[id])) return
+    setLoadingAI(prev => ({ ...prev, [id]: true }))
+    setAiCollapsed(prev => ({ ...prev, [id]: false }))
+    try {
+      const token = getClientToken()
+      const res = await fetch('/api/report-analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          url: r.url, title: r.title, symbol,
+          reportType: r.source || 'Báo cáo phân tích CafeF', date: r.date,
+        }),
+      })
+      const data = await res.json()
+      const result: AIAnalysis = { ...data, cachedAt: new Date().toISOString() }
+      setAiMap(prev => {
+        const next = { ...prev, [id]: result }
+        if (!data.error) {
+          const cache = loadRptCache(symbol)
+          cache[id] = result
+          const keys = Object.keys(cache)
+          if (keys.length > 20) {
+            const oldest = keys.sort((a, b) => (cache[a]?.cachedAt ?? '').localeCompare(cache[b]?.cachedAt ?? ''))[0]
+            delete cache[oldest]
+          }
+          saveRptCache(symbol, cache)
+        }
+        return next
+      })
+    } catch {
+      setAiMap(prev => ({
+        ...prev, [id]: {
+          summary: 'Không thể phân tích báo cáo này.',
+          keyPoints: [], recommendation: 'KHÔNG RÕ', targetPrice: null,
+          sentiment: 'TRUNG TÍNH', riskFactors: [], catalysts: [], conclusion: '',
+          error: 'Lỗi kết nối',
+        },
+      }))
+    } finally {
+      setLoadingAI(prev => ({ ...prev, [id]: false }))
+    }
+  }
+
   return (
     <div className="space-y-2">
-      {reports.map((r, i) => (
-        <div key={i} className="bg-surface2/40 rounded-lg overflow-hidden">
-          <div
-            className="flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-surface2/60 transition-colors"
-            onClick={() => setExpanded(expanded === i ? null : i)}>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-gray-200 leading-snug">{r.title}</p>
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <span className="text-[10px] text-muted">{fmtDate(r.date)}</span>
-                {r.source && <span className="text-[10px] text-muted">· {r.source}</span>}
-                {r.recommendation && (
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${recColor(r.recommendation)}`}>
-                    {r.recommendation}
-                  </span>
+      <p className="text-[10px] text-muted/60 leading-relaxed px-1">
+        Nội dung từ CafeF · Nhấn &quot;PDF&quot; để mở file PDF · Nhấn &quot;Tìm&quot; để tra Google · Nhấn &quot;AI&quot; để phân tích
+      </p>
+
+      {reports.map((r, i) => {
+        const id = rptId(i)
+        const ai = aiMap[id]
+        const isLoadingAI = !!loadingAI[id]
+        const hasCachedAI = !!(ai && !ai.error)
+        const isAICollapsed = aiCollapsed[id] ?? false
+
+        return (
+          <div key={i} className="bg-surface2/40 rounded-lg overflow-hidden border border-border/20">
+            {/* Report header row */}
+            <div
+              className="flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-surface2/60 transition-colors"
+              onClick={() => setExpanded(expanded === i ? null : i)}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="text-xs font-medium text-gray-200 leading-snug">{r.title}</p>
+                  {hasCachedAI && (
+                    <span className="text-[9px] bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium flex-shrink-0">AI</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className="text-[10px] text-muted">{fmtDate(r.date)}</span>
+                  {r.source && <span className="text-[10px] text-muted">· {r.source}</span>}
+                  {r.recommendation && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${recColor(r.recommendation)}`}>
+                      {r.recommendation}
+                    </span>
+                  )}
+                  {r.targetPrice > 0 && (
+                    <span className="text-[10px] text-gold">TP: {fmtNum(r.targetPrice * 1000)}</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                {/* PDF button */}
+                {r.url && (
+                  <button
+                    onClick={(e) => openPdf(r, id, e)}
+                    disabled={pdfLoading === id}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-500/10 text-blue-400 text-[10px] font-medium hover:bg-blue-500/20 transition-colors disabled:opacity-50 border border-blue-500/20"
+                    title="Mở file PDF"
+                  >
+                    {pdfLoading === id
+                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : <FileText className="w-3 h-3" />}
+                    <span className="hidden sm:inline">PDF</span>
+                  </button>
                 )}
-                {r.targetPrice > 0 && (
-                  <span className="text-[10px] text-gold">TP: {fmtNum(r.targetPrice * 1000)}</span>
+
+                {/* Google search button */}
+                <a
+                  href={`https://www.google.com/search?q=${encodeURIComponent(r.title + ' ' + (r.source || '') + ' pdf')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-muted hover:text-accent text-[10px] font-medium transition-colors"
+                  title="Tìm trên Google"
+                >
+                  <Search className="w-3 h-3" />
+                  <span className="hidden sm:inline">Tìm</span>
+                </a>
+
+                {/* AI analyze / re-analyze */}
+                {!hasCachedAI ? (
+                  <button
+                    onClick={() => analyzeReport(r, id)}
+                    disabled={isLoadingAI}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-accent/10 text-accent text-[10px] font-medium hover:bg-accent/20 transition-colors disabled:opacity-50 border border-accent/20"
+                    title="Phân tích AI"
+                  >
+                    {isLoadingAI ? <Loader2 className="w-3 h-3 animate-spin" /> : <Bot className="w-3 h-3" />}
+                    <span className="hidden sm:inline">{isLoadingAI ? '...' : 'AI'}</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => analyzeReport(r, id, true)}
+                    disabled={isLoadingAI}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-muted hover:text-accent text-[10px] font-medium transition-colors disabled:opacity-50"
+                    title="Phân tích lại"
+                  >
+                    {isLoadingAI ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                  </button>
+                )}
+
+                {/* Expand/collapse chevron */}
+                {r.summary && (
+                  expanded === i
+                    ? <ChevronUp className="w-3.5 h-3.5 text-muted ml-1" />
+                    : <ChevronDown className="w-3.5 h-3.5 text-muted ml-1" />
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              {r.url && (
-                <a href={r.url} target="_blank" rel="noopener noreferrer"
-                  onClick={e => e.stopPropagation()}
-                  className="p-1 rounded hover:text-accent text-muted transition-colors">
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              )}
-              {r.summary && (
-                expanded === i
-                  ? <ChevronUp className="w-3.5 h-3.5 text-muted" />
-                  : <ChevronDown className="w-3.5 h-3.5 text-muted" />
-              )}
-            </div>
+
+            {/* Summary (expandable) */}
+            {expanded === i && r.summary && (
+              <div className="px-3 pb-3 pt-0 border-t border-border/30">
+                <p className="text-xs text-muted leading-relaxed">{r.summary}</p>
+              </div>
+            )}
+
+            {/* AI loading */}
+            {isLoadingAI && (
+              <div className="px-3 pb-3 flex items-center gap-2 border-t border-border/30 pt-2">
+                <Loader2 className="w-4 h-4 text-accent animate-spin flex-shrink-0" />
+                <p className="text-xs text-muted">StockAI đang phân tích báo cáo...</p>
+              </div>
+            )}
+
+            {/* AI Analysis result */}
+            {ai && !ai.error && !isLoadingAI && (
+              <div className="border-t border-border/30">
+                {/* Collapsible AI header */}
+                <button
+                  className="w-full flex items-center justify-between px-3 py-2 hover:bg-surface2/30 transition-colors"
+                  onClick={e => { e.stopPropagation(); setAiCollapsed(prev => ({ ...prev, [id]: !isAICollapsed })) }}
+                >
+                  <div className="flex items-center gap-2">
+                    <Bot className="w-3 h-3 text-accent" />
+                    <span className="text-[10px] font-semibold text-accent">Phân tích AI</span>
+                    {!ai.hasFullContent && <span className="text-[9px] text-muted/60 italic">(từ tiêu đề)</span>}
+                    {ai.cachedAt && <span className="text-[9px] text-muted/40">· {new Date(ai.cachedAt).toLocaleDateString('vi-VN')}</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${recColor(ai.recommendation)}`}>
+                      {ai.recommendation}
+                    </span>
+                    <span className="text-[9px] text-muted flex items-center">
+                      <SentimentIcon s={ai.sentiment} />{ai.sentiment}
+                    </span>
+                    {isAICollapsed
+                      ? <ChevronDown className="w-3 h-3 text-muted/60" />
+                      : <ChevronUp className="w-3 h-3 text-muted/60" />}
+                  </div>
+                </button>
+
+                {/* AI body */}
+                {!isAICollapsed && (
+                  <div className="px-3 pb-3 space-y-2 bg-bg/30">
+                    <p className="text-[11px] text-gray-300 leading-relaxed">{ai.summary}</p>
+
+                    {ai.keyPoints?.length > 0 && (
+                      <ul className="space-y-0.5">
+                        {ai.keyPoints.map((pt, j) => (
+                          <li key={j} className="text-[11px] text-gray-300 flex gap-1.5">
+                            <span className="text-accent flex-shrink-0">→</span><span>{pt}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {ai.catalysts?.length > 0 && (
+                        <div>
+                          <p className="text-[9px] text-accent font-semibold uppercase mb-1">Động lực tăng</p>
+                          <ul className="space-y-0.5">{ai.catalysts.map((c, j) => <li key={j} className="text-[10px] text-gray-400">{c}</li>)}</ul>
+                        </div>
+                      )}
+                      {ai.riskFactors?.length > 0 && (
+                        <div>
+                          <p className="text-[9px] text-danger font-semibold uppercase mb-1">Rủi ro</p>
+                          <ul className="space-y-0.5">{ai.riskFactors.map((rf, j) => <li key={j} className="text-[10px] text-gray-400">{rf}</li>)}</ul>
+                        </div>
+                      )}
+                    </div>
+
+                    {ai.conclusion && (
+                      <p className="text-[11px] text-gray-400 italic border-l-2 border-accent/30 pl-2 leading-relaxed">{ai.conclusion}</p>
+                    )}
+                    {ai.targetPrice ? (
+                      <p className="text-[10px] text-gold">Giá mục tiêu: <span className="font-semibold">{Number(ai.targetPrice).toLocaleString('vi-VN')} VND</span></p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {ai?.error && !isLoadingAI && (
+              <div className="px-3 pb-3 text-[11px] text-danger border-t border-border/30 pt-2">{ai.error}</div>
+            )}
           </div>
-          {expanded === i && r.summary && (
-            <div className="px-3 pb-3 pt-0 border-t border-border/30">
-              <p className="text-xs text-muted leading-relaxed">{r.summary}</p>
-            </div>
-          )}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -598,7 +848,7 @@ export default function CafefCompanyData({ symbol }: { symbol: string }) {
         {activeTab === 'financials'   && <FinancialsTab ratios={data.financialRatios} />}
         {activeTab === 'subsidiaries' && <SubsidiariesTab subsidiaries={data.subsidiaries} />}
         {activeTab === 'plan'         && <PlanEventsTab businessPlan={data.businessPlan} events={data.events} />}
-        {activeTab === 'reports'      && <AnalystReportsTab reports={data.analystReports} />}
+        {activeTab === 'reports'      && <AnalystReportsTab reports={data.analystReports} symbol={symbol} />}
       </div>
     </div>
   )
