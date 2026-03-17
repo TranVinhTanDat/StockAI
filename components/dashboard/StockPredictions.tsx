@@ -20,7 +20,7 @@ const STYLES: { key: InvestmentStyle; label: string; icon: React.ComponentType<{
 // Loading stage messages — cycle through as analysis runs
 const LOADING_STAGES = [
   'Thu thập dữ liệu VPS + Simplize...',
-  'Claude đang phân tích 12 mã...',
+  'StockAI đang phân tích 12 mã...',
   'Hoàn thiện kết quả...',
 ]
 

@@ -135,7 +135,7 @@ export default function OptimizeModal({ holdings, prices, cash = 0 }: OptimizeMo
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <Bot className="w-5 h-5 text-accent flex-shrink-0" />
                 <h3 className="font-semibold truncate">AI Phân Tích Danh Mục Toàn Diện</h3>
-                <span className="text-[10px] text-accent/60 font-normal bg-accent/10 px-1.5 py-0.5 rounded flex-shrink-0">claude-opus-4-6</span>
+                <span className="text-[10px] text-accent/60 font-normal bg-accent/10 px-1.5 py-0.5 rounded flex-shrink-0">StockAI</span>
               </div>
               <div className="flex items-center gap-2 ml-3">
                 {/* Timestamp badge */}
