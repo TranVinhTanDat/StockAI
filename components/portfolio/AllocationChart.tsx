@@ -72,22 +72,21 @@ export default function AllocationChart({ holdings, prices }: AllocationChartPro
   return (
     <div className="card-glass p-5">
       <h3 className="font-semibold mb-4">Phân Bổ Danh Mục</h3>
-      <div className="flex items-center gap-6">
+      <div className="flex flex-col sm:flex-row items-center gap-4">
         <canvas
           ref={canvasRef}
-          className="w-[200px] h-[200px]"
-          style={{ width: 200, height: 200 }}
+          className="w-[160px] h-[160px] sm:w-[200px] sm:h-[200px] flex-shrink-0"
         />
-        <div className="flex-1 space-y-1.5">
+        <div className="w-full space-y-2">
           {data.map((d, i) => (
-            <div key={d.label} className="flex items-center gap-2 text-sm">
+            <div key={d.label} className="flex items-center gap-2 text-sm min-w-0">
               <span
                 className="w-3 h-3 rounded-sm flex-shrink-0"
                 style={{ backgroundColor: COLORS[i % COLORS.length] }}
               />
-              <span className="font-medium w-12">{d.label}</span>
-              <span className="text-muted text-xs">{d.industry}</span>
-              <span className="ml-auto text-xs">
+              <span className="font-medium w-10 flex-shrink-0">{d.label}</span>
+              <span className="text-muted text-xs truncate flex-1">{d.industry}</span>
+              <span className="text-xs flex-shrink-0 ml-1">
                 {total > 0 ? ((d.value / total) * 100).toFixed(1) : 0}%
               </span>
             </div>

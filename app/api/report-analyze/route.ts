@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { requireAuth } from '@/lib/requireAuth'
 
-export const maxDuration = 45
+export const maxDuration = 60
 
-const client = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY })
+function getClient() {
+  const apiKey = process.env.CLAUDE_API_KEY
+  if (!apiKey) throw new Error('CLAUDE_API_KEY is not set')
+  return new Anthropic({ apiKey })
+}
 
 /** Fetch PDF as base64. Transforms cafef.vn → cafefnew.mediacdn.vn CDN. */
 async function fetchPdfBase64(url: string): Promise<string | null> {
@@ -12,7 +16,7 @@ async function fetchPdfBase64(url: string): Promise<string | null> {
   try {
     const res = await fetch(pdfUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StockAI/1.0)' },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(8000),
     })
     if (!res.ok) return null
     const buf = await res.arrayBuffer()
@@ -32,7 +36,7 @@ async function fetchHtmlContent(url: string): Promise<string | null> {
         'Accept': 'text/html,application/xhtml+xml,*/*',
         'Accept-Language': 'vi-VN,vi;q=0.9,en;q=0.8',
       },
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(4000),
     })
     if (!res.ok) return null
     const html = await res.text()
@@ -241,9 +245,9 @@ Sử dụng kiến thức của bạn về ${effectiveSymbol}, tình hình tài 
       : prompt
 
     // Use tool_use to guarantee structured JSON output — no string parsing needed
-    const response = await client.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 2000,
+    const response = await getClient().messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1200,
       system: `Bạn là chuyên gia phân tích chứng khoán CFA Vietnam với 15 năm kinh nghiệm. Phân tích khách quan, chuyên sâu với số liệu cụ thể. Luôn sử dụng tool analyze_report để output kết quả phân tích.`,
       tools: [ANALYZE_TOOL],
       tool_choice: { type: 'tool', name: 'analyze_report' },

@@ -381,7 +381,7 @@ export default function AppShell({
         {/* Scrollable content */}
         <main
           ref={contentRef}
-          className="flex-1 overflow-y-auto overscroll-contain pb-16 md:pb-0"
+          className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-16 md:pb-0"
         >
           {children}
         </main>
