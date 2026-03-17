@@ -305,8 +305,15 @@ export async function POST(request: NextRequest) {
       )
     ])
 
+    // Compute PEG and RS30d after Promise.all (vnIndexContext is available now)
+    const enrichedWithRS = enrichedResults.map(h => ({
+      ...h,
+      peg: (h.pe > 0 && h.profitGrowth > 5) ? Math.round((h.pe / h.profitGrowth) * 100) / 100 : undefined,
+      rs30d: vnIndexContext ? Math.round((h.trend30d - vnIndexContext.trend30d) * 10) / 10 : undefined,
+    }))
+
     const result = await optimizePortfolio({
-      holdings: enrichedResults,
+      holdings: enrichedWithRS,
       totalValue: totalMarketValue,
       cash,
       vnIndex: vnIndexContext,

@@ -199,6 +199,9 @@ interface AnalysisContext {
   // Latest analyst report PDF (base64) for deep analysis
   reportPdfBase64?: string
   reportTitle?: string
+  // Derived valuation metrics
+  peg?: number       // PE / profitGrowth — định giá tương đối vs tốc độ tăng trưởng
+  rs30d?: number     // stock 30D return - VN-Index 30D return (outperform/underperform)
 }
 
 export async function analyzeStock(
@@ -306,6 +309,11 @@ P/E: ${fmt0(ctx.pe, 'x')} | P/B: ${fmt0(ctx.pb ?? 0, 'x', 2)} | EPS: ${ctx.eps >
 ROE: ${fmt0(ctx.roe, '%')} | ROA: ${fmt0(ctx.roa ?? 0, '%')}${ctx.netMargin ? ` | Biên LN ròng: ${ctx.netMargin.toFixed(1)}%` : ''}
 Tăng trưởng DT: ${fmtGrowth(ctx.revenueGrowth)} | Tăng trưởng LN: ${fmtGrowth(ctx.profitGrowth)}
 Nợ/Vốn chủ: ${ctx.debtEquity > 0 ? ctx.debtEquity.toFixed(2) : 'N/A'} | Cổ tức: ${fmt0(ctx.dividendYield, '%')}
+${(ctx.peg !== undefined || ctx.rs30d !== undefined) ? `
+▌ ĐỊNH GIÁ TƯƠNG ĐỐI & SỨC MẠNH TƯƠNG ĐỐI:${ctx.peg !== undefined ? `
+PEG Ratio = P/E (${ctx.pe.toFixed(1)}x) / Tăng trưởng LN (${ctx.profitGrowth.toFixed(1)}%) = ${ctx.peg.toFixed(2)}x → ${ctx.peg < 0.8 ? '🟢 RẺ SO VỚI TĂNG TRƯỞNG (PEG < 0.8 — cơ hội mua tốt)' : ctx.peg < 1.5 ? '✅ Định giá hợp lý (PEG 0.8-1.5)' : ctx.peg < 2.5 ? '⚠ Hơi đắt so tăng trưởng (PEG 1.5-2.5)' : '🔴 ĐẮTS so tăng trưởng (PEG > 2.5 — cần thận trọng)'}` : ''}${ctx.rs30d !== undefined ? `
+Relative Strength vs VN-Index (30 ngày): ${ctx.rs30d >= 0 ? '+' : ''}${ctx.rs30d.toFixed(1)}% → ${ctx.rs30d > 5 ? '🚀 OUTPERFORM MẠNH — cổ phiếu dẫn đầu thị trường' : ctx.rs30d > 0 ? '📈 Outperform nhẹ — tốt hơn thị trường' : ctx.rs30d > -5 ? '📉 Underperform nhẹ — yếu hơn thị trường' : '⚠ UNDERPERFORM MẠNH — cổ phiếu tụt hậu thị trường'}` : ''}${ctx.profitGrowth !== 0 && ctx.revenueGrowth !== 0 ? `
+Chất lượng LN: TT_LN ${ctx.profitGrowth >= 0 ? '+' : ''}${ctx.profitGrowth.toFixed(1)}% ${ctx.profitGrowth > ctx.revenueGrowth ? '> TT_DT ' + (ctx.revenueGrowth >= 0 ? '+' : '') + ctx.revenueGrowth.toFixed(1) + '% → Biên LợiNhuận đang MỞ RỘNG ✓ (doanh nghiệp hiệu quả hơn)' : '< TT_DT ' + (ctx.revenueGrowth >= 0 ? '+' : '') + ctx.revenueGrowth.toFixed(1) + '% → Biên LợiNhuận THU HẸP ⚠ (chi phí tăng nhanh hơn doanh thu)'}` : ''}` : ''}
 
 ▌ TIN TỨC & TÂM LÝ (7 ngày gần nhất):
 ${newsText || 'Không có tin nổi bật'}
@@ -321,8 +329,9 @@ Lãi/lỗ chưa thực hiện: ${ctx.price > 0 ? ((ctx.price - ctx.currentHoldin
 1. Kỹ thuật: ADX (xu hướng mạnh/sideway?), RSI, MACD histogram tăng/giảm, BB, momentum đa khung
 2. Dòng tiền: NN đang mua hay bán ròng? Ảnh hưởng thế nào?
 3. Cơ bản: P/E + P/B định giá hợp lý/đắt/rẻ? ROE/ROA so ngành? Tăng trưởng bền vững?
-4. Thị trường: VN-Index context, tương quan với mã
-5. Hành động cụ thể: vùng giá vào/ra, target, stop loss, xét vị thế nếu có
+4. PEG & RS: PEG ratio đang hấp dẫn không? Cổ phiếu outperform hay underperform thị trường? Biên LN mở rộng hay thu hẹp?
+5. Thị trường: VN-Index context, tương quan với mã
+6. Hành động cụ thể: vùng giá vào/ra, target, stop loss, xét vị thế nếu có
 
 Trả về JSON trong thẻ <result>:
 <result>
@@ -434,6 +443,9 @@ interface StockDetail {
   foreignRoom?: number
   // News
   recentNews?: string[]
+  // Derived metrics
+  peg?: number
+  rs30d?: number
 }
 
 interface VNIndexContext {
@@ -499,11 +511,13 @@ export async function optimizePortfolio(ctx: OptimizeContext): Promise<OptimizeR
       : ''
     const momentum1Mstr = h.momentum1M !== undefined ? ` | 1T: ${h.momentum1M >= 0 ? '+' : ''}${h.momentum1M}%` : ''
     const momentum3Mstr = h.momentum3M !== undefined ? ` | 3T: ${h.momentum3M >= 0 ? '+' : ''}${h.momentum3M}%` : ''
+    const pegStr2 = h.peg !== undefined ? ` | PEG=${h.peg.toFixed(2)}x${h.peg < 1 ? '🟢' : h.peg > 2.5 ? '🔴' : ''}` : ''
+    const rs30dStr = h.rs30d !== undefined ? ` | RS_vs_VNI=${h.rs30d >= 0 ? '+' : ''}${h.rs30d.toFixed(1)}%${h.rs30d > 3 ? '🚀' : h.rs30d < -3 ? '⚠' : ''}` : ''
     return `━━ [${h.symbol}] ${h.industry} ━━ ${h.weight.toFixed(1)}% danh mục
   Vị thế: ${h.qty.toLocaleString()} CP | Giá vốn: ${h.avgCost.toLocaleString()}đ → Hiện: ${h.currentPrice.toLocaleString()}đ | L/L: ${pnlSign}${h.pnlPct.toFixed(1)}%
   Kỹ thuật: RSI=${h.rsi} (${rsiLabel}) | ADX=${h.adx??0} (${h.adxTrend??'N/A'}) | MACD=${h.macdSignal}${h.macdHistogram ? ` hist=${h.macdHistogram}` : ''} | ${h.aboveSMA20 ? '↑SMA20' : '↓SMA20'} | ${h.aboveSMA50 ? '↑SMA50' : '↓SMA50'} | BB: ${h.bbSignal||'N/A'} | Vol: ${h.volumeSignal||'N/A'}
-  Momentum: Trend30D: ${trendSign}${h.trend30d.toFixed(1)}%${momentum1Mstr}${momentum3Mstr}
-  Cơ bản: P/E=${h.pe > 0 ? h.pe.toFixed(1) + 'x' : 'N/A'} | P/B=${(h.pb??0) > 0 ? (h.pb??0).toFixed(2) + 'x' : 'N/A'} | ROE=${h.roe > 0 ? h.roe.toFixed(1) + '%' : 'N/A'} | ROA=${(h.roa??0) > 0 ? (h.roa??0).toFixed(1) + '%' : 'N/A'} | TT_LN=${h.profitGrowth ? (h.profitGrowth >= 0 ? '+' : '') + h.profitGrowth.toFixed(1) + '%' : 'N/A'}${h.revenueGrowth ? ' | TT_DT=' + (h.revenueGrowth >= 0 ? '+' : '') + h.revenueGrowth.toFixed(1) + '%' : ''}${h.debtEquity > 0 ? ' | Nợ/Vốn=' + h.debtEquity.toFixed(2) : ''}${h.dividendYield > 0 ? ' | Cổ tức=' + h.dividendYield.toFixed(1) + '%' : ''}${foreignBlock}${newsBlock}`
+  Momentum: Trend30D: ${trendSign}${h.trend30d.toFixed(1)}%${momentum1Mstr}${momentum3Mstr}${rs30dStr}
+  Cơ bản: P/E=${h.pe > 0 ? h.pe.toFixed(1) + 'x' : 'N/A'} | P/B=${(h.pb??0) > 0 ? (h.pb??0).toFixed(2) + 'x' : 'N/A'} | ROE=${h.roe > 0 ? h.roe.toFixed(1) + '%' : 'N/A'} | ROA=${(h.roa??0) > 0 ? (h.roa??0).toFixed(1) + '%' : 'N/A'} | TT_LN=${h.profitGrowth ? (h.profitGrowth >= 0 ? '+' : '') + h.profitGrowth.toFixed(1) + '%' : 'N/A'}${h.revenueGrowth ? ' | TT_DT=' + (h.revenueGrowth >= 0 ? '+' : '') + h.revenueGrowth.toFixed(1) + '%' : ''}${h.debtEquity > 0 ? ' | Nợ/Vốn=' + h.debtEquity.toFixed(2) : ''}${h.dividendYield > 0 ? ' | Cổ tức=' + h.dividendYield.toFixed(1) + '%' : ''}${pegStr2}${foreignBlock}${newsBlock}`
   }).join('\n\n')
 
   // Sector benchmarks for each unique industry in portfolio
@@ -530,11 +544,12 @@ ${holdingsText}
 
 ▌ YÊU CẦU PHÂN TÍCH — DỰA HOÀN TOÀN VÀO SỐ LIỆU THỰC TẾ TRÊN:
 1. Kỹ thuật từng mã: ADX (xu hướng mạnh/sideway?), RSI, MACD, BB, momentum 1-3 tháng
-2. Dòng tiền ngoại: NN đang mua/bán ròng mã nào? Tín hiệu gì? Room còn bao nhiêu?
-3. Cơ bản: P/E + P/B so benchmark ngành (từ bảng trên), ROE + ROA có vượt TB ngành không? Tăng trưởng bền vững?
-4. Rủi ro tập trung ngành, mã đơn lẻ, tương quan
-5. Bối cảnh VN-Index + market regime: nên phòng thủ hay tấn công?
-6. Chiến lược tái cơ cấu cụ thể: mã nào tăng/giảm tỷ trọng, tại sao, mức giá
+2. PEG & RS từng mã: mã nào rẻ so tăng trưởng (PEG < 1)? Mã nào đang dẫn đầu thị trường (RS > 0)?
+3. Dòng tiền ngoại: NN đang mua/bán ròng mã nào? Tín hiệu gì? Room còn bao nhiêu?
+4. Cơ bản: P/E + P/B so benchmark ngành (từ bảng trên), ROE + ROA có vượt TB ngành không? Tăng trưởng bền vững?
+5. Rủi ro tập trung ngành, mã đơn lẻ, tương quan
+6. Bối cảnh VN-Index + market regime: nên phòng thủ hay tấn công? Portfolio beta cao hay thấp?
+7. Chiến lược tái cơ cấu cụ thể: mã nào tăng/giảm tỷ trọng, tại sao, mức giá
 
 Trả về JSON trong thẻ <result>:
 <result>
@@ -626,6 +641,11 @@ interface PredictStock {
   foreignSellVol: number
   foreignNetVol: number
   foreignRoom?: number
+  // Derived metrics
+  peg?: number
+  rs30d?: number
+  // News headlines
+  newsHeadlines?: string[]
 }
 
 export type InvestmentStyle = 'longterm' | 'dca' | 'swing' | 'dividend' | 'etf'
@@ -693,11 +713,16 @@ export async function predictStocks(
       const w52Str = (s.w52high && s.w52low)
         ? `\n   52W: Low=${s.w52low.toLocaleString('vi-VN')}₫ / High=${s.w52high.toLocaleString('vi-VN')}₫ → Giá ở ${s.w52position ?? 50}% vùng 52 tuần`
         : ''
+      const pegStr = s.peg !== undefined ? ` | PEG=${s.peg.toFixed(2)}x${s.peg < 1 ? '🟢' : s.peg < 2 ? '' : '🔴'}` : ''
+      const rsStr2 = s.rs30d !== undefined ? ` | RS_vs_VNI=${s.rs30d >= 0 ? '+' : ''}${s.rs30d.toFixed(1)}%${s.rs30d > 3 ? '🚀' : s.rs30d < -3 ? '⚠' : ''}` : ''
+      const newsStr = s.newsHeadlines && s.newsHeadlines.length > 0
+        ? `\n   Tin tức: ${s.newsHeadlines.slice(0, 2).map(h => `"${h.slice(0, 90)}"`).join(' | ')}`
+        : ''
       return `${i + 1}. [${s.symbol}] ${s.industry}
    Giá: ${s.price.toLocaleString('vi-VN')}₫ (${s.changePct > 0 ? '+' : ''}${s.changePct.toFixed(1)}% hôm nay, Trend30D: ${s.trend30d >= 0 ? '+' : ''}${s.trend30d.toFixed(1)}%)
    Kỹ thuật: RSI=${s.rsi} | ADX=${s.adx} (${s.adxTrend}) | MACD=${s.macdSignal} hist=${s.macdHistogram} | ${s.aboveSMA20 ? '↑SMA20' : '↓SMA20'} | ${s.aboveSMA50 ? '↑SMA50' : '↓SMA50'} | BB: ${s.bbSignal} | Vol: ${s.volumeSignal}
    Momentum: 1T=${s.momentum1M >= 0 ? '+' : ''}${s.momentum1M}% | 3T=${s.momentum3M >= 0 ? '+' : ''}${s.momentum3M}% | KL=${s.volume.toLocaleString('vi-VN')}${srStr}${w52Str}
-   Cơ bản: P/E=${s.pe.toFixed(1)}x | P/B=${s.pb.toFixed(2)}x | EPS=${s.eps.toLocaleString('vi-VN')}₫ | ROE=${s.roe.toFixed(1)}% | ROA=${s.roa.toFixed(1)}% | LN_Growth=${s.profitGrowth >= 0 ? '+' : ''}${s.profitGrowth.toFixed(1)}% | DT_Growth=${s.revenueGrowth >= 0 ? '+' : ''}${s.revenueGrowth.toFixed(1)}%${s.dividendYield > 0 ? ` | Cổ tức=${s.dividendYield.toFixed(1)}%` : ''}${s.debtEquity > 0 ? ` | Nợ/Vốn=${s.debtEquity.toFixed(2)}x` : ''}${foreignStr}`
+   Cơ bản: P/E=${s.pe.toFixed(1)}x | P/B=${s.pb.toFixed(2)}x | EPS=${s.eps.toLocaleString('vi-VN')}₫ | ROE=${s.roe.toFixed(1)}% | ROA=${s.roa.toFixed(1)}% | LN_Growth=${s.profitGrowth >= 0 ? '+' : ''}${s.profitGrowth.toFixed(1)}% | DT_Growth=${s.revenueGrowth >= 0 ? '+' : ''}${s.revenueGrowth.toFixed(1)}%${s.dividendYield > 0 ? ` | Cổ tức=${s.dividendYield.toFixed(1)}%` : ''}${s.debtEquity > 0 ? ` | Nợ/Vốn=${s.debtEquity.toFixed(2)}x` : ''}${pegStr}${rsStr2}${foreignStr}${newsStr}`
     })
     .join('\n')
 
@@ -721,13 +746,17 @@ NHIỆM VỤ: Với vai trò chuyên gia quản lý quỹ CFA, hãy:
 5. Xếp hạng từ phù hợp nhất → ít phù hợp nhất
 6. Định giá target price dựa trên PE ngành, tăng trưởng dự phóng và kỹ thuật
 
-PHÂN TÍCH PHẢI BAO GỒM:
+PHÂN TÍCH PHẢI BAO GỒM (scoring = 30% kỹ thuật + 40% cơ bản + 30% momentum/tin tức/dòng tiền):
 - ADX: xu hướng mạnh/sideway? RSI/MACD có đáng tin không?
-- MACD histogram: đang tăng hay giảm? momentum
+- MACD histogram: đang tăng hay giảm? momentum ngắn hạn
 - BB: giá đang overbought/oversold/trong dải?
 - Momentum 1T/3T: ngắn hạn vs dài hạn khớp nhau không?
+- PEG: < 1.0 = rẻ so tăng trưởng (ưu tiên cao), 1-2 = hợp lý, > 2 = đắt
+- Relative Strength (RS): cổ phiếu outperform hay underperform VN-Index? (tín hiệu chọn lọc quan trọng)
+- Chất lượng LN: biên LN mở rộng (LN_Growth > DT_Growth) hay thu hẹp?
 - Dòng NN: smart money đang mua hay bán mã này?
 - Bối cảnh VN-Index: thị trường chung hỗ trợ hay cản trở?
+- Tin tức: có sự kiện catalyst tích cực/tiêu cực nào không?
 - Cơ bản: P/E+P/B định giá hợp lý? ROE+ROA so ngành? Tăng trưởng bền vững?
 
 PHẢI dùng đúng tên field: "pe", "roe", "growth" trong keyMetrics.
@@ -831,6 +860,9 @@ export interface ChatStockContext {
   // Analyst report PDF for deep analysis
   reportPdfBase64?: string
   reportTitle?: string
+  // Derived valuation metrics
+  peg?: number
+  rs30d?: number
 }
 
 export async function chatStockAnalysis(
@@ -896,7 +928,12 @@ ${(() => {
 P/E: ${fmt0(ctx.pe, 'x')} | P/B: ${fmt0(ctx.pb, 'x', 2)} | EPS: ${ctx.eps > 0 ? ctx.eps.toLocaleString('vi-VN') + '₫' : 'N/A'}
 ROE: ${fmt0(ctx.roe, '%')} | ROA: ${fmt0(ctx.roa, '%')}${ctx.netMargin ? ` | Biên LN ròng: ${ctx.netMargin.toFixed(1)}%` : ''}${ctx.debtEquity !== undefined && ctx.debtEquity > 0 ? ` | Nợ/Vốn: ${ctx.debtEquity.toFixed(2)}x` : ''}
 Tăng trưởng Doanh thu: ${fmtGrowth(ctx.revenueGrowth)} | Tăng trưởng Lợi nhuận: ${fmtGrowth(ctx.profitGrowth)}
-Cổ tức: ${fmt0(ctx.dividendYield, '%')}
+Cổ tức: ${fmt0(ctx.dividendYield, '%')}${(ctx.peg !== undefined || ctx.rs30d !== undefined) ? `
+
+▌ ĐỊNH GIÁ TƯƠNG ĐỐI & SỨC MẠNH TƯƠNG ĐỐI:${ctx.peg !== undefined ? `
+PEG Ratio = P/E / TT_LN = ${ctx.peg.toFixed(2)}x → ${ctx.peg < 0.8 ? '🟢 RẺ SO VỚI TĂNG TRƯỞNG (cơ hội mua tốt)' : ctx.peg < 1.5 ? '✅ Định giá hợp lý' : ctx.peg < 2.5 ? '⚠ Hơi đắt' : '🔴 ĐẮTS so tăng trưởng'}` : ''}${ctx.rs30d !== undefined ? `
+RS vs VN-Index (30 ngày): ${ctx.rs30d >= 0 ? '+' : ''}${ctx.rs30d.toFixed(1)}% → ${ctx.rs30d > 5 ? '🚀 OUTPERFORM MẠNH' : ctx.rs30d > 0 ? '📈 Outperform nhẹ' : ctx.rs30d > -5 ? '📉 Underperform nhẹ' : '⚠ UNDERPERFORM MẠNH'}` : ''}${ctx.revenueGrowth !== 0 && ctx.profitGrowth !== 0 ? `
+Chất lượng LN: ${ctx.profitGrowth > ctx.revenueGrowth ? '✓ Biên LN MỞ RỘNG (LN tăng nhanh hơn DT — hiệu quả cải thiện)' : '⚠ Biên LN THU HẸP (LN tăng chậm hơn DT — chi phí leo thang)'}` : ''}` : ''}
 
 ▌ DÒNG TIỀN NGOẠI (tín hiệu quan trọng TTCK VN):
 ${foreignBlock}
@@ -913,6 +950,8 @@ QUY TẮC TRẢ LỜI — PHÂN TÍCH CHUYÊN SÂU:
 - Khi N/A thì nói rõ không có dữ liệu, KHÔNG được bịa số
 - Dùng markdown ĐẦY ĐỦ: **bold** cho điểm quan trọng, ## cho tiêu đề phần, bullet points (- ) cho danh sách
 - BẮT BUỘC đề cập: ADX (xu hướng mạnh/sideway?), dòng tiền NN (mua/bán ròng bao nhiêu CP?), momentum 1T/3T khi relevant
+- Khi hỏi về định giá: BẮT BUỘC đề cập PEG ratio (< 1 = rẻ, > 2 = đắt) và RS vs thị trường
+- Khi hỏi về timing: BẮT BUỘC đề cập RS (đang outperform hay underperform?), chất lượng lợi nhuận (biên LN mở rộng hay thu hẹp?)
 - Khi nói về giá: luôn kèm vùng giá cụ thể (vùng hỗ trợ, kháng cự, vùng mua)
 - Cuối câu trả lời: tóm tắt **Kết luận** 1-2 dòng + gợi ý 1-2 câu hỏi follow-up phù hợp`
 

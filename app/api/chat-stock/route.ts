@@ -286,6 +286,8 @@ export async function POST(request: NextRequest) {
       debtEquity: simplize.debtToEquity || 0,
       netMargin: simplize.netMargin || 0,
       quarterlyEPS: quarterlyRatios.length >= 2 ? quarterlyRatios : undefined,
+      peg: (simplize.pe > 0 && cafeGrowth.profitGrowth > 5) ? Math.round((simplize.pe / cafeGrowth.profitGrowth) * 100) / 100 : undefined,
+      rs30d: vnIndex ? Math.round((trend30d - vnIndex.trend30d) * 10) / 10 : undefined,
       foreignBuyVol: quote?.foreignBuyVol || 0,
       foreignSellVol: quote?.foreignSellVol || 0,
       foreignNetVol: (quote?.foreignBuyVol || 0) - (quote?.foreignSellVol || 0),

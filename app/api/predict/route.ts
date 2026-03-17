@@ -90,6 +90,23 @@ async function fetchCafeFGrowth(symbol: string): Promise<{ revenueGrowth: number
   } catch { return { revenueGrowth: 0, profitGrowth: 0 } }
 }
 
+// Fetch top news headlines for a stock (lightweight, 1.5s timeout)
+async function fetchStockNewsHeadlines(symbol: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `https://cafef.vn/du-lieu/Ajax/Events_RelatedNews_New.aspx?symbol=${symbol}&floorID=0&configID=0&PageIndex=1&PageSize=5&Type=0`,
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(1500), next: { revalidate: 3600 } as RequestInit['next'] }
+    )
+    if (!res.ok) return []
+    const data = await res.json()
+    const items = data?.Data || data?.data || []
+    return (Array.isArray(items) ? items : [])
+      .slice(0, 2)
+      .map((n: { Title?: string; title?: string }) => n.Title || n.title || '')
+      .filter(Boolean)
+  } catch { return [] }
+}
+
 // Fetch VN-Index 30-day trend for market context
 async function fetchVNIndexContext(): Promise<{ trend30d: number; currentLevel: number; rsi: number }> {
   try {
@@ -147,10 +164,11 @@ export async function GET(request: NextRequest) {
     const [vnIndex, ...stockResults] = await Promise.all([
       fetchVNIndexContext(),
       ...symbols.map(async (symbol) => {
-        const [quoteRes, simplizeRes, cafeGrowthRes] = await Promise.allSettled([
+        const [quoteRes, simplizeRes, cafeGrowthRes, newsRes] = await Promise.allSettled([
           fetchQuote(symbol),
           fetchSimplizeSummary(symbol),
           fetchCafeFGrowth(symbol),
+          fetchStockNewsHeadlines(symbol),
         ])
 
         const q = quoteRes.status === 'fulfilled' ? quoteRes.value : null
@@ -158,6 +176,7 @@ export async function GET(request: NextRequest) {
         const candles = q?.candles?.slice(-90) || []
         const s = simplizeRes.status === 'fulfilled' ? simplizeRes.value : { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 }
         const g = cafeGrowthRes.status === 'fulfilled' ? cafeGrowthRes.value : { revenueGrowth: 0, profitGrowth: 0 }
+        const newsHeadlines = newsRes.status === 'fulfilled' ? newsRes.value : []
 
         if (!q || q.price <= 0) return null
 
@@ -308,11 +327,20 @@ export async function GET(request: NextRequest) {
           foreignSellVol: q.foreignSellVol ?? 0,
           foreignNetVol: (q.foreignBuyVol ?? 0) - (q.foreignSellVol ?? 0),
           foreignRoom: q.foreignRoom,
+          // Derived metrics
+          peg: (s.pe > 0 && g.profitGrowth > 5) ? Math.round((s.pe / g.profitGrowth) * 100) / 100 : undefined,
+          newsHeadlines,
         }
       })
     ])
 
-    const stocks = stockResults.filter((r): r is NonNullable<typeof r> => r !== null)
+    // Compute rs30d after Promise.all resolves (vnIndex is available now)
+    const stocks = stockResults
+      .filter((r): r is NonNullable<typeof r> => r !== null)
+      .map(s => ({
+        ...s,
+        rs30d: vnIndex ? Math.round((s.trend30d - vnIndex.trend30d) * 10) / 10 : undefined,
+      }))
 
     if (stocks.length < 5) {
       return NextResponse.json(

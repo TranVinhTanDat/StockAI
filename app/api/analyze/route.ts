@@ -102,7 +102,7 @@ async function fetchCafeFGrowth(symbol: string): Promise<{ revenueGrowth: number
 async function fetchCafeFQuarterlyRatios(symbol: string): Promise<Array<{ period: string; eps: number; pe: number }>> {
   try {
     const res = await fetch(
-      `https://cafef.vn/du-lieu/Ajax/PageNew/ChiSoTaiChinh.ashx?Symbol=${symbol}&TotalRow=4&ReportType=Q&Sort=DESC`,
+      `https://cafef.vn/du-lieu/Ajax/PageNew/ChiSoTaiChinh.ashx?Symbol=${symbol}&TotalRow=8&ReportType=Q&Sort=DESC`,
       { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(4000), next: { revalidate: 86400 } as RequestInit['next'] }
     )
     if (!res.ok) return []
@@ -111,7 +111,7 @@ async function fetchCafeFQuarterlyRatios(symbol: string): Promise<Array<{ period
     const rows: Array<Record<string, unknown>> =
       data?.Data?.Data || data?.data?.Data || data?.Data || data?.data || []
     if (!Array.isArray(rows) || rows.length === 0) return []
-    return rows.slice(0, 4).map(r => ({
+    return rows.slice(0, 8).map(r => ({
       period: String(r.ReportDate || r.Quarter || r.reportDate || r.year || ''),
       eps: Number(r.EPS || r.eps || 0),
       pe: Number(r.PriceToEarning || r.PE || r.pe || r.priceToEarning || 0),
@@ -363,6 +363,12 @@ export async function POST(request: NextRequest) {
       fetchCafeFQuarterlyRatios(symbol),
     ])
 
+    // Derived metrics
+    const peVal = simplize.pe || fundamental?.pe || 0
+    const profitGrowthVal = cafeGrowth.profitGrowth || fundamental?.profitGrowth || 0
+    const peg = peVal > 0 && profitGrowthVal > 5 ? Math.round((peVal / profitGrowthVal) * 100) / 100 : undefined
+    const rs30d = vnIndex ? Math.round((momentum1M - vnIndex.trend30d) * 10) / 10 : undefined
+
     const result = await analyzeStock({
       symbol,
       industry: quote?.industry || '',
@@ -412,6 +418,8 @@ export async function POST(request: NextRequest) {
       resistance2,
       reportPdfBase64: analystReport.pdfBase64 || undefined,
       reportTitle: analystReport.reportTitle || undefined,
+      peg,
+      rs30d,
     })
 
     if (noHolding) await saveCachedResult(symbol, result)
