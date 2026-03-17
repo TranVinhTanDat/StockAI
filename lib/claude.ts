@@ -780,7 +780,7 @@ Trả về JSON array trong thẻ <result>:
 
   const response = await client.messages.create({
     model: 'claude-opus-4-6',
-    max_tokens: 4000,
+    max_tokens: 5000,
     system:
       'Bạn là chuyên gia quản lý quỹ đầu tư CFA với 20 năm kinh nghiệm chuyên sâu tại thị trường chứng khoán Việt Nam (HOSE/HNX). Bạn thông thạo phân tích kỹ thuật, phân tích cơ bản, định giá doanh nghiệp, và chiến lược đầu tư đa phong cách. Phân tích khách quan dựa trên dữ liệu thực tế. QUAN TRỌNG: Chỉ được trả về JSON array hợp lệ trong thẻ <result></result>. Không có text, markdown hay giải thích nào ngoài thẻ đó.',
     messages: [{ role: 'user', content: prompt }],
