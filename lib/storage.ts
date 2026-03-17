@@ -114,7 +114,7 @@ export async function getWatchlist(): Promise<string[]> {
   const removed = getLocal<string[]>(wlRemovedKey(), [])
   const merged = adminDefaults.concat(added).filter((s, i, arr) => arr.indexOf(s) === i)
   const combined = merged.filter(s => !removed.includes(s))
-  return combined.length > 0 ? combined : DEFAULT_WATCHLIST
+  return combined
 }
 
 export async function addToWatchlist(symbol: string): Promise<void> {

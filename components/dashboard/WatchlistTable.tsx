@@ -13,7 +13,7 @@ import {
   getChangeColor,
   getChangeBg,
 } from '@/lib/utils'
-import { Star, Search, Plus, X, BarChart3, TrendingUp } from 'lucide-react'
+import { Trash2, Search, Plus, BarChart3, TrendingUp } from 'lucide-react'
 import type { StockBoard } from '@/lib/priceboard-data'
 
 // Lazy-load the same StockDetailModal used in priceboard
@@ -167,7 +167,6 @@ export default function WatchlistTable({ onAnalyze }: WatchlistTableProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-muted text-xs uppercase">
-                <th className="px-4 py-3 text-left w-10" />
                 <th className="px-4 py-3 text-left">Mã</th>
                 <th className="px-4 py-3 text-left hidden md:table-cell">Tên</th>
                 <th className="px-4 py-3 text-right">Giá</th>
@@ -175,14 +174,13 @@ export default function WatchlistTable({ onAnalyze }: WatchlistTableProps) {
                 <th className="px-4 py-3 text-right">%</th>
                 <th className="px-4 py-3 text-right hidden lg:table-cell">KL</th>
                 <th className="px-3 py-3 text-center hidden sm:table-cell">7 ngày</th>
-                <th className="px-4 py-3 text-center w-32" />
+                <th className="px-4 py-3 text-center w-36" />
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-b border-border/50 animate-pulse">
-                    <td className="px-4 py-3"><div className="h-4 w-4 bg-border rounded" /></td>
                     <td className="px-4 py-3"><div className="h-4 w-12 bg-border rounded" /></td>
                     <td className="px-4 py-3 hidden md:table-cell"><div className="h-4 w-24 bg-border rounded" /></td>
                     <td className="px-4 py-3"><div className="h-4 w-20 bg-border rounded ml-auto" /></td>
@@ -190,12 +188,12 @@ export default function WatchlistTable({ onAnalyze }: WatchlistTableProps) {
                     <td className="px-4 py-3"><div className="h-4 w-14 bg-border rounded ml-auto" /></td>
                     <td className="px-4 py-3 hidden lg:table-cell"><div className="h-4 w-14 bg-border rounded ml-auto" /></td>
                     <td className="px-3 py-3 hidden sm:table-cell"><div className="h-4 w-14 bg-border rounded mx-auto" /></td>
-                    <td className="px-4 py-3"><div className="h-4 w-16 bg-border rounded mx-auto" /></td>
+                    <td className="px-4 py-3"><div className="h-4 w-24 bg-border rounded mx-auto" /></td>
                   </tr>
                 ))
               ) : symbols.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-muted">
+                  <td colSpan={8} className="px-4 py-12 text-center text-muted">
                     Chưa có mã trong watchlist. Thêm mã để theo dõi.
                   </td>
                 </tr>
@@ -211,17 +209,6 @@ export default function WatchlistTable({ onAnalyze }: WatchlistTableProps) {
                         isSelected ? 'bg-accent/8 border-l-2 border-l-accent' : ''
                       }`}
                     >
-                      {/* Favorite remove button */}
-                      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                        <button
-                          onClick={() => remove(symbol)}
-                          className="text-gold hover:text-gold/70 transition-colors"
-                          title="Xóa khỏi watchlist"
-                        >
-                          <Star className="w-4 h-4 fill-current" />
-                        </button>
-                      </td>
-
                       {/* Symbol */}
                       <td className="px-4 py-3 font-semibold text-gray-100">
                         <div className="flex items-center gap-1.5">
@@ -285,6 +272,14 @@ export default function WatchlistTable({ onAnalyze }: WatchlistTableProps) {
                           >
                             <BarChart3 className="w-3.5 h-3.5" />
                             <span className="hidden sm:inline">AI</span>
+                          </button>
+                          <button
+                            onClick={() => remove(symbol)}
+                            className="text-danger/60 hover:text-danger transition-colors flex items-center gap-1 ml-1 text-xs font-medium"
+                            title="Xóa khỏi watchlist"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Xóa</span>
                           </button>
                         </div>
                       </td>
