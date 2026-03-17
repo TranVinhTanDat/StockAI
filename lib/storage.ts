@@ -15,7 +15,26 @@ import { generateId, getUserId } from './utils'
 
 // Override user ID when auth is active
 let _authUserId: string | null = null
-export function setStorageUserId(id: string | null): void { _authUserId = id }
+
+// Auth-ready promise — resolves when _authUserId is first set (handles race condition on mount)
+let _authReadyResolve: (() => void) | null = null
+let _authReadyPromise: Promise<void> | null = null
+function getAuthReadyPromise(): Promise<void> {
+  if (_authUserId !== null) return Promise.resolve()
+  if (!_authReadyPromise) {
+    _authReadyPromise = new Promise(resolve => { _authReadyResolve = resolve })
+  }
+  return _authReadyPromise
+}
+
+export function setStorageUserId(id: string | null): void {
+  _authUserId = id
+  if (id !== null && _authReadyResolve) {
+    _authReadyResolve()
+    _authReadyResolve = null
+    _authReadyPromise = null
+  }
+}
 function getEffectiveUserId(): string { return _authUserId || _jwtUserId || getUserId() }
 // Only use Supabase when user is actually authenticated (prevents 406/403 from RLS)
 function shouldUseSupabase(): boolean { return isSupabaseConfigured() && _authUserId !== null }
@@ -697,17 +716,28 @@ export async function saveReportAnalysis(
     cached_at: analysis.cachedAt || new Date().toISOString(),
   }
 
-  // upsert: update if exists, insert if not
+  // DELETE + INSERT: safer than upsert with new primary key (avoids PK conflict)
   sb.from('report_analyses')
-    .upsert(entry, { onConflict: 'user_id,report_id' })
+    .delete()
+    .eq('user_id', userId)
+    .eq('report_id', reportId)
+    .then(() => sb.from('report_analyses').insert(entry))
     .then(({ error }) => {
-      if (error) console.error('[ReportAnalysis] Supabase upsert error:', error.message)
+      if (error) console.error('[ReportAnalysis] Supabase insert error:', error.message)
     })
 }
 
 /** Load cached analyses from Supabase for a given symbol (for cross-device sync on mount). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function loadReportAnalysesFromCloud(symbol: string): Promise<Record<string, any>> {
+  if (!isSupabaseConfigured()) return {}
+
+  // Wait for auth to restore (up to 3s) — fixes race condition on component mount
+  await Promise.race([
+    getAuthReadyPromise(),
+    new Promise(resolve => setTimeout(resolve, 3000)),
+  ])
+
   if (!shouldUseSupabase()) return {}
   const sb = getSupabase()
   if (!sb) return {}

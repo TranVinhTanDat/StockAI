@@ -98,9 +98,29 @@ function AIPanel({
   setLoadingMap: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
 }) {
   const [collapsed, setCollapsed] = useState(false)
+  const [pdfLoading, setPdfLoading] = useState(false)
   const ai = aiMap[id]
   const isLoading = !!loadingMap[id]
   const hasCached = !!(ai && !ai.error)
+  const isPdf = /\.pdf(\?.*)?$/i.test(url || '')
+
+  // For CafeF PDF URLs: rewrite via /api/report-pdf → cafefnew.mediacdn.vn CDN
+  const openPdf = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!url || pdfLoading) return
+    setPdfLoading(true)
+    const win = window.open('', '_blank') // open synchronously (avoid popup blocker)
+    try {
+      const res = await fetch(`/api/report-pdf?url=${encodeURIComponent(url)}`)
+      const data = await res.json()
+      const finalUrl = data.pdfUrl || url
+      if (win) { win.location.href = finalUrl } else { window.open(finalUrl, '_blank') }
+    } catch {
+      if (win) { win.location.href = url } else { window.open(url, '_blank') }
+    } finally {
+      setPdfLoading(false)
+    }
+  }
 
   const analyze = async (force = false) => {
     if (!force && (aiMap[id] || loadingMap[id])) return
@@ -142,14 +162,27 @@ function AIPanel({
       {/* Action buttons */}
       <div className="flex items-center gap-2 flex-wrap">
         {url && (
-          <a
-            href={url} target="_blank" rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1.5 text-xs bg-surface text-muted hover:text-gray-200 border border-border px-3 py-1.5 rounded-lg transition-colors"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            {/\.pdf(\?.*)?$/i.test(url) ? 'Mở PDF' : 'Đọc báo cáo'}
-          </a>
+          isPdf ? (
+            // PDF: rewrite via CDN proxy to avoid cafef.vn 404
+            <button
+              onClick={(e) => openPdf(e)}
+              disabled={pdfLoading}
+              className="inline-flex items-center gap-1.5 text-xs bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/20 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {pdfLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+              Mở PDF
+            </button>
+          ) : (
+            // Article URL: open directly
+            <a
+              href={url} target="_blank" rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1.5 text-xs bg-surface text-muted hover:text-gray-200 border border-border px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Đọc báo cáo
+            </a>
+          )
         )}
         <a
           href={`https://www.google.com/search?q=${encodeURIComponent(title + ' pdf')}`}

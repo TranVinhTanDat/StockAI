@@ -1,17 +1,17 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import useSWR from 'swr'
 import {
   X, Globe, ExternalLink, TrendingUp, TrendingDown,
   BarChart2, Newspaper, Building2, Users, PieChart,
-  Calendar, BookOpen, Briefcase, ChevronRight,
-  Sparkles, AlertCircle, Zap, RefreshCw, History, FileText, Loader2,
+  Calendar, BookOpen, Briefcase, ChevronRight, ChevronDown, ChevronUp,
+  Sparkles, AlertCircle, Zap, RefreshCw, History, FileText, Loader2, Bot,
 } from 'lucide-react'
 import type { StockBoard } from '@/lib/priceboard-data'
 import type { AnalysisResult as AnalysisResultType, QuoteData } from '@/types'
-import { saveAnalysis } from '@/lib/storage'
+import { saveAnalysis, saveReportAnalysis, getLocalReportAnalyses, loadReportAnalysesFromCloud } from '@/lib/storage'
 import { getClientToken } from '@/lib/requireAuth'
 
 // Dynamic import — CandlestickChart uses lightweight-charts (no SSR)
@@ -151,20 +151,54 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 
 // ─── Report Analysis ──────────────────────────────────────────────────────────
 
-interface ReportAnalysis { summary: string; keyPoints: string[]; recommendation: string; sentiment: string; riskFactors: string[]; catalysts: string[]; conclusion: string; readPdf?: boolean; hasFullContent?: boolean; targetPrice?: number }
+interface ReportAnalysis {
+  summary: string; keyPoints: string[]; recommendation: string; sentiment: string
+  riskFactors: string[]; catalysts: string[]; conclusion: string
+  readPdf?: boolean; hasFullContent?: boolean; targetPrice?: number
+  cachedAt?: string; error?: string
+}
+
+/** Stable ID for a report: hash of URL (or title+date) so it persists across modal opens */
+function makeReportId(symbol: string, report: CompanyDetail['analystReports'][0]): string {
+  const base = report.url || `${report.title}_${report.date}`
+  let h = 0
+  for (let i = 0; i < base.length; i++) { h = Math.imul(31, h) + base.charCodeAt(i) | 0 }
+  return `cafef_${symbol}_${Math.abs(h).toString(36)}`
+}
 
 function ReportCard({ report, symbol }: { report: CompanyDetail['analystReports'][0]; symbol: string }) {
-  const [analysis, setAnalysis] = useState<ReportAnalysis | null>(null)
+  const reportId = useMemo(() => makeReportId(symbol, report), [symbol, report])
+
+  const [analysis, setAnalysis] = useState<ReportAnalysis | null>(() => {
+    // Load from localStorage synchronously on first render
+    const cache = getLocalReportAnalyses('cafef', symbol)
+    return (cache[reportId] as ReportAnalysis) || null
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [aiCollapsed, setAiCollapsed] = useState(false)
+
+  // On mount: sync from Supabase (cross-device)
+  useEffect(() => {
+    loadReportAnalysesFromCloud(symbol).then(cloud => {
+      const cloudEntry = cloud[reportId] as ReportAnalysis | undefined
+      if (cloudEntry && !cloudEntry.error) {
+        setAnalysis(prev => {
+          // Only overwrite if cloud is newer
+          if (!prev?.cachedAt || (cloudEntry.cachedAt && cloudEntry.cachedAt > prev.cachedAt)) {
+            return cloudEntry
+          }
+          return prev
+        })
+      }
+    })
+  }, [symbol, reportId])
 
   const openPdf = async () => {
     if (!report.url || pdfLoading) return
     setPdfLoading(true)
-    // Open window synchronously within user gesture (avoids mobile popup blocker).
-    // Must NOT use 'noopener' here — that returns null and kills our reference.
     const win = window.open('', '_blank')
     try {
       const res = await fetch(`/api/report-pdf?url=${encodeURIComponent(report.url)}`)
@@ -178,8 +212,9 @@ function ReportCard({ report, symbol }: { report: CompanyDetail['analystReports'
     }
   }
 
-  const analyze = async () => {
-    setLoading(true); setError('')
+  const analyze = async (force = false) => {
+    if (!force && analysis && !analysis.error) return
+    setLoading(true); setError(''); setAiCollapsed(false)
     try {
       const token = getClientToken()
       const res = await fetch('/api/report-analyze', {
@@ -192,20 +227,33 @@ function ReportCard({ report, symbol }: { report: CompanyDetail['analystReports'
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
-      setAnalysis(data)
-    } catch (e) { setError(e instanceof Error ? e.message : 'Lỗi phân tích') }
-    finally { setLoading(false) }
+      const result: ReportAnalysis = { ...data, cachedAt: new Date().toISOString() }
+      setAnalysis(result)
+      // Save to localStorage + Supabase
+      await saveReportAnalysis(reportId, symbol, 'cafef', result)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Lỗi phân tích')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const recColor = !analysis?.recommendation ? '' :
     analysis.recommendation.includes('MUA') ? 'text-green-400' :
     analysis.recommendation.includes('BÁN') ? 'text-red-400' : 'text-yellow-400'
 
+  const hasCached = !!(analysis && !analysis.error)
+
   return (
     <div className="bg-surface2/40 rounded-xl p-4 space-y-2">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-200 leading-snug">{report.title}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-gray-200 leading-snug">{report.title}</p>
+            {hasCached && (
+              <span className="flex-shrink-0 text-[9px] bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium">AI</span>
+            )}
+          </div>
           <div className="flex items-center gap-2 mt-1 text-xs text-muted flex-wrap">
             <span className="text-accent">{report.source}</span>
             <span>·</span>
@@ -215,18 +263,14 @@ function ReportCard({ report, symbol }: { report: CompanyDetail['analystReports'
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {/* View PDF directly */}
           {report.url && (
             <button onClick={openPdf} disabled={pdfLoading}
               className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 text-xs font-medium hover:bg-blue-500/20 transition-colors disabled:opacity-50 border border-blue-500/20"
               title="Xem file PDF">
-              {pdfLoading
-                ? <Loader2 className="w-3 h-3 animate-spin" />
-                : <FileText className="w-3 h-3" />}
+              {pdfLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
               <span className="hidden sm:inline">PDF</span>
             </button>
           )}
-          {/* Search for report online */}
           <a href={`https://www.google.com/search?q=${encodeURIComponent(report.title + ' ' + report.source + ' pdf')}`}
             target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-1 px-2 py-1 rounded-lg text-muted hover:text-accent transition-colors text-xs"
@@ -234,23 +278,30 @@ function ReportCard({ report, symbol }: { report: CompanyDetail['analystReports'
             <ExternalLink className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Tìm</span>
           </a>
-          <button onClick={analyze} disabled={loading}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-accent/10 text-accent text-xs font-medium hover:bg-accent/20 transition-colors disabled:opacity-50">
-            {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-            {loading ? 'Đang...' : analysis ? 'Phân tích lại' : 'Phân tích AI'}
-          </button>
+          {!hasCached ? (
+            <button onClick={() => analyze()} disabled={loading}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-accent/10 text-accent text-xs font-medium hover:bg-accent/20 transition-colors disabled:opacity-50">
+              {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+              {loading ? 'Đang...' : 'Phân tích AI'}
+            </button>
+          ) : (
+            <button onClick={() => analyze(true)} disabled={loading}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-muted hover:text-accent transition-colors text-xs"
+              title="Phân tích lại">
+              {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Inline report content preview */}
+      {/* Inline summary preview */}
       {report.summary && (
         <div>
           <p className={`text-xs text-gray-400 leading-relaxed ${!expanded ? 'line-clamp-3' : ''}`}>
             {report.summary}
           </p>
           {report.summary.length > 200 && (
-            <button onClick={() => setExpanded(v => !v)}
-              className="text-[10px] text-accent hover:underline mt-1">
+            <button onClick={() => setExpanded(v => !v)} className="text-[10px] text-accent hover:underline mt-1">
               {expanded ? 'Thu gọn ▲' : 'Xem thêm ▼'}
             </button>
           )}
@@ -263,65 +314,86 @@ function ReportCard({ report, symbol }: { report: CompanyDetail['analystReports'
         </p>
       )}
 
-      {analysis && (
-        <div className="space-y-3 border-t border-border/40 pt-3">
-          {/* Header: recommendation + badges */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {analysis.recommendation && (
-              <span className={`text-sm font-bold ${recColor}`}>{analysis.recommendation}</span>
-            )}
-            {analysis.targetPrice && analysis.targetPrice > 0 && (
-              <span className="text-xs text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded">
-                TP: {(analysis.targetPrice * 1000).toLocaleString('vi-VN')}₫
-              </span>
-            )}
-            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-              analysis.sentiment === 'TÍCH CỰC' ? 'text-green-400 bg-green-400/10' :
-              analysis.sentiment === 'TIÊU CỰC' ? 'text-red-400 bg-red-400/10' : 'text-yellow-400 bg-yellow-400/10'
-            }`}>{analysis.sentiment}</span>
-            {analysis.readPdf && (
-              <span className="text-[10px] text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded flex items-center gap-1">
-                <FileText className="w-2.5 h-2.5" /> Đọc PDF thật
-              </span>
-            )}
-          </div>
+      {/* AI loading */}
+      {loading && (
+        <div className="flex items-center gap-2 text-xs text-muted border-t border-border/30 pt-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
+          StockAI đang đọc và phân tích báo cáo...
+        </div>
+      )}
 
-          {/* Summary */}
-          <p className="text-xs text-gray-300 leading-relaxed">{analysis.summary}</p>
-
-          {/* Key points */}
-          {analysis.keyPoints?.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-[10px] uppercase tracking-wider text-muted font-semibold">Điểm phân tích</p>
-              {analysis.keyPoints.map((pt, i) => (
-                <div key={i} className="flex items-start gap-1.5 text-xs text-gray-400">
-                  <ChevronRight className="w-3 h-3 text-accent flex-shrink-0 mt-0.5" />
-                  {pt}
-                </div>
-              ))}
+      {/* AI result — collapsible */}
+      {analysis && !analysis.error && !loading && (
+        <div className="border-t border-border/40 overflow-hidden">
+          {/* Collapsible header */}
+          <button
+            className="w-full flex items-center justify-between gap-2 py-2 hover:opacity-80 transition-opacity"
+            onClick={() => setAiCollapsed(v => !v)}
+          >
+            <div className="flex items-center gap-2">
+              <Bot className="w-3.5 h-3.5 text-accent" />
+              <span className="text-xs font-semibold text-accent">Phân tích AI</span>
+              {!analysis.hasFullContent && (
+                <span className="text-[10px] text-muted/60 italic">(từ tiêu đề)</span>
+              )}
+              {analysis.cachedAt && (
+                <span className="text-[10px] text-muted/40">
+                  · {new Date(analysis.cachedAt).toLocaleDateString('vi-VN')}
+                </span>
+              )}
             </div>
-          )}
+            <div className="flex items-center gap-2">
+              {analysis.recommendation && (
+                <span className={`text-xs font-bold ${recColor}`}>{analysis.recommendation}</span>
+              )}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                analysis.sentiment === 'TÍCH CỰC' ? 'text-green-400 bg-green-400/10' :
+                analysis.sentiment === 'TIÊU CỰC' ? 'text-red-400 bg-red-400/10' : 'text-yellow-400 bg-yellow-400/10'
+              }`}>{analysis.sentiment}</span>
+              {aiCollapsed
+                ? <ChevronDown className="w-3.5 h-3.5 text-muted/60" />
+                : <ChevronUp className="w-3.5 h-3.5 text-muted/60" />}
+            </div>
+          </button>
 
-          {/* Catalysts & Risks side by side */}
-          <div className="grid grid-cols-2 gap-3">
-            {analysis.catalysts?.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-[10px] uppercase tracking-wider text-green-400 font-semibold">Động lực tăng</p>
-                {analysis.catalysts.map((c, i) => <p key={i} className="text-xs text-gray-400">• {c}</p>)}
+          {/* Collapsible body */}
+          {!aiCollapsed && (
+            <div className="space-y-3 pb-1">
+              {analysis.targetPrice && analysis.targetPrice > 0 && (
+                <p className="text-xs text-yellow-400">
+                  Giá mục tiêu: <span className="font-semibold">{Number(analysis.targetPrice).toLocaleString('vi-VN')}₫</span>
+                </p>
+              )}
+              <p className="text-xs text-gray-300 leading-relaxed">{analysis.summary}</p>
+              {analysis.keyPoints?.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] uppercase tracking-wider text-muted font-semibold">Điểm phân tích</p>
+                  {analysis.keyPoints.map((pt, i) => (
+                    <div key={i} className="flex items-start gap-1.5 text-xs text-gray-400">
+                      <ChevronRight className="w-3 h-3 text-accent flex-shrink-0 mt-0.5" />{pt}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                {analysis.catalysts?.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase tracking-wider text-green-400 font-semibold">Động lực tăng</p>
+                    {analysis.catalysts.map((c, i) => <p key={i} className="text-xs text-gray-400">• {c}</p>)}
+                  </div>
+                )}
+                {analysis.riskFactors?.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase tracking-wider text-red-400 font-semibold">Rủi ro</p>
+                    {analysis.riskFactors.map((r, i) => <p key={i} className="text-xs text-gray-400">• {r}</p>)}
+                  </div>
+                )}
               </div>
-            )}
-            {analysis.riskFactors?.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-[10px] uppercase tracking-wider text-red-400 font-semibold">Rủi ro</p>
-                {analysis.riskFactors.map((r, i) => <p key={i} className="text-xs text-gray-400">• {r}</p>)}
-              </div>
-            )}
-          </div>
-
-          {/* Conclusion */}
-          {analysis.conclusion && (
-            <div className="bg-accent/5 rounded-lg p-2.5 border-l-2 border-accent/30">
-              <p className="text-xs text-accent leading-relaxed">{analysis.conclusion}</p>
+              {analysis.conclusion && (
+                <div className="bg-accent/5 rounded-lg p-2.5 border-l-2 border-accent/30">
+                  <p className="text-xs text-accent leading-relaxed">{analysis.conclusion}</p>
+                </div>
+              )}
             </div>
           )}
         </div>
