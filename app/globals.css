@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Hide content before React restores correct section (prevents flash of wrong tab) */
+html.nav-restore #nav-content { visibility: hidden; }
+
 @layer base {
   :root {
     --bg: 220 40% 7%;

@@ -40,7 +40,12 @@ export default function RootLayout({
     <html
       lang="vi"
       className={`${beVietnamPro.variable} ${playfairDisplay.variable} dark`}
+      suppressHydrationWarning
     >
+      <head>
+        {/* Runs synchronously before browser paints — prevents flash of wrong section */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var s=sessionStorage.getItem('activeSection');if(s&&s!=='market')document.documentElement.classList.add('nav-restore')}catch(e){}})()` }} />
+      </head>
       <body className="font-sans antialiased min-h-screen bg-bg text-gray-100">
         <AuthProvider>{children}</AuthProvider>
       </body>

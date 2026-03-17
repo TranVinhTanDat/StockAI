@@ -2,7 +2,11 @@
 
 const ALLOW_REGISTRATION = process.env.NEXT_PUBLIC_ALLOW_REGISTRATION !== 'false'
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
+
+// useLayoutEffect runs before browser paint → no flash when restoring saved section
+// Fall back to useEffect on server (SSR) to avoid warnings
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect
 import dynamic from 'next/dynamic'
 
 import AppShell, { type SectionKey } from '@/components/layout/AppShell'
@@ -129,8 +133,17 @@ export default function Home() {
     return () => clearInterval(id)
   }, [])
 
+  // Restore last active section, then reveal content (inline script hid it to prevent flash)
+  useIsomorphicLayoutEffect(() => {
+    const saved = sessionStorage.getItem('activeSection') as SectionKey | null
+    const valid: SectionKey[] = ['market', 'analysis', 'history', 'news', 'portfolio', 'tools', 'alerts', 'admin']
+    if (saved && valid.includes(saved) && saved !== 'market') setActiveSection(saved)
+    document.documentElement.classList.remove('nav-restore')
+  }, [])
+
   const handleSectionChange = useCallback((s: SectionKey) => {
     setActiveSection(s)
+    sessionStorage.setItem('activeSection', s)
     requestAnimationFrame(() => contentRef.current?.scrollTo({ top: 0, behavior: 'instant' }))
   }, [])
 
@@ -269,6 +282,7 @@ export default function Home() {
     <>
     {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     {showChangePassword && user && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
+    <div id="nav-content">
     <AppShell
       activeSection={activeSection}
       onSectionChange={handleSectionChange}
@@ -525,6 +539,7 @@ export default function Home() {
         </div>
       )}
     </AppShell>
+    </div>
     </>
   )
 }

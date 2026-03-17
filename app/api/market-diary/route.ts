@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
-const client = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY })
-
 export const maxDuration = 45
+
+function getClient(): Anthropic {
+  const apiKey = process.env.CLAUDE_API_KEY
+  if (!apiKey) throw new Error('CLAUDE_API_KEY is not set')
+  return new Anthropic({ apiKey })
+}
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL
   || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
@@ -40,6 +44,7 @@ Tổng khối lượng VN-Index: ${(market.vnindex.volume / 1e9).toFixed(2)} t�
       ? newsItems.map((n, i) => `${i + 1}. ${n.title}`).join('\n')
       : 'Chưa có tin tức'
 
+    const client = getClient()
     const message = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 400,
@@ -80,6 +85,7 @@ Viết nhật ký thị trường phân tích diễn biến hôm nay, tâm lý n
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to generate diary'
+    console.error('[market-diary]', message)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
