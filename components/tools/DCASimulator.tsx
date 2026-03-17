@@ -108,8 +108,8 @@ export default function DCASimulator() {
     <div className="space-y-4">
       <h3 className="font-semibold">Mô Phỏng DCA</h3>
 
-      <div className="grid grid-cols-3 gap-3">
-        <div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="col-span-2 sm:col-span-1">
           <label className="text-xs text-muted mb-1 block">Mỗi tháng (₫)</label>
           <input
             type="text"
@@ -147,7 +147,7 @@ export default function DCASimulator() {
 
       {last && (
         <>
-          <div className="bg-surface2 rounded-lg p-4 grid grid-cols-3 gap-4 text-sm">
+          <div className="bg-surface2 rounded-lg p-4 grid grid-cols-3 gap-2 sm:gap-4 text-sm">
             <div>
               <p className="text-muted text-xs">Tổng đầu tư</p>
               <p className="font-semibold text-gray-200">{formatVND(totalInvested)}</p>
