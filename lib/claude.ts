@@ -695,11 +695,7 @@ export async function predictStocks(
     ? `\n▌ BỐI CẢNH THỊ TRƯỜNG (VN-Index):\nVN-Index: ${ctx.vnIndex.currentLevel.toLocaleString('vi-VN')} điểm | Xu hướng 30D: ${ctx.vnIndex.trend30d >= 0 ? '+' : ''}${ctx.vnIndex.trend30d.toFixed(1)}% | RSI: ${ctx.vnIndex.rsi} (${ctx.vnIndex.rsi > 70 ? 'Quá mua — thận trọng' : ctx.vnIndex.rsi < 30 ? 'Quá bán — có thể phục hồi' : 'Trung lập'})\n${getMarketRegime(ctx.vnIndex)}\n`
     : ''
 
-  // Sector benchmarks for all unique industries in the stock list
-  const uniqueInds = Array.from(new Set(ctx.stocks.map(s => s.industry).filter(i => i && i !== 'Khác')))
-  const sectorBenchBlock = uniqueInds.length > 0
-    ? `\n▌ BENCHMARK NGÀNH (so sánh định giá):\n${uniqueInds.map(ind => getSectorBenchmark(ind)).filter(Boolean).join('\n')}\n`
-    : ''
+  const sectorBenchBlock = ''
 
   const tableRows = ctx.stocks
     .map((s, i) => {
@@ -741,7 +737,7 @@ ${styleDesc}
 NHIỆM VỤ: Với vai trò chuyên gia quản lý quỹ CFA, hãy:
 1. Phân tích từng mã dựa trên dữ liệu KỸ THUẬT (ADX xu hướng, RSI, MACD, BB, momentum) và CƠ BẢN (P/E, P/B, ROE, ROA, tăng trưởng) thực tế ở trên
 2. Xét tác động dòng tiền nước ngoài (NN mua/bán ròng) — tín hiệu quan trọng nhất TTCK VN
-3. Chọn TOP 5-7 mã PHÙ HỢP NHẤT cho phong cách đầu tư này
+3. Chọn TOP 5 mã PHÙ HỢP NHẤT cho phong cách đầu tư này
 4. Với mỗi mã: giải thích cụ thể TẠI SAO phù hợp dựa trên các con số thực tế
 5. Xếp hạng từ phù hợp nhất → ít phù hợp nhất
 6. Định giá target price dựa trên PE ngành, tăng trưởng dự phóng và kỹ thuật

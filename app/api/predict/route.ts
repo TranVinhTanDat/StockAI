@@ -58,7 +58,7 @@ async function fetchCafeFGrowth(symbol: string): Promise<{ revenueGrowth: number
   try {
     const res = await fetch(
       `https://cafef.vn/du-lieu/Ajax/PageNew/KeHoachKinhDoanh.ashx?Symbol=${symbol}`,
-      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(3000), next: { revalidate: 3600 } as RequestInit['next'] }
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(1500), next: { revalidate: 3600 } as RequestInit['next'] }
     )
     if (!res.ok) return { revenueGrowth: 0, profitGrowth: 0 }
     const data = await res.json()
