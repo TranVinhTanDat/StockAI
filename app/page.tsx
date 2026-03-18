@@ -43,7 +43,8 @@ import { useAlerts } from '@/hooks/useAlerts'
 import type { AnalysisResult as AnalysisResultType, QuoteData, HistoryData, FundamentalData, NewsItem, SavedAnalysis } from '@/types'
 import { getCachedAnalysis, setCachedAnalysis, clearCachedAnalysis } from '@/lib/analysisCache'
 import { loadAnalysisFromCloud } from '@/lib/storage'
-import { TrendingUp, Bot, Newspaper, Briefcase, Wrench, Bell, BarChart3, Map, History, Shield } from 'lucide-react'
+import { TrendingUp, Bot, Newspaper, Briefcase, Wrench, Bell, BarChart3, Map, History, Shield, Zap } from 'lucide-react'
+import SmartAnalysis from '@/components/analysis/SmartAnalysis'
 import { useAuthContext } from '@/components/auth/AuthContext'
 const LoginModal = dynamic(() => import('@/components/auth/LoginModal'), { ssr: false })
 const ChangePasswordModal = dynamic(() => import('@/components/auth/ChangePasswordModal'), { ssr: false })
@@ -137,7 +138,7 @@ export default function Home() {
   // Restore last active section, then reveal content (inline script hid it to prevent flash)
   useIsomorphicLayoutEffect(() => {
     const saved = sessionStorage.getItem('activeSection') as SectionKey | null
-    const valid: SectionKey[] = ['market', 'analysis', 'history', 'news', 'portfolio', 'tools', 'alerts', 'admin']
+    const valid: SectionKey[] = ['market', 'analysis', 'smart', 'history', 'news', 'portfolio', 'tools', 'alerts', 'admin']
     if (saved && valid.includes(saved) && saved !== 'market') setActiveSection(saved)
     document.documentElement.classList.remove('nav-restore')
   }, [])
@@ -438,6 +439,27 @@ export default function Home() {
               <CandlestickChart symbol={chartSymbol} isVisible={activeSection === 'analysis'} />
             </div>
           </div>
+        </SectionWrap>
+      </div>
+
+      {/* ══════════════════════════════════════════════════
+          PHÂN TÍCH NHANH (THUẬT TOÁN - MIỄN PHÍ)
+      ══════════════════════════════════════════════════ */}
+      <div className={activeSection !== 'smart' ? 'hidden' : ''}>
+        <SectionWrap>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Zap className="w-5 h-5 text-green-400" />
+              Phân Tích Nhanh
+              <span className="text-xs font-normal px-2 py-0.5 bg-green-400/15 text-green-400 border border-green-400/25 rounded-full">FREE</span>
+            </h2>
+          </div>
+          <p className="text-sm text-muted">Phân tích thuật toán tức thì — không cần đăng nhập, không tốn phí AI. Điểm kỹ thuật + cơ bản + tâm lý từ dữ liệu thực.</p>
+          <SmartAnalysis
+            isVisible={activeSection === 'smart'}
+            holdings={holdings}
+            balance={balance}
+          />
         </SectionWrap>
       </div>
 

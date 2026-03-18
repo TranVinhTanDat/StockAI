@@ -6,31 +6,33 @@ import {
   TrendingUp, Bot, Newspaper, Briefcase, Wrench, Bell,
   Table2, BarChart2, History, MoreHorizontal, X,
   LogIn, LogOut, User, Shield, KeyRound, ChevronLeft, ChevronRight,
-  AlertTriangle,
+  AlertTriangle, Zap,
 } from 'lucide-react'
 import MarketTicker from './MarketTicker'
 
-export type SectionKey = 'market' | 'analysis' | 'history' | 'news' | 'portfolio' | 'tools' | 'alerts' | 'admin'
+export type SectionKey = 'market' | 'analysis' | 'smart' | 'history' | 'news' | 'portfolio' | 'tools' | 'alerts' | 'admin'
 
 export const NAV_ITEMS: {
   key: SectionKey
   label: string
   short: string
   icon: React.ComponentType<{ className?: string }>
+  badge?: string
 }[] = [
-  { key: 'market',   label: 'Thị Trường', short: 'Thị',  icon: TrendingUp },
-  { key: 'analysis', label: 'Phân Tích',  short: 'Phân', icon: Bot        },
-  { key: 'history',  label: 'Lịch Sử AI', short: 'Lịch', icon: History    },
-  { key: 'news',     label: 'Tin Tức',    short: 'Tin',  icon: Newspaper  },
-  { key: 'portfolio',label: 'Danh Mục',   short: 'Danh', icon: Briefcase  },
-  { key: 'tools',    label: 'Công Cụ',    short: 'Công', icon: Wrench     },
-  { key: 'alerts',   label: 'Cảnh Báo',  short: 'Cảnh', icon: Bell       },
+  { key: 'market',   label: 'Thị Trường',      short: 'Thị',  icon: TrendingUp },
+  { key: 'analysis', label: 'Phân Tích AI',     short: 'AI',   icon: Bot        },
+  { key: 'smart',    label: 'Phân Tích Nhanh',  short: 'Nhanh',icon: Zap, badge: 'FREE' },
+  { key: 'history',  label: 'Lịch Sử AI',       short: 'Lịch', icon: History    },
+  { key: 'news',     label: 'Tin Tức',           short: 'Tin',  icon: Newspaper  },
+  { key: 'portfolio',label: 'Danh Mục',          short: 'Danh', icon: Briefcase  },
+  { key: 'tools',    label: 'Công Cụ',           short: 'Công', icon: Wrench     },
+  { key: 'alerts',   label: 'Cảnh Báo',         short: 'Cảnh', icon: Bell       },
 ]
 
 // Mobile bottom bar: 5 most-used sections
-const MOBILE_MAIN: SectionKey[] = ['market', 'analysis', 'history', 'news', 'portfolio']
+const MOBILE_MAIN: SectionKey[] = ['market', 'analysis', 'smart', 'news', 'portfolio']
 // Mobile "Thêm" drawer: remaining sections
-const MOBILE_MORE: SectionKey[] = ['tools', 'alerts']
+const MOBILE_MORE: SectionKey[] = ['history', 'tools', 'alerts']
 
 interface AppShellProps {
   activeSection: SectionKey
@@ -186,7 +188,7 @@ export default function AppShell({
             )}
           </Link>
           <div className="border-t border-border/40 mb-1" />
-          {NAV_ITEMS.map(({ key, label, icon: Icon }) => {
+          {NAV_ITEMS.map(({ key, label, icon: Icon, badge }) => {
             const isActive = activeSection === key
             return (
               <button
@@ -201,6 +203,9 @@ export default function AppShell({
                 {!collapsed && (
                   <>
                     <span className="truncate">{label}</span>
+                    {badge && !isActive && (
+                      <span className="ml-auto text-[9px] px-1 py-0.5 bg-green-400/20 text-green-400 rounded font-bold">{badge}</span>
+                    )}
                     {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />}
                   </>
                 )}
@@ -454,7 +459,7 @@ export default function AppShell({
             </Link>
 
             {/* Remaining nav items */}
-            {mobileMoreItems.map(({ key, label, icon: Icon }) => {
+            {mobileMoreItems.map(({ key, label, icon: Icon, badge }) => {
               const isActive = activeSection === key
               return (
                 <button
@@ -466,6 +471,9 @@ export default function AppShell({
                 >
                   <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-accent' : ''}`} />
                   <span className="flex-1 text-left">{label}</span>
+                  {badge && !isActive && (
+                    <span className="text-[9px] px-1 py-0.5 bg-green-400/20 text-green-400 rounded font-bold">{badge}</span>
+                  )}
                   {isActive && <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />}
                 </button>
               )
