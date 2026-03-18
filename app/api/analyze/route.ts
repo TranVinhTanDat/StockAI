@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { analyzeStock } from '@/lib/claude'
 import { createClient } from '@supabase/supabase-js'
 import { verifyToken } from '@/lib/jwt'
-import { calcRSI, calcADX } from '@/lib/indicators'
+import { calcRSI, calcDMI } from '@/lib/indicators'
 
 function getServerSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -262,17 +262,23 @@ export async function POST(request: NextRequest) {
       else if (avg5 < avg20 * 0.5) volumeSignal = 'Thấp bất thường (thiếu xác nhận)'
     }
 
-    // ADX (trend strength) from highs/lows/closes
+    // DMI/ADX (trend strength + direction) from highs/lows/closes
     const closesArr: number[] = Array.isArray(closes) ? closes.filter((v: number) => !isNaN(v)) : []
     const highsArr: number[] = Array.isArray(highs) ? highs.filter((v: number) => !isNaN(v)) : []
     const lowsArr: number[] = Array.isArray(lows) ? lows.filter((v: number) => !isNaN(v)) : []
     let adxValue = 0
     let adxTrend = 'Không rõ xu hướng'
     if (highsArr.length >= 28 && lowsArr.length >= 28 && closesArr.length >= 28) {
-      const adxArr = calcADX(highsArr, lowsArr, closesArr, 14).filter((v: number) => !isNaN(v))
-      if (adxArr.length > 0) {
-        adxValue = Math.round(adxArr[adxArr.length - 1])
-        adxTrend = adxValue >= 25 ? 'Xu hướng MẠNH' : adxValue >= 15 ? 'Xu hướng YẾU' : 'SIDEWAY (không có xu hướng)'
+      const dmiArr = calcDMI(highsArr, lowsArr, closesArr, 14)
+      const lastDMI = dmiArr.filter(d => !isNaN(d.adx)).pop()
+      if (lastDMI) {
+        adxValue = Math.round(lastDMI.adx)
+        const uptrend = lastDMI.diPlus > lastDMI.diMinus
+        if (adxValue >= 25 && uptrend) adxTrend = `Xu hướng TĂNG MẠNH (ADX ${adxValue}, DI+ ${Math.round(lastDMI.diPlus)} > DI- ${Math.round(lastDMI.diMinus)})`
+        else if (adxValue >= 25 && !uptrend) adxTrend = `Xu hướng GIẢM MẠNH (ADX ${adxValue}, DI- ${Math.round(lastDMI.diMinus)} > DI+ ${Math.round(lastDMI.diPlus)})`
+        else if (adxValue >= 15 && uptrend) adxTrend = `Xu hướng tăng YẾU (ADX ${adxValue})`
+        else if (adxValue >= 15 && !uptrend) adxTrend = `Xu hướng giảm YẾU (ADX ${adxValue})`
+        else adxTrend = `SIDEWAY (ADX ${adxValue} — không có xu hướng)`
       }
     }
 
@@ -321,16 +327,26 @@ export async function POST(request: NextRequest) {
         if (isSwingHigh) swingHighs.push(h)
         if (isSwingLow) swingLows.push(l)
       }
-      // Use all swing points for strong S/R, last half for near S/R
-      if (swingHighs.length > 0) {
+      // Nearest resistance ABOVE price, nearest support BELOW price (aligned with smart-analyze)
+      const resistanceLevels = swingHighs.filter(h => h > price)
+      const supportLevels = swingLows.filter(l => l < price)
+      if (resistanceLevels.length > 0) {
+        resistance = Math.round(Math.min(...resistanceLevels)) // nearest above
+        resistance2 = resistanceLevels.length > 1
+          ? Math.round(resistanceLevels.sort((a,b) => a-b)[1]) // second nearest
+          : resistance
+      } else if (swingHighs.length > 0) {
         resistance = Math.round(Math.max(...swingHighs))
-        const mid = Math.floor(swingHighs.length / 2)
-        resistance2 = mid > 0 ? Math.round(Math.max(...swingHighs.slice(mid))) : resistance
+        resistance2 = resistance
       }
-      if (swingLows.length > 0) {
+      if (supportLevels.length > 0) {
+        support = Math.round(Math.max(...supportLevels)) // nearest below
+        support2 = supportLevels.length > 1
+          ? Math.round(supportLevels.sort((a,b) => b-a)[1]) // second nearest
+          : support
+      } else if (swingLows.length > 0) {
         support = Math.round(Math.min(...swingLows))
-        const mid = Math.floor(swingLows.length / 2)
-        support2 = mid > 0 ? Math.round(Math.min(...swingLows.slice(mid))) : support
+        support2 = support
       }
       // Fallback to simple max/min if not enough swing points
       if (!resistance) resistance = Math.round(Math.max(...highsArr.slice(-20)))
@@ -425,8 +441,15 @@ export async function POST(request: NextRequest) {
     if (noHolding) await saveCachedResult(symbol, result)
     return NextResponse.json(result)
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Analysis failed'
+    const status = (error as { status?: number })?.status
+    const rawMsg  = error instanceof Error ? error.message : 'Analysis failed'
+    const isOverloaded = status === 529 || rawMsg.includes('overloaded')
+    const isRateLimit  = status === 429
+    const message = isOverloaded
+      ? 'Claude API đang quá tải, vui lòng thử lại sau 30 giây'
+      : isRateLimit
+        ? 'Đã vượt giới hạn API, vui lòng thử lại sau 1 phút'
+        : rawMsg
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

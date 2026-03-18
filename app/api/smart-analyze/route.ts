@@ -197,7 +197,7 @@ async function fetchGrowth(symbol: string): Promise<{ revenueGrowth: number; pro
     yearEntries.sort((a, b) => b.Year - a.Year)
     if (yearEntries.length < 2) return { revenueGrowth: 0, profitGrowth: 0 }
     const curr = yearEntries[0], prev = yearEntries[1]
-    const REVENUE_NAMES = ['Doanh thu', 'Tổng doanh thu', 'Tổng thu nhập hoạt động', 'Thu nhập lãi thuần', 'Tổng thu']
+    const REVENUE_NAMES = ['Doanh thu', 'Tổng doanh thu', 'Tổng thu nhập hoạt động', 'Tổng thu nhập thuần', 'Tổng thu nhập', 'Thu nhập lãi và tương đương', 'Thu nhập lãi thuần', 'Thu nhập lãi', 'Tổng thu']
     const PROFIT_NAMES = ['Lợi nhuận trước thuế', 'Lợi nhuận sau thuế', 'LNTT', 'LNST', 'Tổng Lợi nhuận trước thuế']
     const findVal = (entry: typeof curr, names: string[]): number => {
       for (const name of names) {

@@ -8,39 +8,40 @@
  *   Sentiment   30% — news, foreign flow, 52W position, market regime
  */
 
-import { calcRSI, calcMACD, calcBB, calcSMA, calcEMA, calcADX } from './indicators'
+import { calcRSI, calcMACD, calcBB, calcSMA, calcEMA, calcDMI, calcATR } from './indicators'
 
-// ─── Sector benchmarks (same as lib/claude.ts) ───────────────────────────────
-const SECTOR_BENCHMARKS: Record<string, { peMax: number; pbMax: number; roeMin: number }> = {
-  'Ngân hàng':         { peMax: 12, pbMax: 2.0, roeMin: 15 },
-  'Bất động sản':      { peMax: 22, pbMax: 2.5, roeMin: 10 },
-  'Thép':              { peMax: 12, pbMax: 1.5, roeMin:  8 },
-  'Vật liệu xây dựng': { peMax: 14, pbMax: 1.8, roeMin:  8 },
-  'Bán lẻ':            { peMax: 22, pbMax: 3.5, roeMin: 15 },
-  'Công nghệ':         { peMax: 30, pbMax: 5.0, roeMin: 18 },
-  'Thực phẩm':         { peMax: 25, pbMax: 4.0, roeMin: 20 },
-  'Đồ uống':           { peMax: 25, pbMax: 4.5, roeMin: 20 },
-  'Dầu khí':           { peMax: 15, pbMax: 2.5, roeMin: 12 },
-  'Chứng khoán':       { peMax: 16, pbMax: 2.5, roeMin: 12 },
-  'Dược phẩm':         { peMax: 25, pbMax: 4.0, roeMin: 15 },
-  'Điện':              { peMax: 18, pbMax: 2.2, roeMin: 10 },
-  'Năng lượng':        { peMax: 18, pbMax: 2.2, roeMin: 10 },
-  'Vận tải':           { peMax: 18, pbMax: 2.0, roeMin: 10 },
-  'Logistics':         { peMax: 20, pbMax: 2.5, roeMin: 12 },
-  'Xây dựng':          { peMax: 15, pbMax: 1.8, roeMin:  8 },
-  'Hóa chất':          { peMax: 14, pbMax: 1.8, roeMin:  8 },
-  'Thủy sản':          { peMax: 15, pbMax: 2.0, roeMin: 10 },
-  'Nông nghiệp':       { peMax: 15, pbMax: 1.8, roeMin:  8 },
-  'Bảo hiểm':          { peMax: 20, pbMax: 2.5, roeMin: 12 },
-  'Viễn thông':        { peMax: 18, pbMax: 3.0, roeMin: 15 },
-  'Y tế':              { peMax: 28, pbMax: 5.0, roeMin: 15 },
+// ─── Sector benchmarks ───────────────────────────────────────────────────────
+interface SectorBench { peMax: number; pbMax: number; roeMin: number; roaMin: number; deMax: number }
+const SECTOR_BENCHMARKS: Record<string, SectorBench> = {
+  'Ngân hàng':         { peMax: 12, pbMax: 2.0, roeMin: 15, roaMin: 0.8,  deMax: 999 }, // banks: high leverage by design, skip debt check
+  'Bảo hiểm':          { peMax: 20, pbMax: 2.5, roeMin: 12, roaMin: 1.5,  deMax: 999 },
+  'Chứng khoán':       { peMax: 16, pbMax: 2.5, roeMin: 12, roaMin: 1.0,  deMax: 5.0 }, // securities: low ROA by design (large margin lending balance sheet)
+  'Bất động sản':      { peMax: 22, pbMax: 2.5, roeMin: 10, roaMin: 2.0,  deMax: 3.0 },
+  'Thép':              { peMax: 12, pbMax: 1.5, roeMin:  8, roaMin: 3.0,  deMax: 2.0 },
+  'Vật liệu xây dựng': { peMax: 14, pbMax: 1.8, roeMin:  8, roaMin: 3.0,  deMax: 1.5 },
+  'Bán lẻ':            { peMax: 22, pbMax: 3.5, roeMin: 15, roaMin: 4.0,  deMax: 2.0 },
+  'Công nghệ':         { peMax: 30, pbMax: 5.0, roeMin: 18, roaMin: 8.0,  deMax: 1.0 },
+  'Thực phẩm':         { peMax: 25, pbMax: 4.0, roeMin: 20, roaMin: 8.0,  deMax: 1.0 },
+  'Đồ uống':           { peMax: 25, pbMax: 4.5, roeMin: 20, roaMin: 8.0,  deMax: 0.8 },
+  'Dầu khí':           { peMax: 15, pbMax: 2.5, roeMin: 12, roaMin: 5.0,  deMax: 1.5 },
+  'Dược phẩm':         { peMax: 25, pbMax: 4.0, roeMin: 15, roaMin: 8.0,  deMax: 0.8 },
+  'Điện':              { peMax: 18, pbMax: 2.2, roeMin: 10, roaMin: 3.0,  deMax: 2.5 },
+  'Năng lượng':        { peMax: 18, pbMax: 2.2, roeMin: 10, roaMin: 3.0,  deMax: 2.5 },
+  'Vận tải':           { peMax: 18, pbMax: 2.0, roeMin: 10, roaMin: 3.0,  deMax: 2.0 },
+  'Logistics':         { peMax: 20, pbMax: 2.5, roeMin: 12, roaMin: 4.0,  deMax: 2.0 },
+  'Xây dựng':          { peMax: 15, pbMax: 1.8, roeMin:  8, roaMin: 3.0,  deMax: 2.5 },
+  'Hóa chất':          { peMax: 14, pbMax: 1.8, roeMin:  8, roaMin: 4.0,  deMax: 1.5 },
+  'Thủy sản':          { peMax: 15, pbMax: 2.0, roeMin: 10, roaMin: 4.0,  deMax: 1.5 },
+  'Nông nghiệp':       { peMax: 15, pbMax: 1.8, roeMin:  8, roaMin: 3.0,  deMax: 1.5 },
+  'Viễn thông':        { peMax: 18, pbMax: 3.0, roeMin: 15, roaMin: 5.0,  deMax: 1.5 },
+  'Y tế':              { peMax: 28, pbMax: 5.0, roeMin: 15, roaMin: 7.0,  deMax: 0.8 },
 }
 
-function getSectorBench(industry: string) {
+function getSectorBench(industry: string): SectorBench {
   for (const [key, val] of Object.entries(SECTOR_BENCHMARKS)) {
     if (industry.toLowerCase().includes(key.toLowerCase())) return val
   }
-  return { peMax: 18, pbMax: 2.5, roeMin: 12 } // generic default
+  return { peMax: 18, pbMax: 2.5, roeMin: 12, roaMin: 3.0, deMax: 2.0 } // generic default
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -134,6 +135,15 @@ export interface SmartScoreResult {
   strengths: string[]
   weaknesses: string[]
   watchPoints: string[]
+  entryZone: { low: number; high: number }
+  holdingPeriod: string
+  rrRatio: number
+  confidenceNum: number      // 0-100 numeric confidence (like AI output)
+  technicalSummary: string   // synthesized narrative (~90 words)
+  fundamentalSummary: string
+  sentimentSummary: string
+  action: string             // immediate action recommendation with price levels
+  nextReview: string         // conditions to monitor
   sma20: number
   sma50: number
   sma200: number
@@ -198,6 +208,7 @@ function scoreTechnical(input: SmartScoreInput): { signals: TechnicalSignals; sc
   else if (rsi > 60 && rsi <= 70) { rsiSignal = 'Tăng momentum'; points += 12 }
   else { rsiSignal = 'Quá mua - rủi ro điều chỉnh'; points += 5 }
 
+
   // --- MACD (15 pts) ---
   const macdArr = calcMACD(closes)
   const macdPt = macdArr.filter(p => !isNaN(p.macd) && !isNaN(p.signal))
@@ -210,11 +221,15 @@ function scoreTechnical(input: SmartScoreInput): { signals: TechnicalSignals; sc
     if (bullCross) { macdSignal = 'Golden Cross — Tín hiệu MUA mạnh'; points += 15 }
     else if (bearCross) { macdSignal = 'Death Cross — Tín hiệu BÁN'; points += 3 }
     else if (lastMacd.macd > lastMacd.signal && lastMacd.histogram > 0) {
-      macdSignal = 'MACD trên signal — Xu hướng tăng'
-      points += 10
+      // Histogram expanding positive = accelerating uptrend (+12), stable = +10
+      const histExpandPos = prevMacd?.histogram != null && lastMacd.histogram > prevMacd.histogram
+      macdSignal = histExpandPos ? 'MACD mở rộng dương — momentum tăng tốc' : 'MACD trên signal — Xu hướng tăng'
+      points += histExpandPos ? 12 : 10
     } else if (lastMacd.macd < lastMacd.signal && lastMacd.histogram < 0) {
-      macdSignal = 'MACD dưới signal — Xu hướng giảm'
-      points += 4
+      // Histogram expanding negative = accelerating downtrend (+2), stable negative = +4
+      const histExpandNeg = prevMacd?.histogram != null && lastMacd.histogram < prevMacd.histogram
+      macdSignal = histExpandNeg ? 'MACD mở rộng âm — momentum giảm tăng tốc' : 'MACD dưới signal — Xu hướng giảm'
+      points += histExpandNeg ? 2 : 4
     } else {
       macdSignal = 'MACD trung lập'
       points += 7
@@ -238,17 +253,33 @@ function scoreTechnical(input: SmartScoreInput): { signals: TechnicalSignals; sc
     else { bbSignal = 'Gần biên BB'; points += 6 }
   } else points += 5
 
-  // --- ADX trend strength (10 pts) ---
+  // --- DMI/ADX trend strength + direction (10 pts) ---
   let adxValue = 0, adxSignal = 'Không đủ dữ liệu'
   if (highs.length >= 28 && lows.length >= 28) {
-    const adxArr = calcADX(highs, lows, closes, 14).filter(v => !isNaN(v))
-    if (adxArr.length > 0) {
-      adxValue = Math.round(adxArr[adxArr.length - 1])
-      if (adxValue >= 25) { adxSignal = 'Xu hướng MẠNH (ADX≥25)'; points += 10 }
-      else if (adxValue >= 15) { adxSignal = 'Xu hướng YẾU (ADX 15-25)'; points += 6 }
-      else { adxSignal = 'SIDEWAY — không có xu hướng rõ'; points += 3 }
+    const dmiArr = calcDMI(highs, lows, closes, 14)
+    const lastDMI = dmiArr.filter(d => !isNaN(d.adx)).pop()
+    if (lastDMI) {
+      adxValue = Math.round(lastDMI.adx)
+      const uptrend = lastDMI.diPlus > lastDMI.diMinus
+      if (adxValue >= 25 && uptrend) { adxSignal = `ADX ${adxValue} — Xu hướng TĂNG MẠNH (DI+ ${Math.round(lastDMI.diPlus)} > DI- ${Math.round(lastDMI.diMinus)})`; points += 10 }
+      else if (adxValue >= 25 && !uptrend) { adxSignal = `ADX ${adxValue} — Xu hướng GIẢM MẠNH (DI- ${Math.round(lastDMI.diMinus)} > DI+ ${Math.round(lastDMI.diPlus)})`; points += 2 }
+      else if (adxValue >= 15 && uptrend) { adxSignal = `ADX ${adxValue} — Xu hướng tăng yếu`; points += 7 }
+      else if (adxValue >= 15 && !uptrend) { adxSignal = `ADX ${adxValue} — Xu hướng giảm yếu`; points += 4 }
+      else { adxSignal = `ADX ${adxValue} — SIDEWAY không có xu hướng rõ`; points += 5 }
     }
   } else points += 5
+
+  // ── Confirmed downtrend penalty ─────────────────────────────────────────────
+  // When ADX ≥ 25 CONFIRMS a downtrend AND price is significantly below both
+  // SMAs, good fundamentals must not mask a clear bear signal. Deduct up to 8 pts.
+  if (adxValue >= 25 && adxSignal.includes('GIẢM') && price < sma20 && sma20 < sma50) {
+    const smaGapPct = (sma20 - price) / price  // how far below SMA20
+    if (smaGapPct > 0.08) points -= 8           // strongly below (e.g., PLX −13.6%)
+    else if (smaGapPct > 0.04) points -= 5      // moderately below
+    else points -= 3                             // lightly below with ADX downtrend
+    // RSI "oversold" in a confirmed downtrend is distribution, NOT opportunity — cancel bonus
+    if (rsi < 40) points -= 3                   // remove the false oversold-recovery bonus
+  }
 
   // --- Volume confirmation (10 pts) ---
   const validVols = volumes.filter(v => !isNaN(v) && v > 0)
@@ -257,8 +288,10 @@ function scoreTechnical(input: SmartScoreInput): { signals: TechnicalSignals; sc
     const avg20 = validVols.slice(-20).reduce((a, b) => a + b, 0) / 20
     const avg5 = validVols.slice(-5).reduce((a, b) => a + b, 0) / 5
     const ratio = avg5 / avg20
-    if (ratio > 1.5 && (input.changePct > 0)) { volumeSignal = 'Tăng với khối lượng lớn — xác nhận mạnh'; points += 10 }
-    else if (ratio > 1.5 && (input.changePct <= 0)) { volumeSignal = 'Giảm với khối lượng lớn — áp lực bán'; points += 2 }
+    const price5dAgo = closes[Math.max(0, closes.length - 6)]
+    const priceDir5d = price5dAgo > 0 ? (closes[closes.length - 1] - price5dAgo) / price5dAgo : 0
+    if (ratio > 1.5 && priceDir5d > 0) { volumeSignal = 'Tăng với khối lượng lớn — xác nhận mạnh'; points += 10 }
+    else if (ratio > 1.5 && priceDir5d <= 0) { volumeSignal = 'Giảm với khối lượng lớn — áp lực bán'; points += 2 }
     else if (ratio < 0.5) { volumeSignal = 'Khối lượng thấp bất thường'; points += 4 }
     else { volumeSignal = 'Khối lượng bình thường'; points += 6 }
   } else points += 5
@@ -272,12 +305,13 @@ function scoreTechnical(input: SmartScoreInput): { signals: TechnicalSignals; sc
   const m1M = m1ref > 0 ? Math.round(((last - m1ref) / m1ref) * 1000) / 10 : 0
   const m3M = m3ref > 0 ? Math.round(((last - m3ref) / m3ref) * 1000) / 10 : 0
 
-  // Average momentum score: positive momentum gets higher points
-  const momScore = (m1W > 0 ? 1 : -1) + (m1M > 0 ? 1 : -1) + (m3M > 0 ? 2 : -2)
-  if (momScore >= 3) points += 10
-  else if (momScore >= 1) points += 7
-  else if (momScore === 0) points += 5
-  else points += 2
+  // Momentum: recent weeks weighted more (1W=3x, 1M=2x, 3M=1x)
+  const momScore = (m1W > 0 ? 3 : -3) + (m1M > 0 ? 2 : -2) + (m3M > 0 ? 1 : -1)
+  if (momScore >= 4) points += 10
+  else if (momScore >= 2) points += 7
+  else if (momScore >= 0) points += 5
+  else if (momScore >= -4) points += 3
+  else points += 1
 
   // --- Support/Resistance ---
   let support = 0, resistance = 0
@@ -295,8 +329,13 @@ function scoreTechnical(input: SmartScoreInput): { signals: TechnicalSignals; sc
       if (isH) swingHighs.push(h)
       if (isL) swingLows.push(l)
     }
-    if (swingHighs.length > 0) resistance = Math.round(Math.max(...swingHighs))
-    if (swingLows.length > 0) support = Math.round(Math.min(...swingLows))
+    // Nearest resistance ABOVE current price, nearest support BELOW current price
+    const resistanceLevels = swingHighs.filter(h => h > price)
+    const supportLevels = swingLows.filter(l => l < price)
+    if (resistanceLevels.length > 0) resistance = Math.round(Math.min(...resistanceLevels))
+    else if (swingHighs.length > 0) resistance = Math.round(Math.max(...swingHighs))
+    if (supportLevels.length > 0) support = Math.round(Math.max(...supportLevels))
+    else if (swingLows.length > 0) support = Math.round(Math.min(...swingLows))
     if (!resistance) resistance = Math.round(Math.max(...highs.slice(-20)))
     if (!support) support = Math.round(Math.min(...lows.slice(-20)))
   }
@@ -324,7 +363,13 @@ function scoreFundamental(input: SmartScoreInput): { signals: FundamentalSignals
   // --- P/E valuation (20 pts) ---
   let peSignal = 'N/A'
   if (pe > 0) {
-    if (pe < bench.peMax * 0.6) { peSignal = `P/E ${pe.toFixed(1)}x — Định giá RẤT THẤP (<60% trung bình ngành)`; points += 20 }
+    if (pe < bench.peMax * 0.6) {
+      if (profitGrowth < -10) { peSignal = `P/E ${pe.toFixed(1)}x — Rẻ nhưng LN giảm mạnh (${profitGrowth.toFixed(0)}%) — value trap risk cao`; points += 10 }
+      else if (profitGrowth < -5) { peSignal = `P/E ${pe.toFixed(1)}x — Rẻ nhưng LN giảm (${profitGrowth.toFixed(0)}%) — cẩn trọng`; points += 12 }
+      else if (profitGrowth < 0) { peSignal = `P/E ${pe.toFixed(1)}x — Rẻ, LN giảm nhẹ (${profitGrowth.toFixed(0)}%) — theo dõi phục hồi`; points += 14 }
+      else if (profitGrowth < 5) { peSignal = `P/E ${pe.toFixed(1)}x — Rẻ nhưng tăng trưởng thấp (${profitGrowth.toFixed(0)}%)`; points += 16 }
+      else { peSignal = `P/E ${pe.toFixed(1)}x — Định giá RẤT THẤP (<60% TB ngành), tăng trưởng tốt`; points += 20 }
+    }
     else if (pe < bench.peMax * 0.85) { peSignal = `P/E ${pe.toFixed(1)}x — Định giá HỢP LÝ`; points += 15 }
     else if (pe <= bench.peMax) { peSignal = `P/E ${pe.toFixed(1)}x — Định giá BÌNH THƯỜNG`; points += 10 }
     else if (pe <= bench.peMax * 1.3) { peSignal = `P/E ${pe.toFixed(1)}x — Định giá CAO nhẹ`; points += 6 }
@@ -348,32 +393,40 @@ function scoreFundamental(input: SmartScoreInput): { signals: FundamentalSignals
     else { roeSignal = `ROE ${roe.toFixed(1)}% — Thấp hơn trung bình ngành`; points += 3 }
   } else { roeSignal = 'ROE chưa có dữ liệu'; points += 5 }
 
-  // --- ROA (10 pts) ---
+  // --- ROA (10 pts) — sector-aware ---
   let roaSignal = 'N/A'
   if (roa > 0) {
-    if (roa >= 5) { roaSignal = `ROA ${roa.toFixed(1)}% — Xuất sắc`; points += 10 }
-    else if (roa >= 2) { roaSignal = `ROA ${roa.toFixed(1)}% — Tốt`; points += 7 }
-    else if (roa > 0) { roaSignal = `ROA ${roa.toFixed(1)}% — Thấp`; points += 3 }
+    if (roa >= bench.roaMin * 1.5) { roaSignal = `ROA ${roa.toFixed(1)}% — Xuất sắc (chuẩn ngành ${bench.roaMin}%)`; points += 10 }
+    else if (roa >= bench.roaMin) { roaSignal = `ROA ${roa.toFixed(1)}% — Tốt`; points += 7 }
+    else if (roa >= bench.roaMin * 0.6) { roaSignal = `ROA ${roa.toFixed(1)}% — Chấp nhận được`; points += 4 }
+    else { roaSignal = `ROA ${roa.toFixed(1)}% — Thấp hơn chuẩn ngành (${bench.roaMin}%)`; points += 2 }
   } else { roaSignal = 'ROA chưa có dữ liệu'; points += 5 }
 
-  // --- Growth (20 pts) ---
+  // --- Growth (20 pts) — profitGrowth must be positive for top tiers ---
   const avgGrowth = (profitGrowth + revenueGrowth) / 2
   let growthSignal = 'N/A'
-  if (profitGrowth > 0 || revenueGrowth > 0) {
-    if (avgGrowth >= 25) { growthSignal = `Tăng trưởng MẠNH (LN ${profitGrowth > 0 ? '+' : ''}${profitGrowth.toFixed(0)}%, DT ${revenueGrowth > 0 ? '+' : ''}${revenueGrowth.toFixed(0)}%)`; points += 20 }
-    else if (avgGrowth >= 10) { growthSignal = `Tăng trưởng TỐT (LN ${profitGrowth.toFixed(0)}%, DT ${revenueGrowth.toFixed(0)}%)`; points += 14 }
-    else if (avgGrowth >= 0) { growthSignal = `Tăng trưởng CHẬM (LN ${profitGrowth.toFixed(0)}%, DT ${revenueGrowth.toFixed(0)}%)`; points += 8 }
-    else { growthSignal = `Tăng trưởng ÂM — cần theo dõi`; points += 2 }
+  const hasGrowthData = profitGrowth !== 0 || revenueGrowth !== 0
+  if (hasGrowthData) {
+    if (profitGrowth >= 25 && avgGrowth >= 25) { growthSignal = `Tăng trưởng MẠNH (LN +${profitGrowth.toFixed(0)}%, DT +${revenueGrowth.toFixed(0)}%)`; points += 20 }
+    else if (profitGrowth >= 10 && avgGrowth >= 10) { growthSignal = `Tăng trưởng TỐT (LN +${profitGrowth.toFixed(0)}%, DT ${revenueGrowth.toFixed(0)}%)`; points += 14 }
+    else if (profitGrowth > 0 && avgGrowth >= 0) { growthSignal = `Tăng trưởng CHẬM (LN +${profitGrowth.toFixed(0)}%, DT ${revenueGrowth.toFixed(0)}%)`; points += 8 }
+    else if (profitGrowth <= 0 && revenueGrowth > 5) { growthSignal = `DT tăng nhưng LN giảm — biên thu hẹp (LN ${profitGrowth.toFixed(0)}%, DT +${revenueGrowth.toFixed(0)}%)`; points += 4 }
+    else { growthSignal = `Tăng trưởng ÂM (LN ${profitGrowth.toFixed(0)}%, DT ${revenueGrowth.toFixed(0)}%)`; points += 2 }
   } else { growthSignal = 'Chưa có dữ liệu tăng trưởng'; points += 8 }
 
-  // --- Debt (10 pts) ---
+  // --- Debt (10 pts) — sector-aware (banks/insurance skip D/E check) ---
   let debtSignal = 'N/A'
-  if (debtEquity > 0) {
-    if (debtEquity < 0.3) { debtSignal = `D/E ${debtEquity.toFixed(2)}x — Nợ rất thấp`; points += 10 }
-    else if (debtEquity < 0.8) { debtSignal = `D/E ${debtEquity.toFixed(2)}x — Nợ an toàn`; points += 8 }
-    else if (debtEquity < 1.5) { debtSignal = `D/E ${debtEquity.toFixed(2)}x — Nợ chấp nhận được`; points += 5 }
-    else if (debtEquity < 3) { debtSignal = `D/E ${debtEquity.toFixed(2)}x — Nợ CAO`; points += 2 }
-    else { debtSignal = `D/E ${debtEquity.toFixed(2)}x — Nợ RẤT CAO — rủi ro tài chính`; points += 0 }
+  if (bench.deMax >= 99) {
+    // Banks/Insurance: high leverage is by design, neutral score
+    debtSignal = `Ngành tài chính: đòn bẩy cao là bình thường (không đánh giá D/E)`
+    points += 8
+  } else if (debtEquity > 0) {
+    const deRatio = debtEquity / bench.deMax
+    if (deRatio < 0.3) { debtSignal = `D/E ${debtEquity.toFixed(2)}x — Nợ rất thấp (ngành max ${bench.deMax}x)`; points += 10 }
+    else if (deRatio < 0.6) { debtSignal = `D/E ${debtEquity.toFixed(2)}x — Nợ an toàn`; points += 8 }
+    else if (deRatio < 1.0) { debtSignal = `D/E ${debtEquity.toFixed(2)}x — Nợ chấp nhận được`; points += 5 }
+    else if (deRatio < 1.5) { debtSignal = `D/E ${debtEquity.toFixed(2)}x — Nợ CAO hơn chuẩn ngành`; points += 2 }
+    else { debtSignal = `D/E ${debtEquity.toFixed(2)}x — Nợ QUÁ CAO — rủi ro tài chính`; points += 0 }
   } else { debtSignal = 'D/E chưa có dữ liệu'; points += 5 }
 
   // --- Dividend (5 pts) ---
@@ -399,10 +452,25 @@ function scoreFundamental(input: SmartScoreInput): { signals: FundamentalSignals
   }
   points += eqPoints
 
-  // --- PEG ---
-  const peg = pe > 0 && profitGrowth > 5 ? Math.round((pe / profitGrowth) * 100) / 100 : null
+  // --- Net margin (5 pts) ---
+  if (netMargin > 0) {
+    if (netMargin >= 20) points += 5
+    else if (netMargin >= 10) points += 3
+    else if (netMargin >= 5) points += 2
+    else points += 1
+  }
 
-  const MAX_POINTS = 95 // 20+10+15+10+20+10+5+5 = 95
+  // --- PEG scoring (5 pts) ---
+  const peg = pe > 0 && profitGrowth > 5 ? Math.round((pe / profitGrowth) * 100) / 100 : null
+  if (peg !== null) {
+    if (peg < 0.8) points += 5       // growth heavily undervalued
+    else if (peg < 1.2) points += 4  // fairly valued vs growth
+    else if (peg < 2.0) points += 3  // slightly expensive
+    else if (peg < 3.0) points += 1  // expensive vs growth
+    // peg >= 3: 0 pts
+  } else points += 3 // neutral if no PEG data
+
+  const MAX_POINTS = 105 // 20+10+15+10+20+10+5+5+5+5 = 105
   const rawScore = clamp((points / MAX_POINTS) * 100)
 
   return {
@@ -446,11 +514,12 @@ function scoreSentiment(input: SmartScoreInput): { signals: SentimentSignals; sc
   let w52Signal = 'N/A'
   if (w52high > w52low && w52high > 0) {
     const pos = ((price - w52low) / (w52high - w52low)) * 100
-    if (pos <= 25) { w52Signal = `Vùng ĐÁY 52 tuần (${pos.toFixed(0)}%) — thường là vùng tích lũy tốt`; points += 18 }
-    else if (pos <= 45) { w52Signal = `Vùng THẤP 52 tuần (${pos.toFixed(0)}%)`; points += 14 }
-    else if (pos <= 65) { w52Signal = `Vùng GIỮA 52 tuần (${pos.toFixed(0)}%)`; points += 10 }
-    else if (pos <= 80) { w52Signal = `Gần đỉnh 52 tuần (${pos.toFixed(0)}%)`; points += 7 }
-    else { w52Signal = `Vùng ĐỈNH 52 tuần (${pos.toFixed(0)}%) — cẩn thận rủi ro điều chỉnh`; points += 4 }
+    // Academic: 52W high breakout = strong bullish momentum; 52W low = potential downtrend, not automatic value
+    if (pos >= 85) { w52Signal = `Vùng ĐỈNH 52 tuần (${pos.toFixed(0)}%) — momentum breakout mạnh`; points += 14 }
+    else if (pos >= 65) { w52Signal = `Gần đỉnh 52 tuần (${pos.toFixed(0)}%) — momentum tích cực`; points += 11 }
+    else if (pos >= 40) { w52Signal = `Vùng GIỮA 52 tuần (${pos.toFixed(0)}%)`; points += 8 }
+    else if (pos >= 20) { w52Signal = `Vùng THẤP 52 tuần (${pos.toFixed(0)}%) — dưới midpoint, xu hướng yếu`; points += 5 }
+    else { w52Signal = `Vùng ĐÁY 52 tuần (${pos.toFixed(0)}%) — cẩn trọng downtrend mạnh`; points += 3 }
   } else points += 10
 
   // --- Market regime (15 pts) ---
@@ -487,25 +556,172 @@ function scoreSentiment(input: SmartScoreInput): { signals: SentimentSignals; sc
 }
 
 // ─── Target price & stop loss ─────────────────────────────────────────────────
-function calcTargetStopLoss(input: SmartScoreInput, tech: TechnicalSignals, overallScore: number): { targetPrice: number; stopLoss: number } {
-  const { price, closes } = input
-  // Upside potential proportional to score
-  const upsideMult = overallScore >= 70 ? 0.15 : overallScore >= 55 ? 0.10 : overallScore >= 40 ? 0.05 : 0.02
-  const downside = overallScore >= 60 ? 0.06 : overallScore >= 45 ? 0.08 : 0.12
+function calcTargetStopLoss(
+  input: SmartScoreInput,
+  tech: TechnicalSignals,
+  overallScore: number,
+  finalRec: SmartScoreResult['recommendation']
+): { targetPrice: number; stopLoss: number } {
+  const { price, highs, lows, closes } = input
+  const isBearish = finalRec === 'BÁN' || finalRec === 'BÁN MẠNH'
 
-  // Use resistance as ceiling for target if reasonable
-  let targetPrice = Math.round(price * (1 + upsideMult))
-  if (tech.resistance > price && tech.resistance < price * 1.3) {
+  // ── BEARISH scenario (BÁN / BÁN MẠNH) ─────────────────────────────────────
+  // Target = downside support level; StopLoss = upside resistance (thesis invalidation)
+  if (isBearish) {
+    // Downside target: use support or -10% default
+    let bearTarget = Math.round(price * 0.90)
+    if (tech.support > 0 && tech.support < price && tech.support > price * 0.78) {
+      bearTarget = Math.round(tech.support * 0.98)  // 2% below support
+    }
+    // Upside stop: above resistance or +8% default
+    let bearStop = Math.round(price * 1.08)
+    if (tech.resistance > 0 && tech.resistance > price && tech.resistance < price * 1.25) {
+      bearStop = Math.round(tech.resistance * 1.02)  // 2% above resistance
+    }
+    return { targetPrice: bearTarget, stopLoss: bearStop }
+  }
+
+  // ── BULLISH/NEUTRAL scenario (GIỮ / MUA / MUA MẠNH: score ≥ 46) ───────────
+  // ATR-based volatility scaling — cap at 1.5x to prevent unreasonably wide stops
+  const atr = (highs.length >= 14 && lows.length >= 14)
+    ? calcATR(highs, lows, closes, 14)
+    : price * 0.02
+  const atrPct = atr / price
+  // Scale: 2% ATR = neutral (×1), 4% ATR = wider (×1.5 max) — was ×2.5, caused -20% stops
+  const atrScale = Math.max(1, Math.min(1.5, atrPct / 0.02))
+
+  // Base upside/downside proportional to score, scaled by volatility
+  const baseUpside = overallScore >= 70 ? 0.15 : overallScore >= 55 ? 0.10 : overallScore >= 40 ? 0.07 : 0.04
+  const baseDownside = overallScore >= 60 ? 0.06 : overallScore >= 48 ? 0.08 : 0.10
+  const adjustedUpside = Math.min(baseUpside * atrScale, 0.25)   // hard cap +25%
+  const adjustedDownside = Math.min(baseDownside * atrScale, 0.12) // hard cap -12%
+
+  // Target: use resistance as ceiling if within range
+  let targetPrice = Math.round(price * (1 + adjustedUpside))
+  if (tech.resistance > price && tech.resistance < price * (1 + adjustedUpside * 2)) {
     targetPrice = Math.round(Math.max(tech.resistance * 0.98, targetPrice))
   }
 
-  // Use support as floor for stop if reasonable
-  let stopLoss = Math.round(price * (1 - downside))
-  if (tech.support > 0 && tech.support < price && tech.support > price * 0.8) {
-    stopLoss = Math.round(Math.min(tech.support * 1.02, stopLoss))
+  // Stop loss: place BELOW support (1.5% buffer below), not above it
+  let stopLoss = Math.round(price * (1 - adjustedDownside))
+  if (tech.support > 0 && tech.support < price && tech.support > price * 0.75) {
+    const stopBelowSupport = Math.round(tech.support * 0.985)
+    stopLoss = Math.max(stopBelowSupport, stopLoss) // tighter of the two (closer to price)
   }
 
+  // Safety: stop must always be below price
+  if (stopLoss >= price) stopLoss = Math.round(price * 0.93)
+
   return { targetPrice, stopLoss }
+}
+
+// ─── Narrative generators (AI-like synthesis) ────────────────────────────────
+
+function genTechSummary(t: TechnicalSignals): string {
+  const trend = t.trend.replace(/\s*\(.*\)$/, '')
+  const rsi = t.rsi < 30 ? `RSI ${t.rsi} — vùng quá bán, cơ hội kỹ thuật`
+    : t.rsi > 70 ? `RSI ${t.rsi} — quá mua, thận trọng điều chỉnh`
+    : `RSI ${t.rsi} (trung lập)`
+  const macd = t.macdSignal.includes('Golden Cross') ? 'MACD Golden Cross — tín hiệu MUA mạnh'
+    : t.macdSignal.includes('Death Cross') ? 'MACD Death Cross — tín hiệu giảm'
+    : t.macdSignal.includes('mở rộng âm') ? 'MACD histogram mở rộng âm — momentum giảm tăng tốc'
+    : t.macdSignal.includes('mở rộng dương') ? 'MACD histogram mở rộng dương — momentum tăng tốc'
+    : t.macdSignal.includes('tăng') ? 'MACD dương, momentum tích cực'
+    : t.macdSignal.includes('giảm') ? 'MACD âm, momentum tiêu cực'
+    : 'MACD trung lập'
+  const adx = t.adxValue >= 25
+    ? `ADX ${t.adxValue} — ${t.adxSignal.includes('TĂNG') ? 'xu hướng TĂNG mạnh (DI+ > DI-)' : 'xu hướng GIẢM mạnh (DI- > DI+)'}`
+    : `ADX ${t.adxValue} — sideway, chưa xu hướng rõ`
+  const vol = t.volumeSignal.includes('xác nhận mạnh') ? 'KL tăng đột biến xác nhận tích cực'
+    : t.volumeSignal.includes('áp lực') ? 'KL cao với giá giảm — áp lực bán'
+    : t.volumeSignal.includes('thấp') ? 'KL thấp bất thường'
+    : 'KL giao dịch bình thường'
+  const mom = `Momentum 1T/3T: ${t.momentum1M > 0 ? '+' : ''}${t.momentum1M}%/${t.momentum3M > 0 ? '+' : ''}${t.momentum3M}%`
+  const sr = t.support > 0 && t.resistance > 0
+    ? `Hỗ trợ ${t.support.toLocaleString('vi-VN')}₫ — kháng cự ${t.resistance.toLocaleString('vi-VN')}₫`
+    : ''
+  return [trend, rsi, macd, adx, vol, mom, sr].filter(Boolean).join('. ') + '.'
+}
+
+function genFundSummary(f: FundamentalSignals): string {
+  const pe = f.peSignal.startsWith('P/E') ? f.peSignal.replace(/^P\/E [\d.]+x — /, '').split(' (')[0] : ''
+  const roe = f.roeSignal.startsWith('ROE') ? f.roeSignal : ''
+  const roa = f.roaSignal.startsWith('ROA') ? f.roaSignal.split(' (')[0] : ''
+  const growth = f.growthSignal !== 'N/A' && f.growthSignal !== 'Chưa có dữ liệu tăng trưởng' ? f.growthSignal.split(' (')[0] : ''
+  const debt = f.debtSignal !== 'N/A' && f.debtSignal !== 'D/E chưa có dữ liệu' ? f.debtSignal.split(' — ')[0] : ''
+  const eq = !f.earningsQuality.includes('Không đủ') ? f.earningsQuality : ''
+  const peg = f.peg !== null ? `PEG ${f.peg.toFixed(2)}x — ${f.peg < 1 ? 'rẻ so tăng trưởng' : f.peg < 2 ? 'định giá hợp lý' : 'đắt so tăng trưởng'}` : ''
+  const div = f.dividendSignal !== 'Không có cổ tức' && f.dividendSignal !== 'N/A' ? f.dividendSignal : ''
+  return [pe, roe, roa, growth, debt, eq, peg, div].filter(Boolean).slice(0, 6).join('. ') + '.'
+}
+
+function genSentSummary(s: SentimentSignals): string {
+  const news = s.newsSummary
+  const foreign = s.foreignFlow !== 'Không có dữ liệu' ? s.foreignFlow : ''
+  const w52 = s.w52Signal !== 'N/A' ? s.w52Signal.split(' (')[0] : ''
+  const market = `VN-Index: ${s.marketRegime.split(' — ')[0]}`
+  const rs = s.rsSignal
+  return [news, foreign, w52, market, rs].filter(Boolean).slice(0, 5).join('. ') + '.'
+}
+
+function genAction(
+  rec: SmartScoreResult['recommendation'],
+  score: number,
+  targetPrice: number,
+  stopLoss: number,
+  entryZone: { low: number; high: number },
+  price: number,
+  holdingPeriod: string
+): string {
+  const upPct = price > 0 ? ((targetPrice - price) / price * 100).toFixed(1) : '0'
+  const dnPct = price > 0 ? Math.abs((stopLoss - price) / price * 100).toFixed(1) : '0'
+  const rr = price > 0 && stopLoss < price ? ((targetPrice - price) / (price - stopLoss)).toFixed(1) : '0'
+  const entry = `${entryZone.low.toLocaleString('vi-VN')}–${entryZone.high.toLocaleString('vi-VN')}₫`
+  const tgt = targetPrice.toLocaleString('vi-VN')
+  const sl = stopLoss.toLocaleString('vi-VN')
+  if (rec === 'MUA MẠNH')
+    return `Mua mạnh tại vùng ${entry}. Mục tiêu ${tgt}₫ (+${upPct}%), cắt lỗ ${sl}₫ (−${dnPct}%). R/R = ${rr}:1. Nắm giữ ${holdingPeriod}. Điểm mạnh tổng hợp ${score}/100.`
+  if (rec === 'MUA')
+    return `Có thể mở vị thế tại vùng ${entry}. Mục tiêu ${tgt}₫ (+${upPct}%), cắt lỗ ${sl}₫ (−${dnPct}%). R/R = ${rr}:1. Nắm giữ ${holdingPeriod}.`
+  if (rec === 'GIỮ')
+    return `Duy trì vị thế, theo dõi ngưỡng cắt lỗ ${sl}₫. Chốt lời dần tại ${tgt}₫ (+${upPct}%). Chưa khuyến nghị mở mới. Điểm ${score}/100 — tín hiệu trung tính.`
+  if (rec === 'BÁN') {
+    // bearish: stopLoss > price (resistance), targetPrice < price (support/downside)
+    if (stopLoss > price) {
+      const bearDown = price > 0 ? ((price - targetPrice) / price * 100).toFixed(1) : '0'
+      const bearUpRisk = price > 0 ? ((stopLoss - price) / price * 100).toFixed(1) : '0'
+      const rrBear = price > 0 && (stopLoss - price) > 0
+        ? Math.abs((price - targetPrice) / (stopLoss - price)).toFixed(1) : '0'
+      return `Giảm tỷ trọng hoặc thoát vị thế. Hỗ trợ kế tiếp ${tgt}₫ (−${bearDown}%). Ngưỡng dừng BÁN (luận điểm vô hiệu) ${sl}₫ (+${bearUpRisk}%). R/R = ${rrBear}:1. Điểm ${score}/100.`
+    }
+    return `Giảm tỷ trọng, đặt cắt lỗ cứng tại ${sl}₫ (−${dnPct}%). Không mở vị thế mới ở giá hiện tại. Chờ tín hiệu kỹ thuật cải thiện trước khi xem xét lại.`
+  }
+  // BÁN MẠNH
+  if (stopLoss > price) {
+    const bearDown = price > 0 ? ((price - targetPrice) / price * 100).toFixed(1) : '0'
+    const bearUpRisk = price > 0 ? ((stopLoss - price) / price * 100).toFixed(1) : '0'
+    return `Thoát vị thế ngay tại giá thị trường. Hỗ trợ ${tgt}₫ (−${bearDown}%). Ngưỡng dừng ${sl}₫ (+${bearUpRisk}%). Điểm ${score}/100 — nhiều tín hiệu tiêu cực, không khuyến nghị giữ.`
+  }
+  return `Thoát vị thế tại giá thị trường. Cắt lỗ ngay tại ${sl}₫. Điểm tổng hợp ${score}/100 — nhiều tín hiệu tiêu cực, không khuyến nghị giữ.`
+}
+
+function genNextReview(tech: TechnicalSignals, rec: SmartScoreResult['recommendation']): string {
+  const parts: string[] = []
+  if (tech.support > 0)
+    parts.push(`Theo dõi nếu giá phá vỡ hỗ trợ ${tech.support.toLocaleString('vi-VN')}₫`)
+  if (tech.resistance > 0 && (rec === 'MUA MẠNH' || rec === 'MUA'))
+    parts.push(`Xác nhận khi vượt kháng cự ${tech.resistance.toLocaleString('vi-VN')}₫ kèm khối lượng`)
+  if (tech.resistance > 0 && (rec === 'BÁN' || rec === 'BÁN MẠNH'))
+    parts.push(`Luận điểm BÁN vô hiệu nếu giá vượt và đóng cửa trên ${tech.resistance.toLocaleString('vi-VN')}₫`)
+  if (tech.macdSignal.includes('trung lập') || tech.macdSignal.includes('Trung'))
+    parts.push('Chờ MACD crossover để xác nhận hướng')
+  if (tech.rsi > 62 && tech.rsi < 72)
+    parts.push('RSI tiệm cận overbought — theo dõi điều chỉnh')
+  if (tech.rsi > 25 && tech.rsi < 33)
+    parts.push('RSI gần oversold — cơ hội tích lũy dần')
+  if (parts.length === 0)
+    return 'Theo dõi tín hiệu kỹ thuật, dòng tiền ngoại, và kết quả kinh doanh quý tiếp theo'
+  return parts.slice(0, 2).join(' · ')
 }
 
 // ─── Main scoring function ────────────────────────────────────────────────────
@@ -527,9 +743,46 @@ export function calculateSmartScore(input: SmartScoreInput): SmartScoreResult {
   let recommendation: SmartScoreResult['recommendation']
   if (overallScore >= 78) recommendation = 'MUA MẠNH'
   else if (overallScore >= 62) recommendation = 'MUA'
-  else if (overallScore >= 45) recommendation = 'GIỮ'
-  else if (overallScore >= 30) recommendation = 'BÁN'
+  else if (overallScore >= 46) recommendation = 'GIỮ'
+  else if (overallScore >= 32) recommendation = 'BÁN'
   else recommendation = 'BÁN MẠNH'
+
+  // ── BÁN guard: require at least one confirmed sell signal ──────────────────
+  // Claude Opus 4.6 does NOT give BÁN without a confirmed directional reason.
+  if (recommendation === 'BÁN') {
+    const confirmedDowntrend = techResult.signals.adxValue >= 25
+      && techResult.signals.adxSignal.includes('GIẢM')
+    const fundamentallyBroken = fundResult.score < 28 || input.roe < 0
+    const negativeCatalyst = sentResult.signals.newsScore < 35
+
+    if (!confirmedDowntrend && !fundamentallyBroken && !negativeCatalyst) {
+      // Case 1: No confirmed sell signal at all → GIỮ (AGR type)
+      recommendation = 'GIỮ'
+    } else if (confirmedDowntrend && !fundamentallyBroken && !negativeCatalyst) {
+      // Case 2: Downtrend confirmed BUT fundamentals are healthy + positive growth
+      // → temporary market correction in good company (SSI, FPT type) → GIỮ minimum
+      // Distinguished from PLX (declining profits): profitGrowth >= 0 required
+      if (fundResult.score >= 58 && input.profitGrowth >= 0 && sentResult.signals.newsScore >= 42) {
+        recommendation = 'GIỮ'
+      }
+    }
+  }
+
+  // ── GIỮ → MUA upgrade: strong fundamentals override weak technicals ────────
+  // Mirrors Claude's "strong growth + reasonable valuation = buy the dip" logic.
+  // Applies to both naturally-GIỮ stocks and BÁN-overridden-to-GIỮ stocks (SSI type).
+  if (recommendation === 'GIỮ') {
+    const veryStrongFund    = fundResult.score >= 68
+    const highGrowth        = input.profitGrowth >= 10   // double-digit profit growth
+    // Lowered 50→44: SSI-type stocks in correction have sentiment 44-49 due to 52W/RS drag.
+    // News >= 42 is already confirmed by BÁN guard Case 2; don't double-penalize via total score.
+    const acceptableSent    = sentResult.score >= 44
+    // Extreme downtrend = ADX >= 35 (very strong bear). ADX 25-34 = moderate, overridable by strong fundamentals.
+    const notExtremeDown    = !(techResult.signals.adxValue >= 35 && techResult.signals.adxSignal.includes('GIẢM'))
+    if (veryStrongFund && highGrowth && acceptableSent && notExtremeDown) {
+      recommendation = 'MUA'
+    }
+  }
 
   // Confidence: how aligned are the 3 scores?
   const scores = [techResult.score, fundResult.score, sentResult.score]
@@ -537,8 +790,33 @@ export function calculateSmartScore(input: SmartScoreInput): SmartScoreResult {
   const variance = scores.reduce((a, v) => a + (v - mean) ** 2, 0) / 3
   const stdDev = Math.sqrt(variance)
   const confidence: SmartScoreResult['confidence'] = stdDev < 12 ? 'CAO' : stdDev < 22 ? 'TRUNG BÌNH' : 'THẤP'
+  // Numeric confidence 0-100 (mirrors AI output style)
+  const confidenceNum = stdDev < 12 ? Math.round(70 + (12 - stdDev) * 1.5)
+    : stdDev < 22 ? Math.round(55 + (22 - stdDev) * 1.5)
+    : Math.max(30, Math.round(55 - (stdDev - 22) * 1.2))
 
-  const { targetPrice, stopLoss } = calcTargetStopLoss(input, techResult.signals, overallScore)
+  // Target/stop uses FINAL recommendation (after BÁN guard)
+  const { targetPrice, stopLoss } = calcTargetStopLoss(input, techResult.signals, overallScore, recommendation)
+
+  // Entry zone: near support, just below current price
+  const entryLow = techResult.signals.support > 0 && techResult.signals.support > price * 0.85
+    ? Math.round(techResult.signals.support * 1.005)
+    : Math.round(price * 0.97)
+  const entryHigh = Math.round(price * 1.01)
+  const entryZone = { low: Math.min(entryLow, entryHigh), high: Math.max(entryLow, entryHigh) }
+
+  // Holding period uses FINAL recommendation
+  // Note: MUA via upgrade (overallScore < 62) still needs a holding period
+  const holdingPeriod = overallScore >= 75 ? '3-6 tháng'
+    : overallScore >= 62 ? '1-3 tháng'
+    : (recommendation === 'MUA' || recommendation === 'MUA MẠNH') ? '1-3 tháng'
+    : (recommendation === 'GIỮ') ? '2-4 tuần'
+    : 'Không khuyến nghị'
+
+  // R:R ratio — works for both long (stop < price) and short/bearish (stop > price)
+  const rrRatio = price > 0 && Math.abs(price - stopLoss) > 0
+    ? Math.round(Math.abs((targetPrice - price) / (price - stopLoss)) * 10) / 10
+    : 0
 
   // Indicator values for chart display
   const sma20arr = calcSMA(closes, 20).filter(v => !isNaN(v))
@@ -600,6 +878,13 @@ export function calculateSmartScore(input: SmartScoreInput): SmartScoreResult {
   if (confidence === 'THẤP') watchPoints.push('Các chiều phân tích không đồng thuận — tăng thận trọng')
   if (input.vnIndex.trend30d < -5) watchPoints.push('Thị trường chung đang giảm — cân nhắc thời điểm')
 
+  // Narrative summaries (generated after all scoring is done)
+  const technicalSummary = genTechSummary(techResult.signals)
+  const fundamentalSummary = genFundSummary(fundResult.signals)
+  const sentimentSummary = genSentSummary(sentResult.signals)
+  const action = genAction(recommendation, overallScore, targetPrice, stopLoss, entryZone, price, holdingPeriod)
+  const nextReview = genNextReview(techResult.signals, recommendation)
+
   return {
     symbol: input.symbol,
     industry: input.industry,
@@ -607,8 +892,17 @@ export function calculateSmartScore(input: SmartScoreInput): SmartScoreResult {
     overallScore,
     recommendation,
     confidence,
+    confidenceNum,
     targetPrice,
     stopLoss,
+    entryZone,
+    holdingPeriod,
+    rrRatio,
+    technicalSummary,
+    fundamentalSummary,
+    sentimentSummary,
+    action,
+    nextReview,
     technical: { ...techResult.signals, score: Math.round(techResult.score) },
     fundamental: { ...fundResult.signals, score: Math.round(fundResult.score) },
     sentiment: { ...sentResult.signals, score: Math.round(sentResult.score) },

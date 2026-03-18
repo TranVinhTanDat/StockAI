@@ -509,7 +509,7 @@ function PortfolioPanel({
   const totalPortfolio = totalInvested + balance.cash
   const thisWeight = totalPortfolio > 0 && holding ? (holding.total_cost / totalPortfolio) * 100 : 0
   const stopRisk = holding ? Math.abs((stopLoss - price) / price) * currentValue : 0
-  const targetGain = holding ? ((targetPrice - price) / price) * currentValue : 0
+  const targetGain = holding ? Math.abs((targetPrice - price) / price) * currentValue : 0
   const rrRatio = stopRisk > 0 ? targetGain / stopRisk : 0
 
   const recColor =
@@ -525,23 +525,28 @@ function PortfolioPanel({
   const getActionAdvice = (): string => {
     const targetPct = (((targetPrice - price) / price) * 100).toFixed(1)
     const stopPct = (Math.abs((stopLoss - price) / price) * 100).toFixed(1)
+    const isBullish = recommendation === 'MUA MẠNH' || recommendation === 'MUA'
+    const isHold    = recommendation === 'GIỮ'
+    // BÁN / BÁN MẠNH = bearish
+
     if (holding) {
-      if (score >= 70) {
-        if (plPct > 25) return `Lãi ${plPct.toFixed(1)}% — vượt ngưỡng tốt. Xem xét chốt lời 30–50% để bảo toàn, giữ phần còn lại với stop loss dịch lên ${formatPrice(Math.max(stopLoss, holding.avg_cost * 1.05))}.`
-        if (plPct < -12) return `Lỗ ${Math.abs(plPct).toFixed(1)}% dù điểm kỹ thuật tốt (${technicalScore}/100). Giữ vị thế nếu không phá ${formatPrice(stopLoss)} — cân nhắc mua thêm nếu giá giữ vùng hỗ trợ.`
-        return `Điểm cao (${score}/100). Duy trì vị thế, stop loss ${formatPrice(stopLoss)} (−${stopPct}%), target ${formatPrice(targetPrice)} (+${targetPct}%). R:R = 1:${rrRatio.toFixed(1)}.`
+      if (isBullish) {
+        if (plPct > 25) return `Lãi ${plPct.toFixed(1)}% — vượt ngưỡng tốt. Chốt lời 30–50% tại ${formatPrice(targetPrice)}, dịch stop loss lên ${formatPrice(Math.max(stopLoss, Math.round(holding.avg_cost * 1.05)))} để bảo vệ lợi nhuận.`
+        if (plPct < -12) return `Lỗ ${Math.abs(plPct).toFixed(1)}% nhưng điểm kỹ thuật còn tốt (${technicalScore}/100). Giữ nếu không phá ${formatPrice(stopLoss)} — cân nhắc mua thêm tại vùng hỗ trợ.`
+        return `${recommendation} (${score}/100). Duy trì vị thế, stop loss ${formatPrice(stopLoss)} (−${stopPct}%), target ${formatPrice(targetPrice)} (+${targetPct}%). R:R = 1:${rrRatio.toFixed(1)}.`
       }
-      if (score >= 55) {
-        if (plPct > 12) return `Lãi ${plPct.toFixed(1)}%. Điểm trung khá — nên đặt trailing stop để bảo vệ lợi nhuận, chốt một phần nếu kháng cự mạnh tại ${formatPrice(targetPrice)}.`
-        if (plPct < -8) return `Lỗ ${Math.abs(plPct).toFixed(1)}% với điểm trung bình (${score}/100). Cắt lỗ ngay nếu giá đóng cửa dưới ${formatPrice(stopLoss)}.`
-        return `Điểm trung khá (${score}/100). Theo dõi sát — giữ khi trên ${formatPrice(stopLoss)}, cắt lỗ ngay khi phá mức này.`
+      if (isHold) {
+        if (plPct > 15) return `GIỮ — đang lãi ${plPct.toFixed(1)}%. Đặt trailing stop tại ${formatPrice(stopLoss)} để bảo vệ lợi nhuận. Xem xét chốt một phần nếu giá chạm ${formatPrice(targetPrice)}.`
+        if (plPct < -10) return `GIỮ — lỗ ${Math.abs(plPct).toFixed(1)}%. Duy trì ngưỡng cắt lỗ tại ${formatPrice(stopLoss)}, thoát ngay nếu giá đóng cửa dưới mức này.`
+        return `GIỮ (${score}/100). Duy trì vị thế khi giá trên ${formatPrice(stopLoss)}, cắt lỗ ngay khi phá. Target ${formatPrice(targetPrice)} (+${targetPct}%).`
       }
-      if (plPct < 0) return `Điểm yếu (${score}/100) + lỗ ${Math.abs(plPct).toFixed(1)}%. Ưu tiên cắt lỗ ngay để bảo toàn vốn, tránh để lỗ sâu thêm.`
-      return `Điểm thấp (${score}/100). Chốt lời hiện tại (đang lãi ${plPct.toFixed(1)}%), tránh giữ cổ phiếu điểm yếu lâu dài.`
+      // BÁN / BÁN MẠNH
+      if (plPct > 0) return `${recommendation} (${score}/100) — đang lãi ${plPct.toFixed(1)}%. Nên giảm/chốt vị thế để bảo toàn lợi nhuận trước khi tín hiệu xấu hơn.`
+      return `${recommendation} (${score}/100) — lỗ ${Math.abs(plPct).toFixed(1)}%. Ưu tiên cắt lỗ tại ${formatPrice(stopLoss)} để bảo toàn vốn.`
     } else {
-      if (score >= 70) return `Tín hiệu mua tốt (${score}/100). Có thể mở vị thế tại vùng ${formatPrice(price)}, target ${formatPrice(targetPrice)} (+${targetPct}%), stop loss ${formatPrice(stopLoss)} (−${stopPct}%). R:R = 1:${rrRatio.toFixed(1)}.`
-      if (score >= 55) return `Điểm trung khá — chỉ tích lũy vị thế nhỏ (≤10% danh mục). Chờ xác nhận thêm trước khi mở lệnh lớn.`
-      return `Chưa đủ điều kiện vào lệnh (điểm ${score}/100). Theo dõi đến khi điểm cải thiện trên 60 hoặc có tín hiệu kỹ thuật rõ hơn.`
+      if (isBullish) return `${recommendation} (${score}/100). Xem xét mở vị thế tại ${formatPrice(price)}, target ${formatPrice(targetPrice)} (+${targetPct}%), stop loss ${formatPrice(stopLoss)} (−${stopPct}%). R:R = 1:${rrRatio.toFixed(1)}.`
+      if (isHold) return `GIỮ (${score}/100) — tín hiệu trung tính. Chờ xác nhận rõ hơn trước khi mở vị thế. Quan sát vùng ${formatPrice(stopLoss)}–${formatPrice(targetPrice)}.`
+      return `${recommendation} (${score}/100) — tín hiệu yếu. Chưa nên mở vị thế, chờ điểm cải thiện hoặc tín hiệu kỹ thuật đảo chiều.`
     }
   }
 
@@ -830,7 +835,7 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
                     result.confidence === 'CAO' ? 'bg-accent/10 text-accent border border-accent/20' :
                     result.confidence === 'TRUNG BÌNH' ? 'bg-yellow-400/10 text-yellow-400 border border-yellow-400/20' :
                     'bg-orange-400/10 text-orange-400 border border-orange-400/20'
-                  }`}>Tin cậy: {result.confidence}</span>
+                  }`}>Tin cậy: {result.confidenceNum}% · {result.confidence}</span>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-3">
                   <ScoreBar label="Kỹ thuật (30%)" score={result.technical.score} icon={BarChart3} />
@@ -841,31 +846,40 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
             </div>
             <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="bg-surface2/60 rounded-xl p-3 text-center">
-                <p className="text-[10px] text-muted mb-1">Giá mục tiêu</p>
-                <p className="text-sm font-bold text-green-400">{formatPrice(result.targetPrice)}</p>
-                <p className="text-[10px] text-green-400/70">+{result.price > 0 ? (((result.targetPrice - result.price) / result.price) * 100).toFixed(1) : 0}%</p>
+                {/* Mục tiêu: bearish shows downside (negative %), bullish shows upside (positive %) */}
+                <p className="text-[10px] text-muted mb-1">{result.stopLoss > result.price ? 'Hỗ trợ/Target' : 'Mục tiêu'}</p>
+                <p className={`text-sm font-bold ${result.stopLoss > result.price ? 'text-orange-400' : 'text-green-400'}`}>{formatPrice(result.targetPrice)}</p>
+                {result.price > 0 && (() => {
+                  const pct = ((result.targetPrice - result.price) / result.price * 100)
+                  return <p className={`text-[10px] ${pct >= 0 ? 'text-green-400/70' : 'text-orange-400/70'}`}>{pct >= 0 ? `+${pct.toFixed(1)}` : pct.toFixed(1)}%</p>
+                })()}
               </div>
               <div className="bg-surface2/60 rounded-xl p-3 text-center">
-                <p className="text-[10px] text-muted mb-1">Cắt lỗ</p>
+                {/* Cắt lỗ: for BÁN stop > price = upside risk (+%), for MUA stop < price = downside risk (-%) */}
+                <p className="text-[10px] text-muted mb-1">{result.stopLoss > result.price ? 'Dừng BÁN' : 'Cắt lỗ'}</p>
                 <p className="text-sm font-bold text-red-400">{formatPrice(result.stopLoss)}</p>
                 <p className="text-[10px] text-red-400/70">{result.price > 0 ? (((result.stopLoss - result.price) / result.price) * 100).toFixed(1) : 0}%</p>
               </div>
               <div className="bg-surface2/60 rounded-xl p-3 text-center">
-                <p className="text-[10px] text-muted mb-1">SMA20 / 50 / 200</p>
-                <p className={`text-xs font-bold ${result.price >= result.sma20 ? 'text-green-400' : 'text-red-400'}`}>{formatPrice(result.sma20)}</p>
-                <p className="text-[10px] text-muted">{formatPrice(result.sma50)}</p>
-                {result.sma200 > 0 && (
-                  <p className={`text-[10px] font-medium mt-0.5 ${result.price >= result.sma200 ? 'text-blue-400' : 'text-orange-400'}`}>
-                    SMA200: {formatPrice(result.sma200)}
-                  </p>
-                )}
+                <p className="text-[10px] text-muted mb-1">Vào lệnh</p>
+                <p className="text-xs font-bold text-blue-400">{formatPrice(result.entryZone.low)}</p>
+                <p className="text-[10px] text-blue-400/70">— {formatPrice(result.entryZone.high)}</p>
               </div>
               <div className="bg-surface2/60 rounded-xl p-3 text-center">
-                <p className="text-[10px] text-muted mb-1">RSI(14)</p>
-                <p className={`text-sm font-bold ${result.rsi14 > 70 ? 'text-red-400' : result.rsi14 < 30 ? 'text-green-400' : 'text-yellow-400'}`}>{result.rsi14}</p>
-                <p className="text-[10px] text-muted">{result.rsi14 > 70 ? 'Overbought' : result.rsi14 < 30 ? 'Oversold' : 'Trung lập'}</p>
+                <p className="text-[10px] text-muted mb-1">Nắm giữ</p>
+                <p className="text-xs font-bold text-accent leading-tight">{result.holdingPeriod}</p>
+                <p className={`text-[10px] mt-0.5 ${result.rsi14 > 70 ? 'text-red-400' : result.rsi14 < 30 ? 'text-green-400' : 'text-muted'}`}>
+                  RSI: {result.rsi14}
+                </p>
               </div>
             </div>
+            {result.rrRatio > 0 && (
+              <div className="mt-2 flex items-center justify-between px-1 text-[11px]">
+                <span className="text-muted">R/R Ratio: <span className={`font-semibold ${result.rrRatio >= 2 ? 'text-green-400' : result.rrRatio >= 1 ? 'text-yellow-400' : 'text-red-400'}`}>{result.rrRatio}:1</span></span>
+                <span className="text-muted">SMA20: <span className={`font-medium ${result.price >= result.sma20 ? 'text-green-400' : 'text-red-400'}`}>{formatPrice(result.sma20)}</span> · SMA50: {formatPrice(result.sma50)}</span>
+                {result.sma200 > 0 && <span className="text-muted">SMA200: <span className={`font-medium ${result.price >= result.sma200 ? 'text-blue-400' : 'text-orange-400'}`}>{formatPrice(result.sma200)}</span></span>}
+              </div>
+            )}
           </div>
 
           {/* ══ 2. CANDLESTICK CHART ══ */}
@@ -913,30 +927,59 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
             <h3 className="font-semibold text-sm flex items-center gap-2 mb-4">
               <Target className="w-4 h-4 text-accent" />Vùng Giao Dịch Khuyến Nghị
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-green-400/5 border border-green-400/20 rounded-xl p-4">
-                <p className="text-xs font-semibold text-green-400 mb-2">Vùng MUA tốt</p>
-                <p className="text-lg font-bold text-green-400">{formatPrice(result.stopLoss * 1.02)}</p>
-                <p className="text-xs text-muted mt-1">— {formatPrice(result.price * 1.02)}</p>
-                <p className="text-[10px] text-muted/70 mt-2">Gần support, RSI không overbought</p>
+            {result.stopLoss > result.price ? (
+              /* ── BEARISH layout (BÁN / BÁN MẠNH): show downside target + sell zone + stop ── */
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-orange-400/5 border border-orange-400/20 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-orange-400 mb-2">Hỗ trợ kế tiếp</p>
+                  <p className="text-lg font-bold text-orange-400">{formatPrice(result.targetPrice)}</p>
+                  <p className="text-xs text-muted mt-1">Downside: {result.price > 0 ? ((result.targetPrice - result.price) / result.price * 100).toFixed(1) : 0}%</p>
+                  <p className="text-[10px] text-muted/70 mt-2">Vùng hỗ trợ bears hướng tới</p>
+                </div>
+                <div className="bg-yellow-400/5 border border-yellow-400/20 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-yellow-400 mb-2">Vùng bán ra</p>
+                  <p className="text-lg font-bold text-yellow-400">{formatPrice(Math.round(result.price * 0.99))}</p>
+                  <p className="text-xs text-muted mt-1">— {formatPrice(Math.round(result.price * 1.01))}</p>
+                  <p className="text-[10px] text-muted/70 mt-2">Khuyến nghị thoát vị thế ngay</p>
+                </div>
+                <div className="bg-red-400/5 border border-red-400/20 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-red-400 mb-2">Ngưỡng dừng BÁN</p>
+                  <p className="text-lg font-bold text-red-400">{formatPrice(result.stopLoss)}</p>
+                  <p className="text-xs text-muted mt-1">Upside risk: +{result.price > 0 ? ((result.stopLoss - result.price) / result.price * 100).toFixed(1) : 0}%</p>
+                  <p className="text-[10px] text-muted/70 mt-2">
+                    R/R: {result.price > 0 && (result.stopLoss - result.price) > 0
+                      ? Math.abs((result.price - result.targetPrice) / (result.stopLoss - result.price)).toFixed(1) + ':1'
+                      : '—'}
+                  </p>
+                </div>
               </div>
-              <div className="bg-blue-400/5 border border-blue-400/20 rounded-xl p-4">
-                <p className="text-xs font-semibold text-blue-400 mb-2">Mục tiêu chốt lời</p>
-                <p className="text-lg font-bold text-blue-400">{formatPrice(result.targetPrice)}</p>
-                <p className="text-xs text-muted mt-1">Upside: +{result.price > 0 ? (((result.targetPrice - result.price) / result.price) * 100).toFixed(1) : 0}%</p>
-                <p className="text-[10px] text-muted/70 mt-2">Kháng cự gần nhất + score target</p>
+            ) : (
+              /* ── BULLISH/NEUTRAL layout (GIỮ / MUA / MUA MẠNH) ── */
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-green-400/5 border border-green-400/20 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-green-400 mb-2">Vùng MUA tốt</p>
+                  <p className="text-lg font-bold text-green-400">{formatPrice(result.stopLoss * 1.02)}</p>
+                  <p className="text-xs text-muted mt-1">— {formatPrice(result.price * 1.02)}</p>
+                  <p className="text-[10px] text-muted/70 mt-2">Gần support, RSI không overbought</p>
+                </div>
+                <div className="bg-blue-400/5 border border-blue-400/20 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-blue-400 mb-2">Mục tiêu chốt lời</p>
+                  <p className="text-lg font-bold text-blue-400">{formatPrice(result.targetPrice)}</p>
+                  <p className="text-xs text-muted mt-1">Upside: +{result.price > 0 ? (((result.targetPrice - result.price) / result.price) * 100).toFixed(1) : 0}%</p>
+                  <p className="text-[10px] text-muted/70 mt-2">Kháng cự gần nhất + score target</p>
+                </div>
+                <div className="bg-red-400/5 border border-red-400/20 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-red-400 mb-2">Cắt lỗ</p>
+                  <p className="text-lg font-bold text-red-400">{formatPrice(result.stopLoss)}</p>
+                  <p className="text-xs text-muted mt-1">Risk: {result.price > 0 ? (((result.stopLoss - result.price) / result.price) * 100).toFixed(1) : 0}%</p>
+                  <p className="text-[10px] text-muted/70 mt-2">
+                    R/R: {result.price > 0 && result.stopLoss < result.price
+                      ? (((result.targetPrice - result.price) / (result.price - result.stopLoss))).toFixed(1) + ':1'
+                      : '—'}
+                  </p>
+                </div>
               </div>
-              <div className="bg-red-400/5 border border-red-400/20 rounded-xl p-4">
-                <p className="text-xs font-semibold text-red-400 mb-2">Cắt lỗ</p>
-                <p className="text-lg font-bold text-red-400">{formatPrice(result.stopLoss)}</p>
-                <p className="text-xs text-muted mt-1">Risk: {result.price > 0 ? (((result.stopLoss - result.price) / result.price) * 100).toFixed(1) : 0}%</p>
-                <p className="text-[10px] text-muted/70 mt-2">
-                  R/R: {result.price > 0 && result.stopLoss < result.price
-                    ? (((result.targetPrice - result.price) / (result.price - result.stopLoss))).toFixed(1) + ':1'
-                    : '—'}
-                </p>
-              </div>
-            </div>
+            )}
             {(result.strengths.length > 0 || result.weaknesses.length > 0) && (
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {result.strengths.length > 0 && (
@@ -991,6 +1034,10 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
             <div className="p-4">
               {activeTab === 'technical' && (
                 <div className="space-y-0">
+                  <div className="mb-3 p-3 bg-accent/5 border border-accent/15 rounded-xl">
+                    <p className="text-[10px] text-accent/70 font-semibold uppercase mb-1">Tóm tắt kỹ thuật</p>
+                    <p className="text-xs text-gray-300 leading-relaxed">{result.technicalSummary}</p>
+                  </div>
                   <SignalRow label="Xu hướng" value={result.technical.trend}
                     positive={result.technical.trend.includes('Tăng') ? true : result.technical.trend.includes('Giảm') ? false : null} />
                   <SignalRow label="RSI(14)" value={`${result.technical.rsi} — ${result.technical.rsiSignal}`}
@@ -1016,6 +1063,10 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
               )}
               {activeTab === 'fundamental' && (
                 <div className="space-y-0">
+                  <div className="mb-3 p-3 bg-blue-400/5 border border-blue-400/15 rounded-xl">
+                    <p className="text-[10px] text-blue-400/70 font-semibold uppercase mb-1">Tóm tắt cơ bản</p>
+                    <p className="text-xs text-gray-300 leading-relaxed">{result.fundamentalSummary}</p>
+                  </div>
                   <SignalRow label="P/E" value={result.fundamental.peSignal}
                     positive={result.fundamental.peSignal.includes('THẤP') || result.fundamental.peSignal.includes('HỢP LÝ') ? true : result.fundamental.peSignal.includes('QUÁ CAO') ? false : null} />
                   <SignalRow label="P/B" value={result.fundamental.pbSignal}
@@ -1040,6 +1091,10 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
               )}
               {activeTab === 'sentiment' && (
                 <div className="space-y-0">
+                  <div className="mb-3 p-3 bg-purple-400/5 border border-purple-400/15 rounded-xl">
+                    <p className="text-[10px] text-purple-400/70 font-semibold uppercase mb-1">Tóm tắt tâm lý</p>
+                    <p className="text-xs text-gray-300 leading-relaxed">{result.sentimentSummary}</p>
+                  </div>
                   <SignalRow label="Tin tức" value={`${result.sentiment.newsScore} — ${result.sentiment.newsSummary}`}
                     positive={result.sentiment.newsScore >= 60 ? true : result.sentiment.newsScore < 40 ? false : null} />
                   <SignalRow label="Khối ngoại" value={result.sentiment.foreignFlow}
@@ -1052,6 +1107,32 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
                     positive={result.sentiment.relativeStrength > 1 ? true : result.sentiment.relativeStrength < -1 ? false : null} />
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* ══ 5.5. HÀNH ĐỘNG & THEO DÕI ══ */}
+          <div className="card-glass p-4 space-y-3">
+            <h3 className="font-semibold text-sm flex items-center gap-2">
+              <Target className="w-4 h-4 text-accent" />Hành Động Khuyến Nghị
+            </h3>
+            <div className={`p-4 rounded-xl border ${
+              result.recommendation === 'MUA MẠNH' ? 'bg-emerald-400/5 border-emerald-400/25' :
+              result.recommendation === 'MUA' ? 'bg-green-400/5 border-green-400/25' :
+              result.recommendation === 'GIỮ' ? 'bg-yellow-400/5 border-yellow-400/25' :
+              result.recommendation === 'BÁN' ? 'bg-orange-400/5 border-orange-400/25' :
+              'bg-red-400/5 border-red-400/25'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${getRecBg(result.recommendation)} ${getRecColor(result.recommendation)}`}>
+                  {result.recommendation}
+                </span>
+                <span className="text-xs text-muted">{result.overallScore}/100 · Tin cậy {result.confidenceNum}%</span>
+              </div>
+              <p className="text-sm text-gray-200 leading-relaxed">{result.action}</p>
+            </div>
+            <div className="flex items-start gap-2 text-xs text-muted/80 bg-surface2/40 rounded-lg p-3">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-yellow-400/70" />
+              <span><span className="text-yellow-400/80 font-semibold">Theo dõi: </span>{result.nextReview}</span>
             </div>
           </div>
 

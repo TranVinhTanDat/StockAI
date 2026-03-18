@@ -191,6 +191,80 @@ export function calcMACD(
   return result
 }
 
+// ATR — Average True Range (measures volatility, used for target/stop sizing)
+export function calcATR(highs: number[], lows: number[], closes: number[], period = 14): number {
+  const n = Math.min(highs.length, lows.length, closes.length)
+  if (n < 2) return 0
+  const tr: number[] = []
+  for (let i = 1; i < n; i++) {
+    const h = highs[i], l = lows[i], pc = closes[i - 1]
+    tr.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)))
+  }
+  if (tr.length === 0) return 0
+  const slice = tr.slice(-Math.min(period, tr.length))
+  return slice.reduce((a, b) => a + b, 0) / slice.length
+}
+
+// calcDMI — ADX with DI+/DI- direction (fixes ADX-only which has no direction info)
+export function calcDMI(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 14
+): Array<{ adx: number; diPlus: number; diMinus: number }> {
+  const n = Math.min(highs.length, lows.length, closes.length)
+  const nan = { adx: NaN, diPlus: NaN, diMinus: NaN }
+  const result = Array.from({ length: n }, () => ({ ...nan }))
+  if (n < 2 * period + 1) return result
+
+  const tr: number[] = [], pdm: number[] = [], mdm: number[] = []
+  for (let i = 1; i < n; i++) {
+    const h = highs[i], l = lows[i], pc = closes[i - 1]
+    tr.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)))
+    const up = h - highs[i - 1], dn = lows[i - 1] - l
+    pdm.push(up > dn && up > 0 ? up : 0)
+    mdm.push(dn > up && dn > 0 ? dn : 0)
+  }
+
+  let satr = tr.slice(0, period).reduce((a, b) => a + b, 0)
+  let spdm = pdm.slice(0, period).reduce((a, b) => a + b, 0)
+  let smdm = mdm.slice(0, period).reduce((a, b) => a + b, 0)
+
+  const dxArr: number[] = []
+  const diPlusArr: number[] = []
+  const diMinusArr: number[] = []
+
+  const pushEntry = () => {
+    const pdi = satr > 0 ? 100 * spdm / satr : 0
+    const mdi = satr > 0 ? 100 * smdm / satr : 0
+    const s = pdi + mdi
+    dxArr.push(s > 0 ? 100 * Math.abs(pdi - mdi) / s : 0)
+    diPlusArr.push(pdi)
+    diMinusArr.push(mdi)
+  }
+
+  pushEntry()
+  for (let i = period; i < tr.length; i++) {
+    satr = satr - satr / period + tr[i]
+    spdm = spdm - spdm / period + pdm[i]
+    smdm = smdm - smdm / period + mdm[i]
+    pushEntry()
+  }
+
+  if (dxArr.length < period) return result
+
+  let adx = dxArr.slice(0, period).reduce((a, b) => a + b, 0) / period
+  let ri = 2 * period
+  if (ri < n) result[ri] = { adx, diPlus: diPlusArr[0], diMinus: diMinusArr[0] }
+
+  for (let i = period; i < dxArr.length; i++) {
+    adx = (adx * (period - 1) + dxArr[i]) / period
+    ri++
+    if (ri < n) result[ri] = { adx, diPlus: diPlusArr[i], diMinus: diMinusArr[i] }
+  }
+  return result
+}
+
 export function calcBB(
   data: number[],
   period: number = 20,

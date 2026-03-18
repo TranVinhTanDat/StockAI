@@ -9,6 +9,23 @@ function getClient(): Anthropic {
   return new Anthropic({ apiKey })
 }
 
+// Retry 1 lần cho lỗi 529 Overloaded / 429 Rate Limit — tổng max ~4+30s = 34s < maxDuration 60s
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    const msg    = err instanceof Error ? err.message : ''
+    const isOverloaded = status === 529 || msg.toLowerCase().includes('overloaded')
+    const isRateLimit  = status === 429
+    if (isOverloaded || isRateLimit) {
+      await new Promise(resolve => setTimeout(resolve, 4000))
+      return await fn()
+    }
+    throw err
+  }
+}
+
 function sanitizeJSON(s: string): string {
   return s
     .replace(/[\u201C\u201D\u201E\u201F]/g, '"') // curly double quotes → "
@@ -372,13 +389,13 @@ Trả về JSON trong thẻ <result>:
       ]
     : fullPrompt
 
-  const response = await client.messages.create({
+  const response = await withRetry(() => client.messages.create({
     model: 'claude-opus-4-6',
     max_tokens: 3500,
     system:
       'Bạn là chuyên gia phân tích chứng khoán CFA Level 3, 20 năm kinh nghiệm thị trường Việt Nam. Phân tích sâu, khách quan, dựa hoàn toàn trên số liệu thực tế được cung cấp. Không được bịa đặt số liệu. Khi fundamental data = N/A, không suy diễn từ giá trị đó. QUAN TRỌNG: Chỉ trả về JSON hợp lệ trong thẻ <result>, không có text nào khác.',
     messages: [{ role: 'user', content: userContent }],
-  })
+  }))
 
   const firstBlock = response.content?.[0]
   const text = firstBlock && firstBlock.type === 'text' ? firstBlock.text : ''
@@ -389,7 +406,7 @@ Trả về JSON trong thẻ <result>:
   try {
     return JSON.parse(extractJSONObject(text)) as AnalysisResult
   } catch {
-    const retryResponse = await client.messages.create({
+    const retryResponse = await withRetry(() => client.messages.create({
       model: 'claude-opus-4-6',
       max_tokens: 2000,
       system: 'Bạn là chuyên gia phân tích chứng khoán. Chỉ trả về JSON hợp lệ trong thẻ <result>, không có text nào khác.',
@@ -398,7 +415,7 @@ Trả về JSON trong thẻ <result>:
         { role: 'assistant', content: text },
         { role: 'user', content: 'Response của bạn không phải JSON hợp lệ. Hãy trả về CHỈ JSON object trong thẻ <result>...</result>, không kèm text nào khác.' },
       ],
-    })
+    }))
     const retryBlock = retryResponse.content?.[0]
     const retryText = retryBlock && retryBlock.type === 'text' ? retryBlock.text : ''
     if (!retryText) throw new Error('Claude retry returned empty response')
