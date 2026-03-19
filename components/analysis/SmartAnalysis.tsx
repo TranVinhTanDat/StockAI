@@ -55,6 +55,8 @@ interface SmartAnalysisData extends SmartScoreResult {
   openPrice?: number
   highPrice?: number
   lowPrice?: number
+  w52high?: number
+  w52low?: number
   vnIndexLevel?: number
   vnIndexTrend?: number
   vnIndexRsi?: number
@@ -899,7 +901,7 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               <InfoCell label="Giá hiện tại" value={formatPrice(result.price)} sub={`O: ${formatPrice(data?.openPrice || 0)}`} />
               <InfoCell label="Cao / Thấp ngày" value={formatPrice(data?.highPrice || 0)} sub={`L: ${formatPrice(data?.lowPrice || 0)}`} />
-              <InfoCell label="52 tuần Cao/Thấp" value={formatPrice(result.technical.resistance || 0)} sub={formatPrice(result.technical.support || 0)} />
+              <InfoCell label="52 tuần Cao/Thấp" value={formatPrice(data?.w52high || 0)} sub={formatPrice(data?.w52low || 0)} />
               <InfoCell label="Khối lượng GD" value={formatNum(data?.volume || 0)} sub="cổ phiếu/phiên" />
               <InfoCell label="Vốn hóa" value={formatVND(data?.marketCap || 0)} />
               <InfoCell label="P/E" value={data?.pe ? `${data.pe.toFixed(1)}x` : '—'} colored={data?.pe && data.pe < 15 ? 'text-green-400' : 'text-gray-100'} />
@@ -1086,7 +1088,9 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
                       positive={result.fundamental.peg < 1 ? true : result.fundamental.peg > 2 ? false : null} />
                   )}
                   <SignalRow label="Chất lượng EPS" value={result.fundamental.earningsQuality}
-                    positive={result.fundamental.earningsQuality.includes('tăng liên tục') ? true : result.fundamental.earningsQuality.includes('giảm liên tục') ? false : null} />
+                    positive={result.fundamental.earningsQuality.includes('tăng') || result.fundamental.earningsQuality.includes('XUẤT SẮC') ? true : result.fundamental.earningsQuality.includes('giảm') || result.fundamental.earningsQuality.includes('GIẢM') ? false : null} />
+                  <SignalRow label="Chất lượng LN" value={result.fundamental.marginQuality}
+                    positive={result.fundamental.marginQuality.includes('mở rộng') || result.fundamental.marginQuality.includes('MỞ RỘNG') ? true : result.fundamental.marginQuality.includes('thu hẹp') || result.fundamental.marginQuality.includes('THU HẸP') || result.fundamental.marginQuality.includes('xấu') ? false : null} />
                 </div>
               )}
               {activeTab === 'sentiment' && (

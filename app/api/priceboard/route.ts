@@ -33,7 +33,7 @@ interface VPSRaw {
 
 function normalize(raw: VPSRaw): StockBoard {
   const mc = raw.marketId || raw.mc || 'STO'
-  const price = (raw.lastPrice || raw.c || 0) * 1000
+  const price = (raw.lastPrice || raw.r || 0) * 1000
   const ref = (raw.r || 0) * 1000
 
   let ceil = (raw.ce || 0) * 1000
@@ -108,7 +108,7 @@ async function fetchIndex(indexCode: string): Promise<{ value: number; change: n
     const arr = Array.isArray(json) ? json : (json.data || [])
     if (arr.length === 0) return null
     const last = arr[arr.length - 1]
-    const value = last.indexValue || last.c || last.value || 0
+    const value = last.indexValue || last.value || last.price || 0
     const change = last.change || last.d || 0
     const changePct = last.percentChange || last.pct || (value > 0 ? change / (value - change) * 100 : 0)
     return { value, change, changePct }

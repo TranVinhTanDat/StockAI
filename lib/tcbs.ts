@@ -63,7 +63,7 @@ export async function fetchQuote(symbol: string): Promise<QuoteData> {
   }
 
   // VPS prices are in thousands VND — multiply by 1000
-  const price = (q.lastPrice || 0) * 1000
+  const price = (q.lastPrice || q.r || 0) * 1000
   const refPrice = (q.r || 0) * 1000
   const change = price - refPrice
   const changePct = refPrice > 0 ? (change / refPrice) * 100 : 0

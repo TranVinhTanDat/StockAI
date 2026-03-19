@@ -15,21 +15,21 @@ async function fetchQuote(symbol: string) {
     const item = Array.isArray(data) ? data[0] : data
     if (!item) return null
     return {
-      price: (Number(item.lastPrice || item.c || 0)) * 1000,
-      changePct: Number(item.percentChange || item.changePct || 0),
+      price: (Number(item.lastPrice || item.r || 0)) * 1000,
+      changePct: Number(item.percentChange || item.changePct || item.pcp || 0),
       high52w: (Number(item['52WeekHigh'] || item.h52 || 0)) * 1000,
       low52w: (Number(item['52WeekLow'] || item.l52 || 0)) * 1000,
-      foreignBuyVol: Number(item.fBuyVol || item.foreignBuyVol || 0),
-      foreignSellVol: Number(item.fSellVol || item.foreignSellVol || 0),
+      foreignBuyVol: Number(item.fBVol || item.fBuyVol || item.foreignBuyVol || 0),
+      foreignSellVol: Number(item.fSVolume || item.fSellVol || item.foreignSellVol || 0),
       foreignRoom: Number(item.fRoom || item.foreignRoom || 0),
       industry: String(item.industryName || item.industry || ''),
       name: String(item.stockName || item.name || symbol),
-      volume: Number(item.nmVolume || item.totalVolume || item.volume || 0),
+      volume: Number(item.lot || item.nmVolume || item.totalVolume || item.volume || 0),
       marketCap: Number(item.marketCap || 0) * 1_000_000,
-      exchange: String(item.floorCode || item.exchange || ''),
-      openPrice: (Number(item.openPrice || item.o || 0)) * 1000,
-      highPrice: (Number(item.highPrice || item.h || 0)) * 1000,
-      lowPrice: (Number(item.lowPrice || item.l || 0)) * 1000,
+      exchange: String(item.floorCode || item.marketId || item.mc || item.exchange || ''),
+      openPrice: (Number(item.ot || item.openPrice || 0)) * 1000,   // VPS: ot = open today
+      highPrice: (Number(item.hp || item.highPrice || 0)) * 1000,   // VPS: hp = high today
+      lowPrice:  (Number(item.lp || item.lowPrice  || 0)) * 1000,   // VPS: lp = low today
     }
   } catch { return null }
 }
@@ -173,6 +173,7 @@ async function fetchFundamentals(symbol: string) {
       netMargin: Number(s?.netProfitMargin || s?.netMarginRatio || 0),
       dividendYield: Number(s?.dividendYield || s?.dividendRatio || 0),
       debtEquity: Number(s?.deRatio || s?.debtToEquity || 0),
+      industry: String(s?.industryActivity || s?.industry || ''),
     }
   } catch { return null }
 }
@@ -218,7 +219,8 @@ async function fetchGrowth(symbol: string): Promise<{ revenueGrowth: number; pro
   } catch { return { revenueGrowth: 0, profitGrowth: 0 } }
 }
 
-// Fetch quarterly EPS
+// Fetch quarterly EPS from CafeF ChiSoTaiChinh
+// Note: API returns rows per quarter (ReportDate, EPS, PriceToEarning fields)
 async function fetchQuarterlyEPS(symbol: string): Promise<Array<{ period: string; eps: number; pe: number }>> {
   try {
     const res = await fetch(
@@ -230,14 +232,41 @@ async function fetchQuarterlyEPS(symbol: string): Promise<Array<{ period: string
     )
     if (!res.ok) return []
     const data = await res.json()
+    // Try multiple possible structures
     const rows: Array<Record<string, unknown>> =
       data?.Data?.Data || data?.data?.Data || data?.Data || data?.data || []
     if (!Array.isArray(rows) || rows.length === 0) return []
-    return rows.slice(0, 8).map(r => ({
-      period: String(r.ReportDate || r.Quarter || r.reportDate || r.year || ''),
-      eps: Number(r.EPS || r.eps || 0),
-      pe: Number(r.PriceToEarning || r.PE || r.pe || 0),
-    })).filter(r => r.period && (r.eps !== 0 || r.pe !== 0))
+    // If first row has ReportDate/EPS-style fields → quarterly rows format
+    if (rows[0] && (rows[0].ReportDate || rows[0].reportDate || rows[0].Quarter)) {
+      return rows.slice(0, 8).map(r => ({
+        period: String(r.ReportDate || r.Quarter || r.reportDate || ''),
+        eps: Number(r.EPS || r.eps || r.EpsPerShare || 0),
+        pe: Number(r.PriceToEarning || r.PE || r.pe || 0),
+      })).filter(r => r.period && (r.eps !== 0 || r.pe !== 0))
+    }
+    return []
+  } catch { return [] }
+}
+
+// Fetch annual EPS from CafeF ChiSoTaiChinh (ReportType=Y) for YoY profit growth
+async function fetchAnnualEPS(symbol: string): Promise<Array<{ year: number; eps: number }>> {
+  try {
+    const res = await fetch(
+      `https://cafef.vn/du-lieu/Ajax/PageNew/ChiSoTaiChinh.ashx?Symbol=${symbol}&TotalRow=5&ReportType=Y&Sort=DESC`,
+      {
+        headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' },
+        signal: AbortSignal.timeout(4000),
+      }
+    )
+    if (!res.ok) return []
+    const data = await res.json()
+    const rows: Array<Record<string, unknown>> =
+      data?.Data?.Data || data?.data?.Data || data?.Data || data?.data || []
+    if (!Array.isArray(rows) || rows.length === 0) return []
+    return rows.slice(0, 5).map(r => ({
+      year: Number(r.Year || r.year || r.ReportDate || 0),
+      eps: Number(r.EPS || r.eps || r.EpsPerShare || 0),
+    })).filter(r => r.year > 2000 && r.eps !== 0)
   } catch { return [] }
 }
 
@@ -293,13 +322,14 @@ export async function GET(request: NextRequest) {
 
   try {
     // Fetch all data in parallel — no Claude API
-    const [quote, history, vnIndex, fund, growth, quarterlyEPS, businessPlan, newsSentiment] = await Promise.all([
+    const [quote, history, vnIndex, fund, growth, quarterlyEPS, annualEPS, businessPlan, newsSentiment] = await Promise.all([
       fetchQuote(symbol),
       fetchHistory(symbol),
       fetchVNIndex(),
       fetchFundamentals(symbol),
       fetchGrowth(symbol),
       fetchQuarterlyEPS(symbol),
+      fetchAnnualEPS(symbol),
       fetchBusinessPlan(symbol),
       fetchNewsSentiment(symbol),
     ])
@@ -307,9 +337,42 @@ export async function GET(request: NextRequest) {
     if (!quote) return NextResponse.json({ error: `Không tìm thấy mã ${symbol}` }, { status: 404 })
     if (!history) return NextResponse.json({ error: `Không đủ dữ liệu lịch sử cho ${symbol}` }, { status: 400 })
 
+    // ── Compute profitGrowth — prefer quarterly EPS trailing 4Q, then annual EPS YoY ──
+    let computedProfitGrowth = growth.profitGrowth
+    // 1. Quarterly EPS: trailing 4Q vs prior 4Q (most accurate)
+    if (quarterlyEPS.length >= 4) {
+      const epsVals = quarterlyEPS.map(q => q.eps).filter(e => e !== 0)
+      if (epsVals.length >= 8) {
+        const t4 = epsVals.slice(0, 4).reduce((a, b) => a + b, 0)
+        const p4 = epsVals.slice(4, 8).reduce((a, b) => a + b, 0)
+        if (p4 !== 0) computedProfitGrowth = Math.round(((t4 - p4) / Math.abs(p4)) * 1000) / 10
+      } else if (epsVals.length >= 4 && computedProfitGrowth === 0) {
+        const latestEPS = epsVals[0], yearAgoEPS = epsVals[Math.min(3, epsVals.length - 1)]
+        if (yearAgoEPS !== 0) computedProfitGrowth = Math.round(((latestEPS - yearAgoEPS) / Math.abs(yearAgoEPS)) * 1000) / 10
+      }
+    }
+    // 2. Annual EPS YoY fallback (when quarterly data unavailable or returns 0)
+    if (computedProfitGrowth === 0 && annualEPS.length >= 2) {
+      const sorted = [...annualEPS].sort((a, b) => b.year - a.year)
+      const curr = sorted[0].eps, prev = sorted[1].eps
+      if (prev !== 0 && curr !== 0) computedProfitGrowth = Math.round(((curr - prev) / Math.abs(prev)) * 1000) / 10
+    }
+
+    // ── Compute 52W high/low from history (VPS quote doesn't provide these) ──
+    const w52high = history ? Math.max(...history.highs) : 0
+    const w52low  = history ? Math.min(...history.lows)  : 0
+
+    // ── Industry: prefer Simplize (has sector name), fallback to VPS ──────────
+    const industry = fund?.industry || quote.industry || ''
+
+    // ── Business plan achievement % (bonus for companies exceeding targets) ───
+    const businessPlanPct = businessPlan && businessPlan.profitTarget > 0 && businessPlan.profitActual > 0
+      ? Math.round((businessPlan.profitActual / businessPlan.profitTarget) * 100)
+      : undefined
+
     const input: SmartScoreInput = {
       symbol,
-      industry: quote.industry,
+      industry,
       price: quote.price,
       changePct: quote.changePct,
       closes: history.closes,
@@ -321,14 +384,15 @@ export async function GET(request: NextRequest) {
       roe: fund?.roe ?? 0,
       roa: fund?.roa ?? 0,
       eps: fund?.eps ?? 0,
-      profitGrowth: growth.profitGrowth,
+      profitGrowth: computedProfitGrowth,
       revenueGrowth: growth.revenueGrowth,
       debtEquity: fund?.debtEquity ?? 0,
       dividendYield: fund?.dividendYield ?? 0,
       netMargin: fund?.netMargin ?? 0,
       quarterlyEPS,
-      w52high: quote.high52w,
-      w52low: quote.low52w,
+      businessPlanPct,
+      w52high,
+      w52low,
       foreignBuyVol: quote.foreignBuyVol,
       foreignSellVol: quote.foreignSellVol,
       foreignRoom: quote.foreignRoom,
@@ -348,6 +412,8 @@ export async function GET(request: NextRequest) {
       openPrice: quote.openPrice,
       highPrice: quote.highPrice,
       lowPrice: quote.lowPrice,
+      w52high,
+      w52low,
       vnIndexLevel: vnIndex.currentLevel,
       vnIndexTrend: vnIndex.trend30d,
       vnIndexRsi: vnIndex.rsi,
@@ -371,7 +437,7 @@ export async function GET(request: NextRequest) {
       dividendYield: fund?.dividendYield ?? 0,
       debtEquity: fund?.debtEquity ?? 0,
       revenueGrowth: growth.revenueGrowth,
-      profitGrowth: growth.profitGrowth,
+      profitGrowth: computedProfitGrowth,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Analysis failed'
