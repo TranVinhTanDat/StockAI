@@ -890,7 +890,21 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
               <BarChart3 className="w-4 h-4 text-accent" />
               <span className="font-semibold text-sm">Biểu Đồ Kỹ Thuật — {result.symbol}</span>
             </div>
-            <CandlestickChart symbol={result.symbol} isVisible={isVisible && !!result} />
+            <CandlestickChart
+                symbol={result.symbol}
+                isVisible={isVisible && !!result}
+                overlays={{
+                  recommendation: result.recommendation,
+                  targetPrice: result.targetPrice,
+                  stopLoss: result.stopLoss,
+                  entryLow: result.entryZone.low,
+                  entryHigh: result.entryZone.high,
+                  support: result.technical.support,
+                  resistance: result.technical.resistance,
+                  sma200: result.sma200,
+                  currentPrice: result.price,
+                }}
+              />
           </div>
 
           {/* ══ 3. STOCK INFO GRID ══ */}
@@ -1023,6 +1037,246 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
             )}
           </div>
 
+          {/* ══ 4.5. ZONE-INDICATOR ANALYSIS ══ */}
+          {(() => {
+            // ── Zone proximity helper (within pct% of zone bounds) ───────────
+            const near = (val: number, lo: number, hi: number, pct = 0.03) =>
+              val > 0 && lo > 0 && val >= lo * (1 - pct) && val <= hi * (1 + pct)
+
+            const buyLo = result.entryZone.low
+            const buyHi = result.entryZone.high
+            const tgtLo = result.targetPrice * 0.994
+            const tgtHi = result.targetPrice * 1.006
+            const stpLo = result.stopLoss * 0.993
+            const stpHi = result.stopLoss * 1.005
+
+            type LineTag = { label: string; color: string; meaning: string }
+
+            const linesInBuy: LineTag[] = (([
+              near(result.sma20,   buyLo, buyHi) && { label: 'SMA20',    color: '#f5a623', meaning: 'Hỗ trợ động ngắn hạn — bounce tốt' },
+              near(result.sma50,   buyLo, buyHi) && { label: 'SMA50',    color: '#3b82f6', meaning: 'Hỗ trợ trung hạn mạnh' },
+              near(result.sma200,  buyLo, buyHi) && { label: 'SMA200',   color: '#ec4899', meaning: 'Hỗ trợ dài hạn — cơ hội mua giá trị' },
+              near(result.bbLower, buyLo, buyHi) && { label: 'BB Lower', color: '#a855f7', meaning: 'Oversold kép — tín hiệu mua hiếm gặp' },
+            ]) as (LineTag | false)[]).filter((x): x is LineTag => !!x)
+
+            const linesInTarget: LineTag[] = (([
+              near(result.bbUpper, tgtLo, tgtHi) && { label: 'BB Upper', color: '#a855f7', meaning: 'Overbought kép — chốt 40–50% ngay' },
+              near(result.sma20,   tgtLo, tgtHi) && { label: 'SMA20',   color: '#f5a623', meaning: 'SMA20 bắt kịp vùng — xu hướng mạnh, chốt nhẹ 15%' },
+              near(result.sma50,   tgtLo, tgtHi) && { label: 'SMA50',   color: '#3b82f6', meaning: 'SMA50 tới vùng chốt — vượt hẳn, chốt 20–30%' },
+            ]) as (LineTag | false)[]).filter((x): x is LineTag => !!x)
+
+            const linesInStop: LineTag[] = (([
+              (result.sma200 > result.stopLoss && result.sma200 < result.price * 1.05) && { label: 'SMA200 trên stop', color: '#ec4899', meaning: 'Phá stop = mất SMA200 — thoát lỗ ngay' },
+              (result.sma20 < result.sma50) && { label: 'Death Cross ⚠', color: '#f5a623', meaning: 'SMA20 cắt dưới SMA50 — đảo chiều trung hạn' },
+              near(result.bbLower, stpLo, stpHi, 0.04) && { label: 'BB Lower', color: '#a855f7', meaning: 'Panic sell gần vùng stop — áp lực bán rất mạnh' },
+            ]) as (LineTag | false)[]).filter((x): x is LineTag => !!x)
+
+            // ── Current indicator readings ───────────────────────────────────
+            const rsi = result.rsi14
+            const macdBull = result.macdValue > result.macdSignalValue
+            const macdHist = result.macdValue - result.macdSignalValue
+            const volOk = result.technical.volumeSignal.includes('MẠNH') || result.technical.volumeSignal.includes('TĂNG')
+            const goldenCross = result.sma20 > result.sma50
+
+            // ── Buy zone composite signal ───────────────────────────────────
+            const rsiBuyOk  = rsi >= 25 && rsi <= 55
+            const buyScore  = (rsiBuyOk ? 1 : 0) + (macdBull ? 1 : 0) + (volOk ? 1 : 0) + (linesInBuy.length > 0 ? 1 : 0) + (goldenCross ? 1 : 0)
+            const buySig    = buyScore >= 4 ? { text: 'MUA MẠNH', color: '#4ade80' } : buyScore === 3 ? { text: 'MUA được', color: '#86efac' } : buyScore === 2 ? { text: 'Chờ thêm', color: '#fbbf24' } : { text: 'Chưa đủ', color: '#6b7280' }
+
+            // ── Target composite signal ─────────────────────────────────────
+            const rsiChotOk = rsi > 65
+            const tgtScore  = (rsiChotOk ? 1 : 0) + (!macdBull ? 1 : 0) + (!volOk ? 1 : 0) + (linesInTarget.length > 0 ? 1 : 0)
+            const tgtSig    = tgtScore >= 3 ? { text: 'CHỐT NGAY', color: '#f59e0b' } : tgtScore === 2 ? { text: 'Chốt một phần', color: '#fde68a' } : { text: 'Theo dõi', color: '#6b7280' }
+
+            // ── Price proximity to zones ────────────────────────────────────
+            const price = result.price
+            const inBuy    = price >= buyLo * 0.99 && price <= buyHi * 1.01
+            const inTarget = price >= tgtLo * 0.99 && price <= tgtHi * 1.01
+            const inStop   = price >= stpLo * 0.99 && price <= stpHi * 1.01
+            const nearBuy  = !inBuy && price <= buyHi * 1.04
+            const nearStop = !inStop && price >= stpHi * 0.96 && price < stpHi
+
+            return (
+              <div className="card-glass p-4 space-y-4">
+                <h3 className="font-semibold text-sm flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-accent" />
+                  Chỉ Báo Kỹ Thuật Trong Từng Vùng
+                  {inBuy && <span className="ml-auto text-[10px] bg-green-400/15 text-green-400 border border-green-400/30 px-2 py-0.5 rounded-full font-medium">Giá đang trong VÙNG MUA</span>}
+                  {inTarget && <span className="ml-auto text-[10px] bg-yellow-400/15 text-yellow-400 border border-yellow-400/30 px-2 py-0.5 rounded-full font-medium">Giá đang trong VÙNG CHỐT LỜI</span>}
+                  {inStop && <span className="ml-auto text-[10px] bg-red-400/15 text-red-400 border border-red-400/30 px-2 py-0.5 rounded-full font-medium animate-pulse">⚡ Giá trong VÙNG CẮT LỖ</span>}
+                  {nearBuy && <span className="ml-auto text-[10px] bg-blue-400/15 text-blue-400 border border-blue-400/30 px-2 py-0.5 rounded-full font-medium">Giá đang tiếp cận VÙNG MUA</span>}
+                  {nearStop && <span className="ml-auto text-[10px] bg-orange-400/15 text-orange-400 border border-orange-400/30 px-2 py-0.5 rounded-full font-medium">⚠ Giá gần VÙNG CẮT LỖ</span>}
+                </h3>
+
+                {/* ── Indicator snapshot (4 cards) ── */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    {
+                      label: 'RSI (14)', val: rsi.toFixed(1),
+                      sub: rsi < 30 ? 'Quá bán — mua tốt' : rsi > 70 ? 'Quá mua — chốt' : rsi < 45 ? 'Thấp — tốt để mua' : rsi > 60 ? 'Cao — cân nhắc chốt' : 'Trung tính',
+                      color: rsi < 30 ? '#4ade80' : rsi > 70 ? '#f87171' : rsi < 45 ? '#60a5fa' : rsi > 60 ? '#fbbf24' : '#94a3b8',
+                    },
+                    {
+                      label: 'MACD', val: macdBull ? '▲ Bullish' : '▼ Bearish',
+                      sub: `Hist: ${macdHist >= 0 ? '+' : ''}${macdHist.toFixed(2)}`,
+                      color: macdBull ? '#4ade80' : '#f87171',
+                    },
+                    {
+                      label: 'Volume', val: result.technical.volumeSignal,
+                      sub: volOk ? 'Tín hiệu tin cậy' : result.technical.volumeSignal.includes('THẤP') ? 'Yếu — cẩn thận' : 'Bình thường',
+                      color: volOk ? '#4ade80' : result.technical.volumeSignal.includes('THẤP') ? '#f87171' : '#fbbf24',
+                    },
+                    {
+                      label: 'SMA Xu hướng', val: goldenCross ? 'Golden Cross' : 'Death Cross',
+                      sub: goldenCross ? 'SMA20 > SMA50 ✅' : 'SMA20 < SMA50 ⚠',
+                      color: goldenCross ? '#4ade80' : '#f87171',
+                    },
+                  ].map(({ label, val, sub, color }) => (
+                    <div key={label} className="rounded-xl border border-border/30 bg-surface2/40 p-3">
+                      <p className="text-[9px] text-muted font-semibold uppercase tracking-wider">{label}</p>
+                      <p className="text-sm font-bold mt-1" style={{ color }}>{val}</p>
+                      <p className="text-[10px] mt-0.5 text-muted/80">{sub}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── SMA/BB values quick ref ── */}
+                <div className="flex flex-wrap gap-2 px-3 py-2 rounded-lg bg-[#0d1526] border border-[#1e2d4540] text-[10px]">
+                  <span className="text-muted font-semibold">Giá hiện tại:</span>
+                  <span className="font-bold text-gray-200">{formatPrice(price)}</span>
+                  <span className="text-muted/40">|</span>
+                  {[
+                    { label: 'SMA20', val: result.sma20, color: '#f5a623' },
+                    { label: 'SMA50', val: result.sma50, color: '#3b82f6' },
+                    { label: 'SMA200', val: result.sma200, color: '#ec4899' },
+                    { label: 'BB↑', val: result.bbUpper, color: '#a855f7' },
+                    { label: 'BB↓', val: result.bbLower, color: '#a855f780' },
+                  ].filter(x => x.val > 0).map(({ label, val, color }) => (
+                    <span key={label} className="flex items-center gap-1">
+                      <span className="font-semibold" style={{ color }}>{label}:</span>
+                      <span className="text-gray-300">{formatPrice(val)}</span>
+                    </span>
+                  ))}
+                </div>
+
+                {/* ── Zone analysis rows ── */}
+                <div className="space-y-2">
+
+                  {/* VÙNG MUA */}
+                  <div className="rounded-xl border border-[#22c55e30] overflow-hidden">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-[#22c55e12]">
+                      <span className="w-2.5 h-2.5 rounded-sm bg-[#22c55e]" />
+                      <span className="text-xs font-bold text-green-400">▶ VÙNG MUA</span>
+                      <span className="text-[10px] text-green-400/70">{formatPrice(buyLo)} – {formatPrice(buyHi)}</span>
+                      <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: buySig.color, background: buySig.color + '18', border: `1px solid ${buySig.color}30` }}>{buySig.text}</span>
+                    </div>
+                    <div className="px-3 py-2 bg-[#0b1220] space-y-2">
+                      {linesInBuy.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {linesInBuy.map(l => (
+                            <div key={l.label} className="flex items-start gap-2 text-[10px]">
+                              <span className="flex-shrink-0 w-16 font-bold" style={{ color: l.color }}>{l.label}</span>
+                              <span className="text-green-300/80">✦ {l.meaning}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-muted/70">Chưa có đường SMA/BB nào đi qua vùng này — tín hiệu hỗ trợ kép chưa xuất hiện</p>
+                      )}
+                      <div className="flex flex-wrap gap-2 pt-1 border-t border-[#22c55e15] text-[10px]">
+                        <span className={rsiBuyOk ? 'text-green-400' : 'text-gray-500'}>RSI {rsi.toFixed(0)} {rsiBuyOk ? '✅' : '❌'}</span>
+                        <span className={macdBull ? 'text-green-400' : 'text-gray-500'}>MACD {macdBull ? '▲✅' : '▼❌'}</span>
+                        <span className={volOk ? 'text-green-400' : 'text-gray-500'}>VOL {volOk ? '✅' : '❌'}</span>
+                        <span className={goldenCross ? 'text-green-400' : 'text-gray-500'}>SMA {goldenCross ? 'Golden✅' : 'Death❌'}</span>
+                        <span className="text-muted ml-auto">→ {buyScore}/5 điều kiện thoả</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* VÙNG CHỐT LỜI */}
+                  <div className="rounded-xl border border-[#f59e0b28] overflow-hidden">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-[#f59e0b10]">
+                      <span className="w-2.5 h-2.5 rounded-sm bg-[#f59e0b]" />
+                      <span className="text-xs font-bold text-yellow-400">🎯 VÙNG CHỐT LỜI</span>
+                      <span className="text-[10px] text-yellow-400/70">{formatPrice(result.targetPrice)} ±1%</span>
+                      <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: tgtSig.color, background: tgtSig.color + '18', border: `1px solid ${tgtSig.color}30` }}>{tgtSig.text}</span>
+                    </div>
+                    <div className="px-3 py-2 bg-[#0b1220] space-y-2">
+                      {linesInTarget.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {linesInTarget.map(l => (
+                            <div key={l.label} className="flex items-start gap-2 text-[10px]">
+                              <span className="flex-shrink-0 w-16 font-bold" style={{ color: l.color }}>{l.label}</span>
+                              <span className="text-yellow-300/80">✦ {l.meaning}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-muted/70">Chưa có đường nào trong vùng — giá chưa đến vùng chốt lời hoặc BB chưa kéo lên đây</p>
+                      )}
+                      <div className="flex flex-wrap gap-2 pt-1 border-t border-[#f59e0b15] text-[10px]">
+                        <span className={rsiChotOk ? 'text-yellow-400' : 'text-gray-500'}>RSI {rsi.toFixed(0)} {rsiChotOk ? '✅ cao' : '— chưa cao'}</span>
+                        <span className={!macdBull ? 'text-yellow-400' : 'text-gray-500'}>MACD {!macdBull ? 'yếu đi✅' : 'vẫn tăng—'}</span>
+                        <span className={!volOk ? 'text-yellow-400' : 'text-gray-500'}>VOL {!volOk ? 'giảm✅' : 'vẫn cao—'}</span>
+                        {linesInTarget.length > 0 && <span className="text-yellow-400">BB Upper trong vùng ✅</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* VÙNG CẮT LỖ */}
+                  <div className="rounded-xl border border-[#ef444430] overflow-hidden">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-[#ef444412]">
+                      <span className="w-2.5 h-2.5 rounded-sm bg-[#ef4444]" />
+                      <span className="text-xs font-bold text-red-400">✂ VÙNG CẮT LỖ</span>
+                      <span className="text-[10px] text-red-400/70">{formatPrice(result.stopLoss)} ±0.7%</span>
+                      <span className="ml-auto text-[10px] text-muted/70 font-medium">Bắt buộc khi nến đóng dưới đây</span>
+                    </div>
+                    <div className="px-3 py-2 bg-[#0b1220] space-y-2">
+                      {linesInStop.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {linesInStop.map(l => (
+                            <div key={l.label} className="flex items-start gap-2 text-[10px]">
+                              <span className="flex-shrink-0 w-24 font-bold" style={{ color: l.color }}>{l.label}</span>
+                              <span className="text-red-300/80">⚡ {l.meaning}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-muted/70">Chưa có tín hiệu nguy hiểm từ SMA/BB — theo dõi nếu giá tiếp cận vùng đỏ</p>
+                      )}
+                      <div className="flex flex-wrap gap-2 pt-1 border-t border-[#ef444415] text-[10px]">
+                        <span className="text-red-400/80 font-semibold">Luật thoát:</span>
+                        <span className="text-gray-400">Đóng cửa dưới {formatPrice(result.stopLoss)} → cắt 100% không điều kiện</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Hỗ trợ / Kháng cự */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-xl border border-[#00d4aa20] bg-[#00d4aa05] px-3 py-2">
+                      <p className="text-[10px] font-bold text-[#00d4aa] mb-1.5">◆ Hỗ trợ {formatPrice(result.technical.support)}</p>
+                      {(near(result.sma50, result.technical.support * 0.97, result.technical.support * 1.03) || near(result.sma200, result.technical.support * 0.97, result.technical.support * 1.03)) ? (
+                        <p className="text-[10px] text-[#00d4aa]/80">
+                          {near(result.sma200, result.technical.support * 0.97, result.technical.support * 1.03) ? 'SMA200' : 'SMA50'} gần đây → <strong>double support</strong> — bounce mạnh → mua thêm 10–15%
+                        </p>
+                      ) : (
+                        <p className="text-[10px] text-muted/70">Hỗ trợ thuần kỹ thuật. Chờ VOL tăng đột biến khi giá chạm → mua thêm 10%</p>
+                      )}
+                    </div>
+                    <div className="rounded-xl border border-[#f9731620] bg-[#f9731605] px-3 py-2">
+                      <p className="text-[10px] font-bold text-[#f97316] mb-1.5">◆ Kháng cự {formatPrice(result.technical.resistance)}</p>
+                      {near(result.bbUpper, result.technical.resistance * 0.97, result.technical.resistance * 1.03) ? (
+                        <p className="text-[10px] text-[#f97316]/80">BB Upper gần kháng cự → <strong>kháng cự kép</strong> — chốt 20–30% nếu giá chạm</p>
+                      ) : (
+                        <p className="text-[10px] text-muted/70">VOL thấp khi chạm → chưa phá. VOL cao + nến xanh mạnh → breakout, giữ</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
           {/* ══ 5. SIGNAL TABS ══ */}
           <div className="card-glass overflow-hidden">
             <div className="flex border-b border-border/40">
@@ -1050,7 +1304,7 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
                   <SignalRow label="Bollinger" value={result.technical.bbSignal}
                     positive={result.technical.bbSignal.includes('Oversold') ? true : result.technical.bbSignal.includes('Overbought') ? false : null} />
                   <SignalRow label="ADX" value={`${result.technical.adxValue} — ${result.technical.adxSignal}`}
-                    positive={result.technical.adxValue >= 25 ? true : null} />
+                    positive={result.technical.adxValue >= 25 ? (result.technical.adxSignal.includes('TĂNG') ? true : result.technical.adxSignal.includes('GIẢM') ? false : null) : null} />
                   <SignalRow label="Khối lượng" value={result.technical.volumeSignal}
                     positive={result.technical.volumeSignal.includes('xác nhận') ? true : result.technical.volumeSignal.includes('áp lực') ? false : null} />
                   <SignalRow label="Momentum 1W" value={`${result.technical.momentum1W > 0 ? '+' : ''}${result.technical.momentum1W}%`}

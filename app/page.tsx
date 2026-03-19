@@ -436,7 +436,25 @@ export default function Home() {
           <div ref={chartRef}>
             <SectionTitle icon={BarChart3} title="Biểu Đồ Kỹ Thuật" />
             <div className="mt-4">
-              <CandlestickChart symbol={chartSymbol} isVisible={activeSection === 'analysis'} />
+              <CandlestickChart
+                symbol={chartSymbol}
+                isVisible={activeSection === 'analysis'}
+                overlays={
+                  analysisState.status === 'done' && analysisState.symbol === chartSymbol
+                    ? {
+                        recommendation: analysisState.result.recommendation,
+                        targetPrice: analysisState.result.targetPrice,
+                        stopLoss: analysisState.result.stopLoss,
+                        entryLow: analysisState.result.entryZone.low,
+                        entryHigh: analysisState.result.entryZone.high,
+                        support: 0,
+                        resistance: 0,
+                        sma200: 0,
+                        currentPrice: analysisState.quote.price,
+                      }
+                    : undefined
+                }
+              />
             </div>
           </div>
         </SectionWrap>

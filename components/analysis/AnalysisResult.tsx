@@ -217,6 +217,119 @@ export default function AnalysisResult({
           </div>
         </div>
 
+        {/* ── Zone Guide Panel ── */}
+        {(() => {
+          const price = quote.price
+          const { entryZone, targetPrice, stopLoss, recommendation, technicalScore } = result
+
+          const inBuy    = price >= entryZone.low * 0.99  && price <= entryZone.high * 1.01
+          const nearBuy  = !inBuy  && price > entryZone.high && price <= entryZone.high * 1.06
+          const inTarget = price >= targetPrice * 0.994  && price <= targetPrice * 1.006
+          const inStop   = price >= stopLoss * 0.993     && price <= stopLoss * 1.005
+          const nearStop = !inStop && price >= stopLoss * 0.96 && price < stopLoss
+
+          // Derive SMA interpretation from technicalScore
+          const techHigh = technicalScore >= 7
+          const techLow  = technicalScore <= 3
+
+          const smaNote = techHigh
+            ? 'Điểm kỹ thuật cao — SMA20/50 nhiều khả năng đang hỗ trợ vùng mua từ bên dưới (Golden Cross)'
+            : techLow
+            ? 'Điểm kỹ thuật thấp — SMA20/50 có thể nằm TRÊN giá (xu hướng yếu); mua nhỏ hoặc chờ'
+            : 'Kỹ thuật trung bình — kiểm tra SMA20 (cam) có trong vùng xanh không trước khi mua'
+
+          const recColor =
+            recommendation === 'MUA MẠNH' || recommendation === 'MUA' ? '#4ade80' :
+            recommendation === 'GIỮ' ? '#fbbf24' : '#f87171'
+
+          return (
+            <div className="mt-4 rounded-xl border border-border/40 overflow-hidden text-[11px]">
+              {/* Header */}
+              <div className="flex items-center gap-2 px-4 py-2 bg-surface2/50 border-b border-border/40">
+                <BarChart3 className="w-3.5 h-3.5 text-accent" />
+                <span className="text-xs font-semibold text-gray-200">Hướng Dẫn Giao Dịch Theo Vùng</span>
+                <span className="text-muted ml-1">— liên kết với biểu đồ bên dưới</span>
+                {inBuy    && <span className="ml-auto text-[10px] bg-green-400/15 text-green-400 border border-green-400/30 px-2 py-0.5 rounded-full">Giá đang trong VÙNG MUA</span>}
+                {inTarget && <span className="ml-auto text-[10px] bg-yellow-400/15 text-yellow-400 border border-yellow-400/30 px-2 py-0.5 rounded-full">Giá chạm VÙNG CHỐT LỜI</span>}
+                {inStop   && <span className="ml-auto text-[10px] bg-red-400/15 text-red-400 border border-red-400/30 px-2 py-0.5 rounded-full animate-pulse">⚡ Giá trong VÙNG CẮT LỖ</span>}
+                {nearBuy  && <span className="ml-auto text-[10px] bg-blue-400/15 text-blue-400 border border-blue-400/30 px-2 py-0.5 rounded-full">Tiếp cận VÙNG MUA</span>}
+                {nearStop && <span className="ml-auto text-[10px] bg-orange-400/15 text-orange-400 border border-orange-400/30 px-2 py-0.5 rounded-full">⚠ Gần VÙNG CẮT LỖ</span>}
+              </div>
+
+              {/* Zone rows */}
+              <div className="divide-y divide-border/30">
+                {/* VÙNG MUA */}
+                <div className="flex gap-3 px-4 py-2.5 bg-[#22c55e06]">
+                  <div className="flex-shrink-0 w-2 rounded-full bg-[#22c55e] self-stretch" />
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-green-400">▶ VÙNG MUA</span>
+                      <span className="text-green-400/60">{formatVND(entryZone.low)} – {formatVND(entryZone.high)}</span>
+                    </div>
+                    <p className="text-muted leading-relaxed">{smaNote}</p>
+                    <div className="flex flex-wrap gap-3 text-[10px] pt-0.5">
+                      <span className="text-[#f5a623]">SMA20 (cam) trong vùng → Mua 30%</span>
+                      <span className="text-[#3b82f6]">SMA50 (xanh) trong vùng → Mua 40%</span>
+                      <span className="text-[#ec4899]">SMA200 (hồng) trong vùng → Mua 50%</span>
+                      <span className="text-[#a855f7]">BB Lower trong vùng → Mua 40%</span>
+                    </div>
+                    <p className="text-[10px] text-green-400/70">+ Xác nhận: RSI 30–55 ✅ + VOL tăng ✅ + MACD histogram xanh ✅</p>
+                  </div>
+                </div>
+
+                {/* VÙNG CHỐT LỜI */}
+                <div className="flex gap-3 px-4 py-2.5 bg-[#f59e0b06]">
+                  <div className="flex-shrink-0 w-2 rounded-full bg-[#f59e0b] self-stretch" />
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-yellow-400">🎯 VÙNG CHỐT LỜI</span>
+                      <span className="text-yellow-400/60">{formatVND(targetPrice)} ±1%</span>
+                      <span className="text-yellow-400/50">Upside {upsidePct >= 0 ? '+' : ''}{upsidePct.toFixed(1)}%</span>
+                    </div>
+                    <div className="flex flex-wrap gap-3 text-[10px]">
+                      <span className="text-[#a855f7]">BB Upper vào vùng → Chốt 50% ngay</span>
+                      <span className="text-[#f5a623]">Giá xa SMA20 {'>'} 7% → Chốt 30–40%</span>
+                      <span className="text-[#ec4899]">Giá xa SMA200 {'>'} 15% → Chốt 40–50%</span>
+                    </div>
+                    <p className="text-[10px] text-yellow-400/70">+ Xác nhận: RSI {'>'} 68 ✅ + VOL giảm khi giá tăng ✅ + MACD xanh thấp dần ✅</p>
+                  </div>
+                </div>
+
+                {/* VÙNG CẮT LỖ */}
+                <div className="flex gap-3 px-4 py-2.5 bg-[#ef444406]">
+                  <div className="flex-shrink-0 w-2 rounded-full bg-[#ef4444] self-stretch" />
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-red-400">✂ CẮT LỖ</span>
+                      <span className="text-red-400/60">{formatVND(stopLoss)}</span>
+                      <span className="text-red-400/50">Risk {downsidePct.toFixed(1)}%</span>
+                    </div>
+                    <div className="flex flex-wrap gap-3 text-[10px]">
+                      <span className="text-[#ec4899]">Đóng cửa dưới SMA200 → Cắt 100% ngay</span>
+                      <span className="text-[#f5a623]">SMA20 cắt dưới SMA50 (Death Cross) → Cắt 70–100%</span>
+                      <span className="text-[#a855f7]">BB Lower trong vùng đỏ → Thoát khẩn</span>
+                    </div>
+                    <p className="text-[10px] text-red-400/70 font-semibold">Nguyên tắc: nến đóng cửa dưới {formatVND(stopLoss)} → cắt 100%, không điều kiện</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer tip */}
+              <div className="px-4 py-2 bg-surface2/30 border-t border-border/30 flex items-start gap-2">
+                <span className="flex-shrink-0">💡</span>
+                <p className="text-muted leading-relaxed">
+                  <span className="font-semibold" style={{ color: recColor }}>{recommendation}:</span>{' '}
+                  {recommendation === 'MUA MẠNH' && 'Chờ giá về VÙNG MUA xanh. Ưu tiên khi SMA50/SMA200 đi qua vùng. Bật nút "Vùng" + "Hướng dẫn" trên biểu đồ để xem trực quan.'}
+                  {recommendation === 'MUA' && 'Chờ vùng xanh có SMA20/50 bên trong. Bật nút "Vùng" trên biểu đồ để thấy dải màu và điểm vào lệnh chính xác.'}
+                  {recommendation === 'GIỮ' && 'Giữ vị thế. Theo dõi vùng đỏ (cắt lỗ) và vùng vàng (chốt lời) trực tiếp trên biểu đồ bằng cách bật nút "Vùng".'}
+                  {recommendation === 'BÁN' && 'Không mua thêm. Bật biểu đồ → nút "Vùng" → theo dõi giá tiến đến vùng vàng để chốt. Chuẩn bị thoát nếu chạm vùng đỏ.'}
+                  {recommendation === 'BÁN MẠNH' && 'Thoát ngay. Bật biểu đồ → nút "Vùng" để xác nhận giá đang ở đâu so với vùng cắt lỗ đỏ.'}
+                </p>
+              </div>
+            </div>
+          )
+        })()}
+
         {/* Risk/Reward ratio */}
         {upsidePct !== 0 && downsidePct !== 0 && (
           <div className="mt-3 flex items-center gap-2 text-xs text-muted">

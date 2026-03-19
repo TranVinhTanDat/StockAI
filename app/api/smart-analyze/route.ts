@@ -98,7 +98,7 @@ async function fetchNewsSentiment(symbol: string): Promise<{ avgSentiment: numbe
 }
 
 // Fetch VPS price history — return raw OHLCV + timestamps
-async function fetchHistory(symbol: string, days = 220) {
+async function fetchHistory(symbol: string, days = 265) {
   try {
     const to = Math.floor(Date.now() / 1000)
     const from = to - days * 86400
@@ -358,7 +358,9 @@ export async function GET(request: NextRequest) {
       if (prev !== 0 && curr !== 0) computedProfitGrowth = Math.round(((curr - prev) / Math.abs(prev)) * 1000) / 10
     }
 
-    // ── Compute 52W high/low from history (VPS quote doesn't provide these) ──
+    // ── Compute 52W high/low — need 260 trading days for true 52 calendar weeks ──
+    // fetchHistory requests 220 days (enough for indicators), so 52W is approximate.
+    // Use full available history to get the widest possible 52W range.
     const w52high = history ? Math.max(...history.highs) : 0
     const w52low  = history ? Math.min(...history.lows)  : 0
 

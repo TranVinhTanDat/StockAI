@@ -715,11 +715,12 @@ function calcTargetStopLoss(
     if (fundTarget > price * 1.04 && fundTarget < targetPrice) {
       // Ceiling: fundamental fair value is below technical target → cap at fair value
       targetPrice = fundTarget
-    } else if (!isBearish && fundTarget > targetPrice && fundTarget > price * 1.04 && fundTarget < price * 1.50) {
+    } else if (!isBearish && fundTarget > targetPrice && fundTarget > price * 1.04) {
       // Floor: stock is undervalued (fundTarget above score-based target).
-      // Claude AI gives 30-40% targets for recovery plays. Mirror this via fundamental fair value.
-      // Cap at 50% to avoid extreme targets when EPS is one-time high.
-      targetPrice = fundTarget
+      // Framework: MUA MẠNH upside max 50%, MUA upside max 40%
+      const upsideCap = (finalRec === 'MUA MẠNH') ? price * 1.50 : price * 1.40
+      if (fundTarget < upsideCap) targetPrice = fundTarget
+      else targetPrice = Math.round(upsideCap)
     }
   }
   // Step 3: GIỮ target cap — fund-aware ceiling
