@@ -838,6 +838,15 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
                     result.confidence === 'TRUNG BÌNH' ? 'bg-yellow-400/10 text-yellow-400 border border-yellow-400/20' :
                     'bg-orange-400/10 text-orange-400 border border-orange-400/20'
                   }`}>Tin cậy: {result.confidenceNum}% · {result.confidence}</span>
+                  {result.weeklyTrend && result.weeklyTrend !== 'N/A' && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                      result.weeklyTrend === 'TĂNG' ? 'bg-green-400/10 text-green-400 border-green-400/20' :
+                      result.weeklyTrend === 'GIẢM' ? 'bg-red-400/10 text-red-400 border-red-400/20' :
+                      'bg-gray-400/10 text-gray-400 border-gray-400/20'
+                    }`}>
+                      Tuần: {result.weeklyTrend} (RSI {result.weeklyRsi})
+                    </span>
+                  )}
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-3">
                   <ScoreBar label="Kỹ thuật (30%)" score={result.technical.score} icon={BarChart3} />
@@ -882,6 +891,18 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
                 {result.sma200 > 0 && <span className="text-muted">SMA200: <span className={`font-medium ${result.price >= result.sma200 ? 'text-blue-400' : 'text-orange-400'}`}>{formatPrice(result.sma200)}</span></span>}
               </div>
             )}
+            {result.atr14 > 0 && (() => {
+              const trailingStop = Math.round(result.price - 2 * result.atr14)
+              const atrPct = ((result.atr14 / result.price) * 100).toFixed(1)
+              const trailPct = (((trailingStop - result.price) / result.price) * 100).toFixed(1)
+              return (
+                <div className="mt-1 flex items-center gap-3 px-1 text-[11px] text-muted">
+                  <span>ATR(14): <span className="text-yellow-400 font-medium">{formatPrice(result.atr14)}</span> ({atrPct}%/ngày)</span>
+                  <span className="text-muted/50">·</span>
+                  <span>Trailing Stop 2×ATR: <span className="text-orange-400 font-medium">{formatPrice(trailingStop)}</span> ({trailPct}%)</span>
+                </div>
+              )
+            })()}
           </div>
 
           {/* ══ 2. CANDLESTICK CHART ══ */}
@@ -1298,6 +1319,10 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
                     positive={result.technical.trend.includes('Tăng') ? true : result.technical.trend.includes('Giảm') ? false : null} />
                   <SignalRow label="RSI(14)" value={`${result.technical.rsi} — ${result.technical.rsiSignal}`}
                     positive={result.technical.rsi < 35 ? true : result.technical.rsi > 70 ? false : null} />
+                  {result.technical.rsiDivergence && !result.technical.rsiDivergence.includes('Không') && (
+                    <SignalRow label="Phân kỳ RSI" value={result.technical.rsiDivergence}
+                      positive={result.technical.rsiDivergence.includes('tăng') ? true : result.technical.rsiDivergence.includes('giảm') ? false : null} />
+                  )}
                   <SignalRow label="MACD" value={result.technical.macdSignal}
                     positive={result.technical.macdSignal.includes('Golden') || result.technical.macdSignal.includes('tăng') ? true :
                       result.technical.macdSignal.includes('Death') || result.technical.macdSignal.includes('giảm') ? false : null} />
@@ -1307,6 +1332,19 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
                     positive={result.technical.adxValue >= 25 ? (result.technical.adxSignal.includes('TĂNG') ? true : result.technical.adxSignal.includes('GIẢM') ? false : null) : null} />
                   <SignalRow label="Khối lượng" value={result.technical.volumeSignal}
                     positive={result.technical.volumeSignal.includes('xác nhận') ? true : result.technical.volumeSignal.includes('áp lực') ? false : null} />
+                  {result.technical.obvSignal && result.technical.obvSignal !== 'N/A' && (
+                    <SignalRow label="OBV" value={result.technical.obvSignal}
+                      positive={result.technical.obvSignal.includes('uptrend') || result.technical.obvSignal.includes('phân kỳ tăng') ? true :
+                        result.technical.obvSignal.includes('downtrend') || result.technical.obvSignal.includes('phân kỳ giảm') ? false : null} />
+                  )}
+                  {result.technical.williamsRSignal && result.technical.williamsRSignal !== 'N/A' && (
+                    <SignalRow label="Williams %R" value={result.technical.williamsRSignal}
+                      positive={result.technical.williamsR < -80 ? true : result.technical.williamsR > -20 ? false : null} />
+                  )}
+                  {result.technical.cciSignal && result.technical.cciSignal !== 'N/A' && (
+                    <SignalRow label="CCI(20)" value={result.technical.cciSignal}
+                      positive={result.technical.cciValue < -100 ? true : result.technical.cciValue > 100 ? false : null} />
+                  )}
                   <SignalRow label="Momentum 1W" value={`${result.technical.momentum1W > 0 ? '+' : ''}${result.technical.momentum1W}%`}
                     positive={result.technical.momentum1W > 0 ? true : result.technical.momentum1W < 0 ? false : null} />
                   <SignalRow label="Momentum 1M" value={`${result.technical.momentum1M > 0 ? '+' : ''}${result.technical.momentum1M}%`}
@@ -1315,6 +1353,22 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
                     positive={result.technical.momentum3M > 0 ? true : result.technical.momentum3M < 0 ? false : null} />
                   <SignalRow label="Hỗ trợ" value={formatPrice(result.technical.support)} positive={null} />
                   <SignalRow label="Kháng cự" value={formatPrice(result.technical.resistance)} positive={null} />
+                  {result.technical.weeklyTrend && result.technical.weeklyTrend !== 'N/A' && (
+                    <SignalRow label="Khung tuần"
+                      value={`${result.technical.weeklyTrend} — RSI tuần ${result.technical.weeklyRsi}`}
+                      positive={result.technical.weeklyTrend === 'TĂNG' ? true : result.technical.weeklyTrend === 'GIẢM' ? false : null} />
+                  )}
+                  {result.technical.detectedPatterns && result.technical.detectedPatterns.length > 0 && (
+                    <div className="pt-2">
+                      <p className="text-[10px] text-muted/60 font-semibold uppercase px-3 mb-1">Mẫu hình giá phát hiện</p>
+                      {result.technical.detectedPatterns.map((p, i) => (
+                        <SignalRow key={i}
+                          label={p.nameVi}
+                          value={`${p.strength.toUpperCase()} — ${p.description}`}
+                          positive={p.type === 'bullish' ? true : false} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               {activeTab === 'fundamental' && (
@@ -1391,6 +1445,10 @@ export default function SmartAnalysis({ isVisible = true, holdings = [], balance
             <div className="flex items-start gap-2 text-xs text-muted/80 bg-surface2/40 rounded-lg p-3">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-yellow-400/70" />
               <span><span className="text-yellow-400/80 font-semibold">Theo dõi: </span>{result.nextReview}</span>
+            </div>
+            <div className="flex items-start gap-2 text-xs text-muted/70 bg-blue-400/5 border border-blue-400/15 rounded-lg p-3">
+              <span className="text-blue-400/60 font-medium">ℹ</span>
+              <span>Khuyến nghị thuật toán có thể khác trang Phân Tích AI — AI sử dụng Claude Opus để phân tích sâu câu chuyện doanh nghiệp, định giá định tính và bối cảnh tin tức, trong khi trang này chỉ dùng dữ liệu định lượng (giá, chỉ báo kỹ thuật, tỷ số tài chính). Không nên dùng duy nhất một nguồn để ra quyết định.</span>
             </div>
           </div>
 

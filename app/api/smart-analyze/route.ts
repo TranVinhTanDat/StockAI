@@ -97,6 +97,26 @@ async function fetchNewsSentiment(symbol: string): Promise<{ avgSentiment: numbe
   return { avgSentiment, news: results.slice(0, 15) }
 }
 
+// Fetch VPS weekly history for multi-timeframe analysis
+async function fetchWeeklyHistory(symbol: string, weeks = 60) {
+  try {
+    const to = Math.floor(Date.now() / 1000)
+    const from = to - weeks * 7 * 86400
+    const res = await fetch(
+      `https://histdatafeed.vps.com.vn/tradingview/history?symbol=${symbol}&resolution=W&from=${from}&to=${to}`,
+      { signal: AbortSignal.timeout(5000) }
+    )
+    if (!res.ok) return null
+    const d = await res.json()
+    if (!d.c || d.c.length < 10) return null
+    return {
+      closes: (d.c as number[]).map((v: number) => v * 1000),
+      highs:  (d.h as number[]).map((v: number) => v * 1000),
+      lows:   (d.l as number[]).map((v: number) => v * 1000),
+    }
+  } catch { return null }
+}
+
 // Fetch VPS price history — return raw OHLCV + timestamps
 async function fetchHistory(symbol: string, days = 265) {
   try {
@@ -322,9 +342,10 @@ export async function GET(request: NextRequest) {
 
   try {
     // Fetch all data in parallel — no Claude API
-    const [quote, history, vnIndex, fund, growth, quarterlyEPS, annualEPS, businessPlan, newsSentiment] = await Promise.all([
+    const [quote, history, weeklyHistory, vnIndex, fund, growth, quarterlyEPS, annualEPS, businessPlan, newsSentiment] = await Promise.all([
       fetchQuote(symbol),
       fetchHistory(symbol),
+      fetchWeeklyHistory(symbol),
       fetchVNIndex(),
       fetchFundamentals(symbol),
       fetchGrowth(symbol),
@@ -358,11 +379,16 @@ export async function GET(request: NextRequest) {
       if (prev !== 0 && curr !== 0) computedProfitGrowth = Math.round(((curr - prev) / Math.abs(prev)) * 1000) / 10
     }
 
-    // ── Compute 52W high/low — need 260 trading days for true 52 calendar weeks ──
-    // fetchHistory requests 220 days (enough for indicators), so 52W is approximate.
-    // Use full available history to get the widest possible 52W range.
-    const w52high = history ? Math.max(...history.highs) : 0
-    const w52low  = history ? Math.min(...history.lows)  : 0
+    // ── Compute 52W high/low — use VPS quote (true 52W) + history (38W) for max accuracy ──
+    // VPS provides true 52-week high/low from exchange data. History covers only ~38 trading weeks.
+    // Take the wider range: highest of both highs, lowest of both lows.
+    const histHigh = history ? Math.max(...history.highs) : 0
+    const histLow  = history ? Math.min(...history.lows)  : 0
+    const w52high = Math.max(quote.high52w || 0, histHigh)
+    const w52low  = Math.min(
+      quote.low52w  > 0 ? quote.low52w : histLow,
+      histLow > 0 ? histLow : (quote.low52w || 0)
+    )
 
     // ── Industry: prefer Simplize (has sector name), fallback to VPS ──────────
     const industry = fund?.industry || quote.industry || ''
@@ -401,6 +427,9 @@ export async function GET(request: NextRequest) {
       avgSentiment: newsSentiment.avgSentiment,
       news: newsSentiment.news,
       vnIndex,
+      weeklyCloses: weeklyHistory?.closes,
+      weeklyHighs:  weeklyHistory?.highs,
+      weeklyLows:   weeklyHistory?.lows,
     }
 
     const result = calculateSmartScore(input)
@@ -440,6 +469,8 @@ export async function GET(request: NextRequest) {
       debtEquity: fund?.debtEquity ?? 0,
       revenueGrowth: growth.revenueGrowth,
       profitGrowth: computedProfitGrowth,
+      weeklyTrend: result.weeklyTrend,
+      weeklyRsi: result.weeklyRsi,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Analysis failed'

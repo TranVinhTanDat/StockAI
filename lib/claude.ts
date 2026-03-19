@@ -219,6 +219,8 @@ interface AnalysisContext {
   // Derived valuation metrics
   peg?: number       // PE / profitGrowth — định giá tương đối vs tốc độ tăng trưởng
   rs30d?: number     // stock 30D return - VN-Index 30D return (outperform/underperform)
+  // Algorithmic recommendation from SmartScore — Claude MUST use this value for "recommendation" field
+  forcedRecommendation?: string
 }
 
 export async function analyzeStock(
@@ -350,10 +352,15 @@ Lãi/lỗ chưa thực hiện: ${ctx.price > 0 ? ((ctx.price - ctx.currentHoldin
 5. Thị trường: VN-Index context, tương quan với mã
 6. Hành động cụ thể: vùng giá vào/ra, target, stop loss, xét vị thế nếu có
 
+${ctx.forcedRecommendation ? `▌ ĐỒNG BỘ KHUYẾN NGHỊ (BẮT BUỘC TUYỆT ĐỐI):
+Hệ thống thuật toán (Phân Tích Nhanh) đã phân tích và xác định: recommendation = "${ctx.forcedRecommendation}"
+→ PHẢI dùng CHÍNH XÁC giá trị này cho field "recommendation" trong JSON output. Không được thay đổi.
+→ Tất cả các field khác (targetPrice, stopLoss, entryZone, confidence, action, technical, fundamental, sentiment...) tự phân tích dựa trên dữ liệu thực tế ở trên.` : ''}
+
 Trả về JSON trong thẻ <result>:
 <result>
 {
-  "recommendation": "MUA MẠNH|MUA|GIỮ|BÁN|BÁN MẠNH",
+  "recommendation": "${ctx.forcedRecommendation || 'MUA MẠNH|MUA|GIỮ|BÁN|BÁN MẠNH'}",
   "confidence": 75,
   "targetPrice": 95000,
   "stopLoss": 76000,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { analyzeStock } from '@/lib/claude'
+import { calculateSmartScore } from '@/lib/smartScore'
 import { createClient } from '@supabase/supabase-js'
 import { verifyToken } from '@/lib/jwt'
 import { calcRSI, calcDMI } from '@/lib/indicators'
@@ -159,6 +160,27 @@ async function fetchLatestAnalystReportPdf(symbol: string): Promise<{ pdfBase64:
   } catch {
     return { pdfBase64: null, reportTitle: '' }
   }
+}
+
+// Fetch full VPS price history (265 days) for SmartScore — same as smart-analyze route
+async function fetchStockHistoryForSmartScore(symbol: string): Promise<{ closes: number[]; highs: number[]; lows: number[]; volumes: number[] } | null> {
+  try {
+    const to = Math.floor(Date.now() / 1000)
+    const from = to - 265 * 86400
+    const res = await fetch(
+      `https://histdatafeed.vps.com.vn/tradingview/history?symbol=${symbol}&resolution=D&from=${from}&to=${to}`,
+      { signal: AbortSignal.timeout(5000) }
+    )
+    if (!res.ok) return null
+    const d = await res.json()
+    if (!d.c || d.c.length < 20) return null
+    return {
+      closes: (d.c as number[]).map((v: number) => v * 1000),
+      highs: (d.h as number[]).map((v: number) => v * 1000),
+      lows: (d.l as number[]).map((v: number) => v * 1000),
+      volumes: d.v as number[],
+    }
+  } catch { return null }
 }
 
 // Fetch VN-Index 30-day trend for market context
@@ -385,6 +407,47 @@ export async function POST(request: NextRequest) {
     const peg = peVal > 0 && profitGrowthVal > 5 ? Math.round((peVal / profitGrowthVal) * 100) / 100 : undefined
     const rs30d = vnIndex ? Math.round((momentum1M - vnIndex.trend30d) * 10) / 10 : undefined
 
+    // Run SmartScore to get algorithmic recommendation — pass to Claude for synchronization
+    // Fetch 265-day history directly (same as Phân Tích Nhanh) so SmartScore results match exactly
+    let smartRecommendation: string | undefined
+    try {
+      const fullHistory = await fetchStockHistoryForSmartScore(symbol)
+      const ssCloses = fullHistory?.closes ?? closesArr
+      const ssHighs  = fullHistory?.highs  ?? highsArr
+      const ssLows   = fullHistory?.lows   ?? lowsArr
+      const ssVols   = fullHistory?.volumes ?? volArr
+      const smartResult = calculateSmartScore({
+        symbol,
+        industry: quote?.industry || '',
+        price,
+        changePct: quote?.changePct || 0,
+        closes: ssCloses,
+        highs: ssHighs,
+        lows: ssLows,
+        volumes: ssVols,
+        pe: simplize.pe || fundamental?.pe || 0,
+        pb: simplize.pb || 0,
+        roe: simplize.roe || fundamental?.roe || 0,
+        roa: simplize.roa || fundamental?.roa || 0,
+        eps: simplize.eps || fundamental?.eps || 0,
+        profitGrowth: cafeGrowth.profitGrowth || fundamental?.profitGrowth || 0,
+        revenueGrowth: cafeGrowth.revenueGrowth || fundamental?.revenueGrowth || 0,
+        debtEquity: simplize.debtToEquity || fundamental?.debtEquity || 0,
+        dividendYield: simplize.dividendYield || fundamental?.dividendYield || 0,
+        netMargin: simplize.netMargin || 0,
+        quarterlyEPS: quarterlyRatios,
+        w52high: quote?.high52w || 0,
+        w52low: quote?.low52w || 0,
+        foreignBuyVol,
+        foreignSellVol,
+        foreignRoom: typeof foreignRoom === 'number' ? foreignRoom : 0,
+        avgSentiment,
+        news: topNews,
+        vnIndex,
+      })
+      smartRecommendation = smartResult.recommendation
+    } catch { /* SmartScore failed — Claude will decide independently */ }
+
     const result = await analyzeStock({
       symbol,
       industry: quote?.industry || '',
@@ -436,6 +499,7 @@ export async function POST(request: NextRequest) {
       reportTitle: analystReport.reportTitle || undefined,
       peg,
       rs30d,
+      forcedRecommendation: smartRecommendation,
     })
 
     if (noHolding) await saveCachedResult(symbol, result)

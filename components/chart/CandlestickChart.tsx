@@ -45,8 +45,10 @@ export default function CandlestickChart({ symbol, isVisible = true, overlays }:
   const [showBB, setShowBB] = useState(false)
   const [showSMA200, setShowSMA200] = useState(true)
   const [showZones, setShowZones] = useState(true)
+  const [showFib, setShowFib] = useState(false)
+  const [showVWAP, setShowVWAP] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
-  const [activePane, setActivePane] = useState<'volume' | 'rsi' | 'macd'>('volume')
+  const [activePane, setActivePane] = useState<'volume' | 'rsi' | 'macd' | 'obv'>('volume')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const [isCustom, setIsCustom] = useState(false)
@@ -205,6 +207,44 @@ export default function CandlestickChart({ symbol, isVisible = true, overlays }:
         ctx.fillText(`H ${latest.histogram >= 0 ? '+' : ''}${latest.histogram.toFixed(1)}`, w - pad.r + 4, 38)
       }
     }
+
+    if (activePane === 'obv') {
+      const vols = visibleCandles.map(c => c.volume)
+      const cls  = visibleCandles.map(c => c.close)
+      // Compute OBV from scratch for visible range
+      const obvArr: number[] = []
+      let obv = 0
+      for (let i = 0; i < visibleCount; i++) {
+        if (i === 0) { obvArr.push(0); continue }
+        if (cls[i] > cls[i - 1]) obv += vols[i]
+        else if (cls[i] < cls[i - 1]) obv -= vols[i]
+        obvArr.push(obv)
+      }
+      const minObv = Math.min(...obvArr), maxObv = Math.max(...obvArr)
+      const obvRange = maxObv - minObv || 1
+      const midObv = (maxObv + minObv) / 2
+      // Zero baseline at center
+      const midY = pad.t + ch / 2
+      ctx.strokeStyle = '#1e2d4580'
+      ctx.lineWidth = 1
+      ctx.beginPath(); ctx.moveTo(pad.l, midY); ctx.lineTo(pad.l + cw, midY); ctx.stroke()
+
+      ctx.beginPath()
+      obvArr.forEach((v, i) => {
+        const x = pad.l + (i / Math.max(visibleCount - 1, 1)) * cw
+        const y = pad.t + ch - ((v - minObv) / obvRange) * ch
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+      })
+      const latestObv = obvArr[obvArr.length - 1]
+      const prevObv   = obvArr[Math.max(0, obvArr.length - 10)]
+      ctx.strokeStyle = latestObv >= prevObv ? '#00d4aa' : '#f43f5e'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+
+      ctx.fillStyle = '#7a8ba0'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left'
+      const fmt = (v: number) => v >= 1e9 ? (v/1e9).toFixed(1)+'B' : v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v.toFixed(0)
+      ctx.fillText(`OBV: ${latestObv >= prevObv ? '▲' : '▼'} ${fmt(Math.abs(latestObv))}`, w - pad.r + 4, 14)
+    }
   }, [data, activePane])
 
   drawSubCanvasRef.current = drawSubCanvas
@@ -347,6 +387,41 @@ export default function CandlestickChart({ symbol, isVisible = true, overlays }:
       }
     }
 
+    // ── Fibonacci retracement levels ────────────────────────────────────────
+    if (showFib && data?.candles?.length) {
+      const recent = data.candles.slice(-Math.min(200, data.candles.length))
+      const fibHigh = Math.max(...recent.map(c => c.high))
+      const fibLow  = Math.min(...recent.map(c => c.low))
+      const fibRange = fibHigh - fibLow
+      const FIB_LEVELS: Array<{ level: number; label: string; color: string }> = [
+        { level: 0,     label: '0%',    color: '#94a3b8' },
+        { level: 0.236, label: '23.6%', color: '#a78bfa' },
+        { level: 0.382, label: '38.2%', color: '#60a5fa' },
+        { level: 0.5,   label: '50%',   color: '#34d399' },
+        { level: 0.618, label: '61.8%', color: '#fbbf24' },
+        { level: 0.786, label: '78.6%', color: '#f97316' },
+        { level: 1,     label: '100%',  color: '#f87171' },
+      ]
+      FIB_LEVELS.forEach(({ level, label, color }) => {
+        const fibPrice = fibHigh - fibRange * level
+        const yFib = yOf(fibPrice)
+        if (yFib == null) return
+        const [r, g, b] = hex2rgb(color)
+        ctx.save()
+        ctx.strokeStyle = `rgba(${r},${g},${b},0.55)`
+        ctx.lineWidth = 1
+        ctx.setLineDash([4, 6])
+        ctx.beginPath(); ctx.moveTo(0, yFib); ctx.lineTo(plotW, yFib); ctx.stroke()
+        ctx.setLineDash([])
+        ctx.restore()
+        // Label
+        ctx.fillStyle = `rgba(${r},${g},${b},0.85)`
+        ctx.font = '9px sans-serif'
+        ctx.textAlign = 'left'
+        ctx.fillText(`Fib ${label}`, 8, yFib - 3)
+      })
+    }
+
     // ── Render order: back → front ──────────────────────────────────────────
     if (resistance > 0) drawGlowDot(resistance, '#f97316', '◆ Kháng cự')
     if (support    > 0) drawGlowDot(support,    '#00d4aa', '◆ Hỗ trợ')
@@ -363,17 +438,17 @@ export default function CandlestickChart({ symbol, isVisible = true, overlays }:
     if (stopLoss > 0)
       drawZone(stopLoss * 1.005, stopLoss * 0.993, '#ef4444', '✂ Cắt lỗ — Thoát nếu đóng cửa dưới đây')
 
-  }, [overlays, showZones])
+  }, [overlays, showZones, showFib, data])
 
   drawZoneOverlayRef.current = drawZoneOverlay
 
   useEffect(() => { drawZoneOverlay() }, [drawZoneOverlay])
 
-  // Also redraw when overlays/showZones change with a delay (ensures series is ready)
+  // Also redraw when overlays/showZones/showFib change with a delay (ensures series is ready)
   useEffect(() => {
     const t = setTimeout(() => { drawZoneOverlayRef.current?.() }, 50)
     return () => clearTimeout(t)
-  }, [overlays, showZones])
+  }, [overlays, showZones, showFib, data])
 
   // ── Build main Lightweight Chart ────────────────────────────────────────────
   useEffect(() => {
@@ -470,6 +545,24 @@ export default function CandlestickChart({ symbol, isVisible = true, overlays }:
         mid.setData(mapBB((v) => v.middle))
       }
 
+      // VWAP (20-period rolling)
+      if (showVWAP && data.candles.length >= 5) {
+        const VWAP_PERIOD = 20
+        const vwapData = data.candles.map((c, i) => {
+          const start = Math.max(0, i - VWAP_PERIOD + 1)
+          const slice = data.candles.slice(start, i + 1)
+          let tpv = 0, vol = 0
+          for (const s of slice) {
+            const tp = (s.high + s.low + s.close) / 3
+            tpv += tp * (s.volume || 1)
+            vol += s.volume || 1
+          }
+          return { time: c.time as string, value: Math.round(vol > 0 ? tpv / vol : c.close) }
+        })
+        const vwapSeries = chart.addSeries(LineSeries, { color: '#facc15', lineWidth: 1, lineStyle: 2, priceLineVisible: false })
+        vwapSeries.setData(vwapData)
+      }
+
       // SMA200
       if (showSMA200 && data.candles.length >= 200) {
         const closes = data.candles.map((c) => c.close)
@@ -523,7 +616,7 @@ export default function CandlestickChart({ symbol, isVisible = true, overlays }:
         chartRef.current = null
       }
     }
-  }, [data, showSMA20, showSMA50, showBB, showSMA200, isVisible])
+  }, [data, showSMA20, showSMA50, showBB, showSMA200, showVWAP, isVisible])
 
   // ── Guide panel content ──────────────────────────────────────────────────────
   const recColor =
@@ -572,8 +665,13 @@ export default function CandlestickChart({ symbol, isVisible = true, overlays }:
           {[
             { label: 'SMA20',  active: showSMA20,  toggle: () => setShowSMA20(v => !v),   color: '#f5a623' },
             { label: 'SMA50',  active: showSMA50,  toggle: () => setShowSMA50(v => !v),   color: '#3b82f6' },
-            { label: 'SMA200', active: showSMA200, toggle: () => setShowSMA200(v => !v),  color: '#ec4899' },
+            { label: 'SMA200', active: showSMA200, toggle: () => {
+                if (!showSMA200 && days < 365) { setDays(365); setIsCustom(false) }
+                setShowSMA200(v => !v)
+              }, color: '#ec4899' },
             { label: 'BB',     active: showBB,     toggle: () => setShowBB(v => !v),      color: '#a855f7' },
+            { label: 'VWAP',   active: showVWAP,   toggle: () => setShowVWAP(v => !v),    color: '#facc15' },
+            { label: 'Fib',    active: showFib,    toggle: () => setShowFib(v => !v),     color: '#60a5fa' },
             ...(overlays ? [{ label: 'Vùng', active: showZones, toggle: () => setShowZones(v => !v), color: '#22c55e' }] : []),
           ].map((ind) => (
             <button key={ind.label} onClick={ind.toggle}
@@ -818,7 +916,7 @@ export default function CandlestickChart({ symbol, isVisible = true, overlays }:
       {/* ── Sub-pane tabs + canvas ── */}
       <div className="border-t border-border">
         <div className="flex border-b border-border">
-          {(['volume', 'rsi', 'macd'] as const).map((pane) => (
+          {(['volume', 'rsi', 'macd', 'obv'] as const).map((pane) => (
             <button
               key={pane}
               onClick={() => setActivePane(pane)}

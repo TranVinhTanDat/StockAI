@@ -454,11 +454,13 @@ export async function getAlerts(): Promise<Alert[]> {
 export async function addAlert(
   alert: Omit<Alert, 'id' | 'triggered_at' | 'created_at'>
 ): Promise<void> {
+  const userId = getEffectiveUserId()
   if (shouldUseSupabase()) {
     const sb = getSupabase()
     if (sb) {
       const { error } = await sb.from('alerts').insert({
         ...alert,
+        user_id: userId,
         triggered_at: null,
         created_at: new Date().toISOString(),
       })
@@ -469,6 +471,7 @@ export async function addAlert(
   alerts.unshift({
     id: generateId(),
     ...alert,
+    user_id: userId,
     triggered_at: null,
     created_at: new Date().toISOString(),
   })

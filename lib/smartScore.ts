@@ -8,7 +8,8 @@
  *   Sentiment   30% — news, foreign flow, 52W position, market regime
  */
 
-import { calcRSI, calcMACD, calcBB, calcSMA, calcDMI, calcATR } from './indicators'
+import { calcRSI, calcMACD, calcBB, calcSMA, calcDMI, calcATR, calcOBV, calcWilliamsR, calcCCI } from './indicators'
+import { detectPatterns, type PatternResult } from './patterns'
 
 // ─── Sector benchmarks ───────────────────────────────────────────────────────
 interface SectorBench { peMax: number; pbMax: number; roeMin: number; roaMin: number; deMax: number }
@@ -56,6 +57,10 @@ export interface SmartScoreInput {
   highs: number[]
   lows: number[]
   volumes: number[]
+  // Optional weekly candles for multi-timeframe analysis
+  weeklyCloses?: number[]
+  weeklyHighs?: number[]
+  weeklyLows?: number[]
   // Fundamentals
   pe: number
   pb: number
@@ -84,16 +89,25 @@ export interface TechnicalSignals {
   trend: string        // price vs SMA20/50
   rsi: number
   rsiSignal: string
+  rsiDivergence: string  // RSI divergence signal (bullish/bearish/none)
   macdSignal: string
   bbSignal: string
   adxValue: number
   adxSignal: string
   volumeSignal: string
+  obvSignal: string      // OBV trend confirmation
+  williamsR: number      // Williams %R latest value (-100 to 0)
+  williamsRSignal: string
+  cciValue: number       // CCI latest value
+  cciSignal: string
   momentum1W: number
   momentum1M: number
   momentum3M: number
   support: number
   resistance: number
+  weeklyTrend: string   // 'TĂNG' | 'GIẢM' | 'TÍCH LŨY' | 'N/A'
+  weeklyRsi: number     // 0-100 weekly RSI
+  detectedPatterns: PatternResult[]
   score: number        // 0-100
 }
 
@@ -155,6 +169,9 @@ export interface SmartScoreResult {
   bbUpper: number
   bbLower: number
   bbMid: number
+  atr14: number       // Average True Range (14-day) for trailing stop display
+  weeklyTrend: string // Weekly multi-timeframe trend: TĂNG | GIẢM | TÍCH LŨY | N/A
+  weeklyRsi: number   // Weekly RSI(14)
 }
 
 // ─── Helper: clamp to [0,100] ─────────────────────────────────────────────────
@@ -168,9 +185,12 @@ function scoreTechnical(input: SmartScoreInput): { signals: TechnicalSignals; sc
   if (closes.length < 30) {
     return {
       signals: {
-        trend: 'Không đủ dữ liệu', rsi: 50, rsiSignal: 'N/A', macdSignal: 'N/A',
+        trend: 'Không đủ dữ liệu', rsi: 50, rsiSignal: 'N/A', rsiDivergence: 'Không đủ dữ liệu', macdSignal: 'N/A',
         bbSignal: 'N/A', adxValue: 0, adxSignal: 'N/A', volumeSignal: 'N/A',
-        momentum1W: 0, momentum1M: 0, momentum3M: 0, support: 0, resistance: 0, score: 50,
+        obvSignal: 'N/A', williamsR: -50, williamsRSignal: 'N/A', cciValue: 0, cciSignal: 'N/A',
+        momentum1W: 0, momentum1M: 0, momentum3M: 0, support: 0, resistance: 0,
+        weeklyTrend: 'N/A', weeklyRsi: 50, detectedPatterns: [],
+        score: 50,
       },
       score: 50,
     }
@@ -210,6 +230,33 @@ function scoreTechnical(input: SmartScoreInput): { signals: TechnicalSignals; sc
   else if (rsi > 65 && rsi <= 75) { rsiSignal = 'Bắt đầu quá mua - theo dõi chốt lời'; points += 10 }
   else { rsiSignal = 'Quá mua - rủi ro điều chỉnh mạnh'; points += 4 }
 
+  // --- RSI Divergence (bonus/penalty ±7 pts) ---
+  // Bullish: price lower low + RSI higher low → early reversal signal
+  // Bearish: price higher high + RSI lower high → exhaustion warning
+  let rsiDivergence = 'Không có phân kỳ rõ ràng'
+  if (rsiArr.length >= 20 && closes.length >= 20) {
+    const priceRecent = closes.slice(-5)
+    const pricePrev   = closes.slice(-20, -5)
+    const rsiRecent   = rsiArr.slice(-5)
+    const rsiPrev     = rsiArr.slice(-20, -5).filter(v => !isNaN(v))
+    if (rsiPrev.length >= 5) {
+      const priceLo = Math.min(...priceRecent), pricePrevLo = Math.min(...pricePrev)
+      const rsiLo   = Math.min(...rsiRecent),   rsiPrevLo   = Math.min(...rsiPrev)
+      const priceHi = Math.max(...priceRecent), pricePrevHi = Math.max(...pricePrev)
+      const rsiHi   = Math.max(...rsiRecent),   rsiPrevHi   = Math.max(...rsiPrev)
+      if (priceLo < pricePrevLo * 0.995 && rsiLo > rsiPrevLo + 4) {
+        const gap = Math.round(rsiLo - rsiPrevLo)
+        const strength = gap > 10 ? 'MẠNH' : 'nhẹ'
+        rsiDivergence = `Phân kỳ tăng ${strength}: Giá thấp hơn nhưng RSI cao hơn (+${gap}pts) — cảnh báo đảo chiều TẮT`
+        points += gap > 10 ? 7 : 4
+      } else if (priceHi > pricePrevHi * 1.005 && rsiHi < rsiPrevHi - 4) {
+        const gap = Math.round(rsiPrevHi - rsiHi)
+        const strength = gap > 10 ? 'MẠNH' : 'nhẹ'
+        rsiDivergence = `Phân kỳ giảm ${strength}: Giá cao hơn nhưng RSI thấp hơn (−${gap}pts) — cảnh báo đảo chiều XUỐNG`
+        points -= gap > 10 ? 7 : 4
+      }
+    }
+  }
 
   // --- MACD (15 pts) ---
   const macdArr = calcMACD(closes)
@@ -345,14 +392,91 @@ function scoreTechnical(input: SmartScoreInput): { signals: TechnicalSignals; sc
     if (!support) support = Math.round(Math.min(...lows.slice(-20)))
   }
 
+  // --- OBV (On-Balance Volume) — trend confirmation (bonus/penalty up to 8 pts) ---
+  let obvSignal = 'Không đủ dữ liệu'
+  if (volumes.length >= 20 && closes.length >= 20) {
+    const obvArr = calcOBV(closes, volumes)
+    const obvRecent = obvArr.slice(-5)
+    const obvPrev   = obvArr.slice(-20, -5)
+    const obvTrend  = obvRecent[obvRecent.length - 1] - obvPrev[0]
+    const priceTrend = closes[closes.length - 1] - closes[closes.length - 20]
+    if (obvTrend > 0 && priceTrend > 0) {
+      obvSignal = 'OBV tăng cùng giá — xác nhận uptrend mạnh'; points += 8
+    } else if (obvTrend > 0 && priceTrend <= 0) {
+      obvSignal = 'OBV tăng khi giá giảm — phân kỳ tăng (tích lũy ngầm)'; points += 5
+    } else if (obvTrend < 0 && priceTrend < 0) {
+      obvSignal = 'OBV giảm cùng giá — xác nhận downtrend'; points -= 5
+    } else if (obvTrend < 0 && priceTrend >= 0) {
+      obvSignal = 'OBV giảm khi giá tăng — phân kỳ giảm (phân phối)'; points -= 3
+    } else {
+      obvSignal = 'OBV trung lập'; points += 0
+    }
+  }
+
+  // --- Williams %R (informational, không cộng/trừ thêm — đã có RSI) ---
+  let williamsR = -50
+  let williamsRSignal = 'N/A'
+  if (highs.length >= 14 && lows.length >= 14) {
+    const wrArr = calcWilliamsR(highs, lows, closes, 14).filter(v => !isNaN(v))
+    if (wrArr.length > 0) {
+      williamsR = Math.round(wrArr[wrArr.length - 1])
+      if (williamsR > -20)       williamsRSignal = `%R ${williamsR} — Quá mua (>-20)`
+      else if (williamsR < -80)  williamsRSignal = `%R ${williamsR} — Quá bán (<-80)`
+      else if (williamsR < -50)  williamsRSignal = `%R ${williamsR} — Vùng trung lập thấp`
+      else                       williamsRSignal = `%R ${williamsR} — Vùng trung lập cao`
+    }
+  }
+
+  // --- CCI (informational, không cộng thêm — đã có RSI/BB) ---
+  let cciValue = 0
+  let cciSignal = 'N/A'
+  if (highs.length >= 20 && lows.length >= 20) {
+    const cciArr = calcCCI(highs, lows, closes, 20).filter(v => !isNaN(v))
+    if (cciArr.length > 0) {
+      cciValue = Math.round(cciArr[cciArr.length - 1])
+      if (cciValue > 200)        cciSignal = `CCI ${cciValue} — Quá mua cực độ`
+      else if (cciValue > 100)   cciSignal = `CCI ${cciValue} — Quá mua`
+      else if (cciValue < -200)  cciSignal = `CCI ${cciValue} — Quá bán cực độ`
+      else if (cciValue < -100)  cciSignal = `CCI ${cciValue} — Quá bán`
+      else if (cciValue > 0)     cciSignal = `CCI ${cciValue} — Tăng nhẹ`
+      else                       cciSignal = `CCI ${cciValue} — Giảm nhẹ`
+    }
+  }
+
+  // ── Weekly multi-timeframe (+5/-5 pts) ────────────────────────────────────
+  let weeklyTrend = 'N/A'
+  let weeklyRsi = 50
+  if (input.weeklyCloses && input.weeklyCloses.length >= 20) {
+    const wC = input.weeklyCloses
+    const wSma20 = calcSMA(wC, 20).filter(v => !isNaN(v))
+    const wRsiArr = calcRSI(wC, 14).filter(v => !isNaN(v))
+    weeklyRsi = wRsiArr.length > 0 ? Math.round(wRsiArr[wRsiArr.length - 1]) : 50
+    const wLast = wC[wC.length - 1]
+    const wSmaLast = wSma20.length > 0 ? wSma20[wSma20.length - 1] : 0
+    const weeklyBull = wSmaLast > 0 && wLast > wSmaLast && weeklyRsi > 45
+    const weeklyBear = wSmaLast > 0 && wLast < wSmaLast && weeklyRsi < 55
+    if (weeklyBull) { weeklyTrend = 'TĂNG'; points += 5 }
+    else if (weeklyBear) { weeklyTrend = 'GIẢM'; points -= 5 }
+    else weeklyTrend = 'TÍCH LŨY'
+  }
+
+  // ── Chart patterns (up to ±12 pts) ────────────────────────────────────────
+  const detectedPatterns = detectPatterns(highs, lows, closes, 80)
+  for (const p of detectedPatterns) {
+    points = Math.max(-20, Math.min(MAX + 20, points + p.scoreImpact))
+  }
+
   const rawScore = clamp((points / MAX) * 100)
 
   return {
     signals: {
-      trend, rsi: Math.round(rsi), rsiSignal, macdSignal, bbSignal,
+      trend, rsi: Math.round(rsi), rsiSignal, rsiDivergence, macdSignal, bbSignal,
       adxValue, adxSignal, volumeSignal,
+      obvSignal, williamsR, williamsRSignal, cciValue, cciSignal,
       momentum1W: m1W, momentum1M: m1M, momentum3M: m3M,
-      support, resistance, score: rawScore,
+      support, resistance,
+      weeklyTrend, weeklyRsi, detectedPatterns,
+      score: rawScore,
     },
     score: rawScore,
   }
@@ -1076,6 +1200,9 @@ export function calculateSmartScore(input: SmartScoreInput): SmartScoreResult {
   const confidenceNum = Math.max(28, Math.min(88, overallScore + alignBonus - divPenaltyFinal + fundConviction + oversoldBonus))
   const confidence: SmartScoreResult['confidence'] = confidenceNum >= 70 ? 'CAO' : confidenceNum >= 52 ? 'TRUNG BÌNH' : 'THẤP'
 
+  // ATR(14) for trailing stop display in UI
+  const atr14 = input.highs.length >= 15 ? calcATR(input.highs, input.lows, input.closes, 14) : price * 0.02
+
   // Target/stop uses FINAL recommendation (after BÁN guard)
   const { targetPrice, stopLoss } = calcTargetStopLoss(input, techResult.signals, overallScore, recommendation, fundResult.score)
 
@@ -1162,13 +1289,29 @@ export function calculateSmartScore(input: SmartScoreInput): SmartScoreResult {
           high: Math.max(Math.round(bestGiv), rawHigh),   // guard: high must be ≥ low
         }
       } else {
-        // No clear support → modest pullback zone 5-9% below current
+        // No clear support → pullback zone 3-7% below current
+        // (sanity guard after will fix if this ends below stop loss)
         entryZone = {
-          low:  Math.round(price * 0.91),
-          high: Math.round(price * 0.95),
+          low:  Math.round(price * 0.93),
+          high: Math.round(price * 0.97),
         }
       }
     }
+  }
+
+  // ── SANITY CHECK: Entry zone must be ABOVE stop loss for long positions ───────
+  // Bug case: GIỮ with tight ATR-stop (2-3%) but fallback entry zone (5-9% below price)
+  // causes entry < stop which is logically impossible (you'd be stopped out immediately on entry).
+  const isBearRecFinal = recommendation === 'BÁN' || recommendation === 'BÁN MẠNH'
+  if (!isBearRecFinal && entryZone.low <= stopLoss) {
+    // Shift entry zone to be 1.5-3% above stop, below or at current price
+    const minEntry = Math.round(stopLoss * 1.015)  // 1.5% cushion above stop
+    const maxEntry = Math.round(price * 0.998)     // 0.2% below current
+    entryZone = {
+      low:  Math.min(minEntry, maxEntry),
+      high: maxEntry > minEntry ? maxEntry : Math.round(minEntry * 1.012),
+    }
+    if (entryZone.high > Math.round(price * 1.005)) entryZone.high = Math.round(price * 1.005)
   }
 
   // Holding period uses FINAL recommendation
@@ -1296,5 +1439,8 @@ export function calculateSmartScore(input: SmartScoreInput): SmartScoreResult {
     bbUpper: lastBb ? Math.round(lastBb.upper) : 0,
     bbLower: lastBb ? Math.round(lastBb.lower) : 0,
     bbMid: lastBb ? Math.round(lastBb.middle) : 0,
+    atr14: Math.round(atr14),
+    weeklyTrend: techResult.signals.weeklyTrend,
+    weeklyRsi: techResult.signals.weeklyRsi,
   }
 }

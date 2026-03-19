@@ -293,3 +293,49 @@ export function calcBB(
   }
   return result
 }
+
+// OBV — On-Balance Volume (cumulative volume trend confirmation)
+// Rising OBV = accumulation (confirm uptrend); Falling OBV = distribution (confirm downtrend)
+export function calcOBV(closes: number[], volumes: number[]): number[] {
+  const n = Math.min(closes.length, volumes.length)
+  const result: number[] = []
+  let obv = 0
+  for (let i = 0; i < n; i++) {
+    if (i === 0) { result.push(0); continue }
+    if (closes[i] > closes[i - 1]) obv += volumes[i]
+    else if (closes[i] < closes[i - 1]) obv -= volumes[i]
+    result.push(obv)
+  }
+  return result
+}
+
+// Williams %R — fast overbought/oversold oscillator (range: -100 to 0)
+// Overbought: > -20 (near 0); Oversold: < -80 (near -100)
+export function calcWilliamsR(highs: number[], lows: number[], closes: number[], period = 14): number[] {
+  const n = Math.min(highs.length, lows.length, closes.length)
+  const result = new Array(n).fill(NaN) as number[]
+  for (let i = period - 1; i < n; i++) {
+    const hh = Math.max(...highs.slice(i - period + 1, i + 1))
+    const ll = Math.min(...lows.slice(i - period + 1, i + 1))
+    result[i] = hh === ll ? -50 : ((hh - closes[i]) / (hh - ll)) * -100
+  }
+  return result
+}
+
+// CCI — Commodity Channel Index (period=20, typical price based)
+// Overbought: > +100; Oversold: < -100
+export function calcCCI(highs: number[], lows: number[], closes: number[], period = 20): number[] {
+  const n = Math.min(highs.length, lows.length, closes.length)
+  const result = new Array(n).fill(NaN) as number[]
+  for (let i = period - 1; i < n; i++) {
+    const tpSlice: number[] = []
+    for (let j = i - period + 1; j <= i; j++) {
+      tpSlice.push((highs[j] + lows[j] + closes[j]) / 3)
+    }
+    const tp = (highs[i] + lows[i] + closes[i]) / 3
+    const meanTP = tpSlice.reduce((a, b) => a + b, 0) / period
+    const meanDev = tpSlice.reduce((s, v) => s + Math.abs(v - meanTP), 0) / period
+    result[i] = meanDev === 0 ? 0 : (tp - meanTP) / (0.015 * meanDev)
+  }
+  return result
+}

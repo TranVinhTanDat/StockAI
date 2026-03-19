@@ -45,6 +45,7 @@ import { getCachedAnalysis, setCachedAnalysis, clearCachedAnalysis } from '@/lib
 import { loadAnalysisFromCloud } from '@/lib/storage'
 import { TrendingUp, Bot, Newspaper, Briefcase, Wrench, Bell, BarChart3, Map, History, Shield, Zap } from 'lucide-react'
 import SmartAnalysis from '@/components/analysis/SmartAnalysis'
+import StockScreener from '@/components/analysis/StockScreener'
 import { useAuthContext } from '@/components/auth/AuthContext'
 const LoginModal = dynamic(() => import('@/components/auth/LoginModal'), { ssr: false })
 const ChangePasswordModal = dynamic(() => import('@/components/auth/ChangePasswordModal'), { ssr: false })
@@ -93,9 +94,10 @@ export default function Home() {
   const [showLogin, setShowLogin] = useState(false)
   const [showChangePassword, setShowChangePassword] = useState(false)
 
-  const { user, isAdmin, isAuthEnabled, signOut } = useAuthContext()
+  const { user, isAdmin, isAuthEnabled, signOut, token } = useAuthContext()
   const [pendingSymbol, setPendingSymbol] = useState<string | null>(null)
   const [activeToolTab, setActiveToolTab] = useState<'fee' | 'profit' | 'dca' | 'pe' | 'glossary'>('fee')
+  const [activeSmartTab, setActiveSmartTab] = useState<'analyze' | 'screener'>('analyze')
   const [sellSymbol, setSellSymbol] = useState<string | null>(null)
 
   const contentRef = useRef<HTMLDivElement>(null)
@@ -465,19 +467,43 @@ export default function Home() {
       ══════════════════════════════════════════════════ */}
       <div className={activeSection !== 'smart' ? 'hidden' : ''}>
         <SectionWrap>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-xl font-bold flex items-center gap-2">
               <Zap className="w-5 h-5 text-green-400" />
               Phân Tích Nhanh
               <span className="text-xs font-normal px-2 py-0.5 bg-green-400/15 text-green-400 border border-green-400/25 rounded-full">FREE</span>
             </h2>
+            <div className="flex gap-1 bg-surface2 rounded-lg p-1">
+              <button
+                onClick={() => setActiveSmartTab('analyze')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeSmartTab === 'analyze' ? 'bg-accent text-bg' : 'text-muted hover:text-gray-300'}`}
+              >
+                Phân Tích Nhanh
+              </button>
+              <button
+                onClick={() => setActiveSmartTab('screener')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeSmartTab === 'screener' ? 'bg-accent text-bg' : 'text-muted hover:text-gray-300'}`}
+              >
+                Bộ Lọc Cổ Phiếu
+              </button>
+            </div>
           </div>
-          <p className="text-sm text-muted">Phân tích thuật toán tức thì — không cần đăng nhập, không tốn phí AI. Điểm kỹ thuật + cơ bản + tâm lý từ dữ liệu thực.</p>
-          <SmartAnalysis
-            isVisible={activeSection === 'smart'}
-            holdings={holdings}
-            balance={balance}
-          />
+          {activeSmartTab === 'analyze' && (
+            <>
+              <p className="text-sm text-muted">Phân tích thuật toán tức thì — không cần đăng nhập, không tốn phí AI. Điểm kỹ thuật + cơ bản + tâm lý từ dữ liệu thực.</p>
+              <SmartAnalysis
+                isVisible={activeSection === 'smart' && activeSmartTab === 'analyze'}
+                holdings={holdings}
+                balance={balance}
+              />
+            </>
+          )}
+          {activeSmartTab === 'screener' && (
+            <>
+              <p className="text-sm text-muted">Quét toàn bộ 60 cổ phiếu VN30+VNMID theo SmartScore — lọc nhanh cổ phiếu tốt nhất thị trường.</p>
+              <StockScreener />
+            </>
+          )}
         </SectionWrap>
       </div>
 
@@ -582,7 +608,7 @@ export default function Home() {
         <SectionWrap>
           <SectionTitle icon={Bell} title="Cảnh Báo & Tín Hiệu" color="text-gold" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <AlertManager />
+            <AlertManager token={token ?? undefined} />
             <TechnicalAlerts onAnalyze={sym => { setPendingSymbol(sym); handleAnalyze(sym) }} />
           </div>
         </SectionWrap>
