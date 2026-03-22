@@ -198,8 +198,12 @@ async function fetchFundamentals(symbol: string) {
   } catch { return null }
 }
 
-// Fetch CafeF growth
-async function fetchGrowth(symbol: string): Promise<{ revenueGrowth: number; profitGrowth: number }> {
+// Fetch CafeF KeHoachKinhDoanh — returns growth + business plan in one call
+async function fetchGrowthAndPlan(symbol: string): Promise<{
+  revenueGrowth: number
+  profitGrowth: number
+  businessPlan: { year: number; revenueTarget: number; revenueActual: number; profitTarget: number; profitActual: number } | null
+}> {
   try {
     const res = await fetch(
       `https://cafef.vn/du-lieu/Ajax/PageNew/KeHoachKinhDoanh.ashx?Symbol=${symbol}`,
@@ -208,7 +212,7 @@ async function fetchGrowth(symbol: string): Promise<{ revenueGrowth: number; pro
         signal: AbortSignal.timeout(5000),
       }
     )
-    if (!res.ok) return { revenueGrowth: 0, profitGrowth: 0 }
+    if (!res.ok) return { revenueGrowth: 0, profitGrowth: 0, businessPlan: null }
     const data = await res.json()
     const inner = data?.Data || data?.data || data
     let yearEntries: Array<{ Year: number; Values: Array<{ Name: string; Value: string }> }> = []
@@ -216,11 +220,10 @@ async function fetchGrowth(symbol: string): Promise<{ revenueGrowth: number; pro
     else if (Array.isArray(inner?.ListYear)) yearEntries = inner.ListYear
     else if (inner?.Year) yearEntries = [inner]
     yearEntries.sort((a, b) => b.Year - a.Year)
-    if (yearEntries.length < 2) return { revenueGrowth: 0, profitGrowth: 0 }
-    const curr = yearEntries[0], prev = yearEntries[1]
+
     const REVENUE_NAMES = ['Doanh thu', 'Tổng doanh thu', 'Tổng thu nhập hoạt động', 'Tổng thu nhập thuần', 'Tổng thu nhập', 'Thu nhập lãi và tương đương', 'Thu nhập lãi thuần', 'Thu nhập lãi', 'Tổng thu']
     const PROFIT_NAMES = ['Lợi nhuận trước thuế', 'Lợi nhuận sau thuế', 'LNTT', 'LNST', 'Tổng Lợi nhuận trước thuế']
-    const findVal = (entry: typeof curr, names: string[]): number => {
+    const findVal = (entry: typeof yearEntries[0], names: string[]): number => {
       for (const name of names) {
         const item = (entry.Values || []).find(v => v.Name?.includes(name))
         if (item?.Value && item.Value !== 'N/A') {
@@ -230,13 +233,32 @@ async function fetchGrowth(symbol: string): Promise<{ revenueGrowth: number; pro
       }
       return 0
     }
-    const currRev = findVal(curr, REVENUE_NAMES), prevRev = findVal(prev, REVENUE_NAMES)
-    const currProfit = findVal(curr, PROFIT_NAMES), prevProfit = findVal(prev, PROFIT_NAMES)
-    return {
-      revenueGrowth: prevRev > 0 && currRev > 0 ? Math.round(((currRev - prevRev) / prevRev) * 1000) / 10 : 0,
-      profitGrowth: prevProfit !== 0 && currProfit !== 0 ? Math.round(((currProfit - prevProfit) / Math.abs(prevProfit)) * 1000) / 10 : 0,
+
+    // Growth: compare latest 2 years
+    let revenueGrowth = 0, profitGrowth = 0
+    if (yearEntries.length >= 2) {
+      const curr = yearEntries[0], prev = yearEntries[1]
+      const currRev = findVal(curr, REVENUE_NAMES), prevRev = findVal(prev, REVENUE_NAMES)
+      const currProfit = findVal(curr, PROFIT_NAMES), prevProfit = findVal(prev, PROFIT_NAMES)
+      revenueGrowth = prevRev > 0 && currRev > 0 ? Math.round(((currRev - prevRev) / prevRev) * 1000) / 10 : 0
+      profitGrowth = prevProfit !== 0 && currProfit !== 0 ? Math.round(((currProfit - prevProfit) / Math.abs(prevProfit)) * 1000) / 10 : 0
     }
-  } catch { return { revenueGrowth: 0, profitGrowth: 0 } }
+
+    // Business plan: latest year target vs actual
+    let businessPlan = null
+    if (yearEntries.length >= 1) {
+      const curr = yearEntries[0]
+      const revenueTarget = findVal(curr, ['KH Doanh thu', 'Kế hoạch doanh thu', 'DT kế hoạch'])
+      const revenueActual = findVal(curr, ['Doanh thu', 'Thực hiện doanh thu', 'DT thực hiện', 'Tổng doanh thu'])
+      const profitTarget = findVal(curr, ['KH Lợi nhuận', 'Kế hoạch lợi nhuận', 'LN kế hoạch', 'KH LNTT'])
+      const profitActual = findVal(curr, ['Lợi nhuận trước thuế', 'LNTT thực hiện', 'Lợi nhuận sau thuế', 'LNST'])
+      if (profitTarget > 0 || revenueTarget > 0) {
+        businessPlan = { year: curr.Year, revenueTarget, revenueActual, profitTarget, profitActual }
+      }
+    }
+
+    return { revenueGrowth, profitGrowth, businessPlan }
+  } catch { return { revenueGrowth: 0, profitGrowth: 0, businessPlan: null } }
 }
 
 // Fetch quarterly EPS from CafeF ChiSoTaiChinh
@@ -290,50 +312,6 @@ async function fetchAnnualEPS(symbol: string): Promise<Array<{ year: number; eps
   } catch { return [] }
 }
 
-// Fetch business plan (current year target vs actual)
-async function fetchBusinessPlan(symbol: string): Promise<{
-  year: number
-  revenueTarget: number
-  revenueActual: number
-  profitTarget: number
-  profitActual: number
-} | null> {
-  try {
-    const res = await fetch(
-      `https://cafef.vn/du-lieu/Ajax/PageNew/KeHoachKinhDoanh.ashx?Symbol=${symbol}`,
-      {
-        headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' },
-        signal: AbortSignal.timeout(4000),
-      }
-    )
-    if (!res.ok) return null
-    const data = await res.json()
-    const inner = data?.Data || data?.data || data
-    let yearEntries: Array<{ Year: number; Values: Array<{ Name: string; Value: string }> }> = []
-    if (Array.isArray(inner)) yearEntries = inner
-    else if (Array.isArray(inner?.ListYear)) yearEntries = inner.ListYear
-    if (yearEntries.length === 0) return null
-    yearEntries.sort((a, b) => b.Year - a.Year)
-    const curr = yearEntries[0]
-    const findV = (names: string[]): number => {
-      for (const name of names) {
-        const item = (curr.Values || []).find((v: { Name: string; Value: string }) => v.Name?.includes(name))
-        if (item?.Value && item.Value !== 'N/A') {
-          const n = parseFloat(String(item.Value).replace(/\./g, '').replace(',', '.'))
-          if (!isNaN(n)) return n
-        }
-      }
-      return 0
-    }
-    return {
-      year: curr.Year,
-      revenueTarget: findV(['KH Doanh thu', 'Kế hoạch doanh thu', 'DT kế hoạch']),
-      revenueActual: findV(['Doanh thu', 'Thực hiện doanh thu', 'DT thực hiện', 'Tổng doanh thu']),
-      profitTarget: findV(['KH Lợi nhuận', 'Kế hoạch lợi nhuận', 'LN kế hoạch', 'KH LNTT']),
-      profitActual: findV(['Lợi nhuận trước thuế', 'LNTT thực hiện', 'Lợi nhuận sau thuế', 'LNST']),
-    }
-  } catch { return null }
-}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
@@ -342,18 +320,19 @@ export async function GET(request: NextRequest) {
 
   try {
     // Fetch all data in parallel — no Claude API
-    const [quote, history, weeklyHistory, vnIndex, fund, growth, quarterlyEPS, annualEPS, businessPlan, newsSentiment] = await Promise.all([
+    const [quote, history, weeklyHistory, vnIndex, fund, growthAndPlan, quarterlyEPS, annualEPS, newsSentiment] = await Promise.all([
       fetchQuote(symbol),
       fetchHistory(symbol),
       fetchWeeklyHistory(symbol),
       fetchVNIndex(),
       fetchFundamentals(symbol),
-      fetchGrowth(symbol),
+      fetchGrowthAndPlan(symbol),
       fetchQuarterlyEPS(symbol),
       fetchAnnualEPS(symbol),
-      fetchBusinessPlan(symbol),
       fetchNewsSentiment(symbol),
     ])
+    const growth = { revenueGrowth: growthAndPlan.revenueGrowth, profitGrowth: growthAndPlan.profitGrowth }
+    const businessPlan = growthAndPlan.businessPlan
 
     if (!quote) return NextResponse.json({ error: `Không tìm thấy mã ${symbol}` }, { status: 404 })
     if (!history) return NextResponse.json({ error: `Không đủ dữ liệu lịch sử cho ${symbol}` }, { status: 400 })
@@ -469,6 +448,7 @@ export async function GET(request: NextRequest) {
       debtEquity: fund?.debtEquity ?? 0,
       revenueGrowth: growth.revenueGrowth,
       profitGrowth: computedProfitGrowth,
+      changePct: quote.changePct,
       weeklyTrend: result.weeklyTrend,
       weeklyRsi: result.weeklyRsi,
     })

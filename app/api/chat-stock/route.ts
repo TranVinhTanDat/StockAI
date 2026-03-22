@@ -143,7 +143,7 @@ async function fetchLatestAnalystReportPdf(symbol: string): Promise<{ pdfBase64:
         })
         if (!pdfRes.ok) continue
         const buf = await pdfRes.arrayBuffer()
-        if (buf.byteLength > 10 * 1024 * 1024) continue
+        if (buf.byteLength > 1.5 * 1024 * 1024) continue // skip >1.5MB
         return { pdfBase64: Buffer.from(buf).toString('base64'), reportTitle: r.Title || '' }
       } catch { continue }
     }

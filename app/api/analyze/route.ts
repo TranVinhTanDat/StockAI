@@ -32,8 +32,8 @@ async function saveCachedResult(symbol: string, result: unknown) {
   if (!sb) return
   const now = new Date()
   const vnHour = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' })).getHours()
-  // During market hours (8-16), cache 4h; otherwise cache 20h
-  const ttlHours = (vnHour >= 8 && vnHour < 16) ? 4 : 20
+  // During market hours (8-16), cache 8h; otherwise cache 36h
+  const ttlHours = (vnHour >= 8 && vnHour < 16) ? 8 : 36
   const expiresAt = new Date(now.getTime() + ttlHours * 3600_000).toISOString()
   await sb.from('analysis_cache').insert({ symbol, data: result, expires_at: expiresAt })
 }
@@ -152,7 +152,7 @@ async function fetchLatestAnalystReportPdf(symbol: string): Promise<{ pdfBase64:
         })
         if (!pdfRes.ok) continue
         const buf = await pdfRes.arrayBuffer()
-        if (buf.byteLength > 10 * 1024 * 1024) continue // skip >10MB
+        if (buf.byteLength > 1.5 * 1024 * 1024) continue // skip >1.5MB
         return { pdfBase64: Buffer.from(buf).toString('base64'), reportTitle: r.Title || '' }
       } catch { continue }
     }

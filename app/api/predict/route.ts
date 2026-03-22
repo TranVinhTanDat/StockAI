@@ -11,7 +11,7 @@ export const maxDuration = 60
 // In-memory cache per style (20 min TTL) — survives within the same warm Vercel instance.
 // Prevents repeated 504s: first call computes + caches, subsequent calls (SWR refetch on focus) return instantly.
 const _cache = new Map<string, { data: PredictionItem[]; ts: number }>()
-const CACHE_TTL_MS = 20 * 60 * 1000
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000 // 2 hours — predictions don't change rapidly
 
 const VALID_STYLES: InvestmentStyle[] = ['longterm', 'dca', 'swing', 'dividend', 'etf']
 
@@ -318,6 +318,7 @@ export async function GET(request: NextRequest) {
           roe: Math.round((s.roe || 0) * 10) / 10,
           roa: Math.round((s.roa || 0) * 10) / 10,
           pb: Math.round((s.pb || 0) * 100) / 100,
+          netMargin: Math.round((s.netMargin || 0) * 10) / 10,
           revenueGrowth: g.revenueGrowth,
           profitGrowth: g.profitGrowth,
           debtEquity: Math.round((s.debtToEquity || 0) * 100) / 100,

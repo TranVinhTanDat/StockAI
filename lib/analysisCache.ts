@@ -1,8 +1,8 @@
 import type { AnalysisResult, QuoteData } from '@/types'
 import { getScopedStorageKey } from './storage'
 
-/** Cache TTL: 4 hours — covers one full trading session */
-const CACHE_TTL_MS = 4 * 60 * 60 * 1000
+/** Cache TTL: 12 hours — covers full day including after-hours */
+const CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const KEY_PREFIX = 'sai_ac_'
 
 function getKey(symbol: string): string {

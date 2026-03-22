@@ -202,9 +202,11 @@ export interface PredictionItem {
   currentPrice: number
   upsidePct: number
   reason: string
+  catalyst?: string              // key driver/catalyst for price move (1-2 sentences)
   keyMetrics: { pe: number; roe: number; growth: number }
   riskLevel: string
   entryZone: { low: number; high: number }
+  stopLoss?: number              // stop-loss price level
 }
 
 export interface CompanyYearly {

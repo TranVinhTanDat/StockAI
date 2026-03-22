@@ -41,23 +41,33 @@ function openNotificationSettings() {
 
 export default function AlertManager({ token }: { token?: string }) {
   const { alerts, isLoading, create, toggle, remove, enablePushNotifications } = useAlerts(token)
-  const [symbol,       setSymbol]       = useState('')
-  const [condition,    setCondition]    = useState<'ABOVE' | 'BELOW'>('ABOVE')
-  const [priceDisplay, setPriceDisplay] = useState('')
-  const [notifPerm,    setNotifPerm]    = useState<NotificationPermission>('default')
-  const [pushEnabled,  setPushEnabled]  = useState(false)
-  const [pushLoading,  setPushLoading]  = useState(false)
+  const [symbol,          setSymbol]          = useState('')
+  const [condition,       setCondition]       = useState<'ABOVE' | 'BELOW'>('ABOVE')
+  const [priceDisplay,    setPriceDisplay]    = useState('')
+  const [notifPerm,       setNotifPerm]       = useState<NotificationPermission>('default')
+  const [pushEnabled,     setPushEnabled]     = useState(false)
+  const [pushLoading,     setPushLoading]     = useState(false)
+  const [pushUnsupported, setPushUnsupported] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      const perm = Notification.permission
-      setNotifPerm(perm)
-      setPushEnabled(perm === 'granted')
+    if (typeof window === 'undefined') return
+    // Check if push notifications are supported at all
+    const supported = 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window
+    if (!supported) {
+      setPushUnsupported(true)
+      return
     }
+    const perm = Notification.permission
+    setNotifPerm(perm)
+    setPushEnabled(perm === 'granted')
   }, [])
 
   const handleTogglePush = async () => {
+    if (pushUnsupported) {
+      alert('Trình duyệt của bạn chưa hỗ trợ thông báo đẩy.\n\niOS: Thêm trang vào Màn hình chính (Add to Home Screen) rồi mở từ đó.\nAndroid: Dùng Chrome để nhận thông báo.')
+      return
+    }
     if (pushEnabled) {
       openNotificationSettings()
       return
@@ -71,6 +81,7 @@ export default function AlertManager({ token }: { token?: string }) {
     setPushLoading(false)
     if (result === 'granted') { setNotifPerm('granted'); setPushEnabled(true) }
     else if (result === 'denied') { setNotifPerm('denied'); setPushEnabled(false) }
+    else if (result === 'unsupported') { setPushUnsupported(true) }
   }
 
   const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -105,19 +116,44 @@ export default function AlertManager({ token }: { token?: string }) {
           {/* Push notification toggle */}
           <div className="flex items-center gap-2.5">
             <div className="flex items-center gap-1.5">
-              <Smartphone className="w-3.5 h-3.5 text-muted" />
+              <Smartphone className={`w-3.5 h-3.5 ${pushUnsupported ? 'text-muted/40' : 'text-muted'}`} />
               <span className="text-xs text-muted hidden sm:block">Thông báo điện thoại</span>
             </div>
             {pushLoading ? (
               <span className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin inline-block" />
+            ) : pushUnsupported ? (
+              <button
+                onClick={handleTogglePush}
+                className="flex items-center gap-1 px-2 py-1 bg-surface2 border border-border/60 text-muted/60 text-[11px] rounded-lg active:bg-surface min-h-[36px]"
+                title="Trình duyệt chưa hỗ trợ"
+              >
+                <BellOff className="w-3 h-3" />
+                <span className="hidden sm:inline">Chưa hỗ trợ</span>
+              </button>
             ) : (
-              <Toggle on={pushEnabled} onChange={handleTogglePush} />
+              <div className="flex items-center justify-center min-h-[44px] min-w-[44px]">
+                <Toggle on={pushEnabled} onChange={handleTogglePush} />
+              </div>
             )}
           </div>
         </div>
 
+        {/* Unsupported state */}
+        {pushUnsupported && (
+          <div className="mb-4 flex items-start gap-3 bg-surface2 border border-border/60 rounded-xl p-3.5">
+            <Smartphone className="w-4 h-4 text-muted flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-muted mb-0.5">Thông báo chưa khả dụng trên trình duyệt này</p>
+              <p className="text-[11px] text-muted/70 leading-relaxed">
+                iOS: Nhấn <span className="font-medium">Chia sẻ</span> → <span className="font-medium">Thêm vào Màn hình chính</span>, rồi mở app từ đó để nhận thông báo.
+                <br />Android: Sử dụng Chrome để bật thông báo đẩy.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Denied state */}
-        {notifPerm === 'denied' && (
+        {!pushUnsupported && notifPerm === 'denied' && (
           <div className="mb-4 flex items-start gap-3 bg-surface2 border border-border/60 rounded-xl p-3.5">
             <BellOff className="w-4 h-4 text-muted flex-shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
@@ -137,7 +173,7 @@ export default function AlertManager({ token }: { token?: string }) {
         )}
 
         {/* Default hint */}
-        {notifPerm === 'default' && !pushEnabled && (
+        {!pushUnsupported && notifPerm === 'default' && !pushEnabled && (
           <div className="mb-4 flex items-center gap-2 bg-gold/5 border border-gold/15 rounded-xl px-3.5 py-2.5">
             <Smartphone className="w-3.5 h-3.5 text-gold flex-shrink-0" />
             <p className="text-[11px] text-muted/80">
@@ -147,7 +183,7 @@ export default function AlertManager({ token }: { token?: string }) {
         )}
 
         {/* Enabled */}
-        {pushEnabled && (
+        {!pushUnsupported && pushEnabled && (
           <div className="mb-4 flex items-center gap-2 bg-green-400/5 border border-green-400/15 rounded-xl px-3.5 py-2.5">
             <CheckCircle className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
             <p className="text-[11px] text-green-400">

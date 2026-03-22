@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import type { PredictionItem } from '@/types'
 import { formatVND, getRecommendationBg } from '@/lib/utils'
 import type { InvestmentStyle } from '@/lib/claude'
-import { Target, Sparkles, AlertTriangle, TrendingUp, Zap, Coins, BarChart3, RefreshCw, Database, MessageCircle } from 'lucide-react'
+import { Target, Sparkles, AlertTriangle, TrendingUp, Zap, Coins, BarChart3, RefreshCw, Database, MessageCircle, ShieldAlert, Lightbulb } from 'lucide-react'
 import { getClientToken } from '@/lib/requireAuth'
 import { getPredictions, savePredictions } from '@/lib/storage'
 import StockChatAI from '@/components/dashboard/StockChatAI'
@@ -309,7 +309,7 @@ export default function StockPredictions() {
                 </div>
               </div>
 
-              {/* Targets */}
+              {/* Targets + Stop Loss */}
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-3">
                 <span className="text-muted">
                   🎯 Target: <span className="text-gray-200 font-medium">{formatVND(p.targetPrice)}</span>
@@ -319,10 +319,16 @@ export default function StockPredictions() {
                     {formatVND(p.entryZone.low)} – {formatVND(p.entryZone.high)}
                   </span>
                 </span>
+                {p.stopLoss != null && p.stopLoss > 0 && (
+                  <span className="flex items-center gap-1 text-orange-400/80">
+                    <ShieldAlert className="w-3 h-3" />
+                    Cắt lỗ: <span className="font-medium">{formatVND(p.stopLoss)}</span>
+                  </span>
+                )}
               </div>
 
               {/* Key metrics */}
-              <div className="flex gap-4 text-xs mb-3">
+              <div className="flex gap-4 text-xs mb-2">
                 {(() => {
                   const km = p.keyMetrics as Record<string, number>
                   const pe = km.pe ?? 0
@@ -339,6 +345,14 @@ export default function StockPredictions() {
                   </>
                 })()}
               </div>
+
+              {/* Catalyst */}
+              {p.catalyst && (
+                <div className="flex items-start gap-1.5 text-xs mb-2 bg-accent/5 border border-accent/15 rounded-lg px-2.5 py-1.5">
+                  <Lightbulb className="w-3 h-3 text-gold flex-shrink-0 mt-0.5" />
+                  <span className="text-gold/90 leading-relaxed">{p.catalyst}</span>
+                </div>
+              )}
 
               {/* Reason */}
               <p className="text-xs text-gray-400 leading-relaxed line-clamp-3">{p.reason}</p>

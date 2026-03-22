@@ -20,7 +20,7 @@ async function fetchPdfBase64(url: string): Promise<string | null> {
     })
     if (!res.ok) return null
     const buf = await res.arrayBuffer()
-    if (buf.byteLength > 10 * 1024 * 1024) return null
+    if (buf.byteLength > 1.5 * 1024 * 1024) return null // skip >1.5MB
     return Buffer.from(buf).toString('base64')
   } catch {
     return null

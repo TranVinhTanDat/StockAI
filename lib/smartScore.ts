@@ -247,7 +247,7 @@ function scoreTechnical(input: SmartScoreInput): { signals: TechnicalSignals; sc
       if (priceLo < pricePrevLo * 0.995 && rsiLo > rsiPrevLo + 4) {
         const gap = Math.round(rsiLo - rsiPrevLo)
         const strength = gap > 10 ? 'MẠNH' : 'nhẹ'
-        rsiDivergence = `Phân kỳ tăng ${strength}: Giá thấp hơn nhưng RSI cao hơn (+${gap}pts) — cảnh báo đảo chiều TẮT`
+        rsiDivergence = `Phân kỳ tăng ${strength}: Giá thấp hơn nhưng RSI cao hơn (+${gap}pts) — cảnh báo đảo chiều TĂNG`
         points += gap > 10 ? 7 : 4
       } else if (priceHi > pricePrevHi * 1.005 && rsiHi < rsiPrevHi - 4) {
         const gap = Math.round(rsiPrevHi - rsiHi)
@@ -655,14 +655,17 @@ function scoreFundamental(input: SmartScoreInput): { signals: FundamentalSignals
     // peg >= 3: 0 pts
   } else points += 3 // neutral if no PEG data
 
-  // --- Business plan achievement bonus (5 pts) ---
-  // "Kế hoạch KD vượt >110%" = company executing beyond targets (positive catalyst)
-  if (input.businessPlanPct && input.businessPlanPct > 110) {
-    const excess = Math.round(input.businessPlanPct - 100)
-    if (input.businessPlanPct > 130) points += 5
-    else if (input.businessPlanPct > 120) points += 4
-    else points += 3
-    earningsQuality += ` | KH vượt ${excess}%`
+  // --- Business plan achievement bonus/penalty (±5 pts) ---
+  // >110%: company executing beyond targets (positive catalyst)
+  // <80%: severely missing targets (negative signal)
+  if (input.businessPlanPct != null && input.businessPlanPct > 0) {
+    const pct = input.businessPlanPct
+    if (pct > 130) { points += 5; earningsQuality += ` | KH vượt ${Math.round(pct - 100)}%` }
+    else if (pct > 120) { points += 4; earningsQuality += ` | KH vượt ${Math.round(pct - 100)}%` }
+    else if (pct > 110) { points += 3; earningsQuality += ` | KH vượt ${Math.round(pct - 100)}%` }
+    else if (pct < 60)  { points -= 5; earningsQuality += ` | KH chỉ đạt ${pct.toFixed(0)}% — rủi ro cao` }
+    else if (pct < 80)  { points -= 3; earningsQuality += ` | KH chỉ đạt ${pct.toFixed(0)}% — dưới kế hoạch` }
+    else if (pct < 90)  { points -= 1; earningsQuality += ` | KH đạt ${pct.toFixed(0)}%` }
   }
 
   // MAX_POINTS: 20(PE)+5(PB)+20(ROE)+10(ROA)+20(growth)+10(debt)+5(div)+10(EPStrend)+10(margin)+5(PEG)+5(bizPlan) = 120

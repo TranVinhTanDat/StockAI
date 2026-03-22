@@ -72,40 +72,6 @@ function extractJSONObject(text: string): string {
   throw new Error('Claude did not return valid JSON')
 }
 
-function extractJSONArray(text: string): string {
-  // 0. XML tag <result>...</result>
-  const xml = text.match(/<result>([\s\S]*?)<\/result>/)
-  if (xml) { try { const t = sanitizeJSON(xml[1].trim()); JSON.parse(t); return t } catch {} }
-  // 1. Direct parse
-  try { const t = sanitizeJSON(text.trim()); JSON.parse(t); return t } catch {}
-  // 2. Code block
-  const cb = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
-  if (cb) { try { const t = sanitizeJSON(cb[1]); JSON.parse(t); return t } catch {} }
-  // 3. Find outermost [ ... ] — skip strings
-  const candidates: string[] = []
-  let depth = 0, start = -1, inString = false, escape = false
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]
-    if (escape) { escape = false; continue }
-    if (ch === '\\' && inString) { escape = true; continue }
-    if (ch === '"') { inString = !inString; continue }
-    if (inString) continue
-    if (ch === '[') { if (depth === 0) start = i; depth++ }
-    else if (ch === ']') {
-      depth--
-      if (depth === 0 && start !== -1) {
-        candidates.push(text.slice(start, i + 1))
-        start = -1
-      }
-      if (depth < 0) depth = 0
-    }
-  }
-  for (const c of candidates) {
-    try { const t = sanitizeJSON(c); JSON.parse(t); return t } catch {}
-  }
-  console.error('[extractJSONArray] raw text:', text.slice(0, 500))
-  throw new Error('Claude did not return valid JSON array')
-}
 
 interface CurrentHolding {
   qty: number
@@ -397,8 +363,8 @@ Trả về JSON trong thẻ <result>:
     : fullPrompt
 
   const response = await withRetry(() => client.messages.create({
-    model: 'claude-opus-4-6',
-    max_tokens: 3500,
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2000,
     system: `Bạn là chuyên gia phân tích chứng khoán CFA Level 3, 20 năm kinh nghiệm thị trường Việt Nam (HOSE/HNX). Nhiệm vụ: phân tích toàn diện, khách quan, ra quyết định đầu tư cụ thể dựa HOÀN TOÀN trên dữ liệu được cung cấp.
 
 QUY TẮC PHÂN TÍCH BẮT BUỘC:
@@ -465,8 +431,8 @@ QUAN TRỌNG: Chỉ trả về JSON hợp lệ trong thẻ <result>, không có 
     return JSON.parse(extractJSONObject(text)) as AnalysisResult
   } catch {
     const retryResponse = await withRetry(() => client.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 2000,
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1500,
       system: 'Bạn là chuyên gia phân tích chứng khoán. Chỉ trả về JSON hợp lệ trong thẻ <result>, không có text nào khác.',
       messages: [
         { role: 'user', content: userContent },
@@ -658,8 +624,8 @@ Các action hợp lệ: MUA THÊM | GIỮ | CHỐT LỜI MỘT PHẦN | CHỐT L
 riskLevel: Thấp | Trung bình | Cao`
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-6',
-    max_tokens: 4096,
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2500,
     system:
       'Bạn là chuyên gia quản lý danh mục CFA Level 3, 20 năm kinh nghiệm thị trường Việt Nam. Phân tích sâu, khách quan, dựa hoàn toàn vào số liệu thực tế được cung cấp. Không được bịa đặt số liệu. QUAN TRỌNG: Chỉ trả về JSON hợp lệ trong thẻ <result>, không có text nào khác.',
     messages: [{ role: 'user', content: prompt }],
@@ -707,6 +673,7 @@ interface PredictStock {
   roe: number
   roa: number
   pb: number
+  netMargin?: number
   revenueGrowth: number
   profitGrowth: number
   debtEquity: number
@@ -733,15 +700,65 @@ interface PredictContext {
 
 const STYLE_DESCRIPTIONS: Record<string, string> = {
   longterm:
-    'Đầu tư dài hạn — Buy & Hold 3-5 năm: ưu tiên doanh nghiệp có nền tảng cơ bản vững chắc (ROE > 15%, tăng trưởng LN > 15%/năm liên tục), P/E hợp lý so ngành, D/E < 1, vị thế thị trường dẫn đầu ngành, quản trị tốt, hoạt động kinh doanh bền vững. Ưu tiên công ty có lợi thế cạnh tranh bền vững (moat), tăng trưởng đều đặn, ít bị ảnh hưởng chu kỳ kinh tế.',
+    'ĐẦU TƯ DÀI HẠN — Buy & Hold 3-5 năm: Ưu tiên tuyệt đối ROE>15% liên tục, tăng trưởng LN>15%/năm, P/E hợp lý so ngành (PEG<1.5 là lý tưởng), D/E<1 (non-bank), vị thế dẫn đầu ngành, moat rõ ràng. Chấp nhận biến động ngắn hạn nếu cơ bản vững. Phạt nặng mã LN âm hoặc D/E cao.',
   dca:
-    'DCA — Bình quân giá vốn (đầu tư định kỳ hàng tháng): ưu tiên mã ổn định có xu hướng tăng dài hạn rõ ràng, thanh khoản tốt, biến động ngày thấp-trung bình, ngành ít bị ảnh hưởng chu kỳ. Phù hợp mua thêm đều đặn không cần lo biến động ngắn hạn. Tránh mã biến động cực mạnh hoặc có rủi ro cao.',
+    'DCA — Bình quân giá vốn định kỳ hàng tháng: Ưu tiên mã ổn định, xu hướng dài hạn tăng rõ (ADX≥20+trên SMA50), thanh khoản tốt, biến động ngày thấp-trung bình, ngành ít chu kỳ. Phù hợp mua đều không cần canh điểm. Tránh mã biến động cực mạnh (swing candidates) hoặc D/E cao.',
   swing:
-    'Lướt sóng ngắn hạn 1-4 tuần: RSI đang ở vùng 30-55 (quá bán hoặc đang hồi phục), giá gần/vừa bật từ vùng hỗ trợ kỹ thuật, MACD có tín hiệu crossover bullish sắp xảy ra hoặc đang bullish, khối lượng tăng đột biến xác nhận momentum, xu hướng 30 ngày đang cải thiện. Risk/reward tối thiểu 1:2.',
+    'LƯỚT SÓNG 1-4 tuần: Ưu tiên RSI 30-55 (quá bán hoặc đang hồi phục từ đáy), MACD histogram đang tăng (bullish momentum), giá bật từ vùng hỗ trợ kỹ thuật, volume tăng xác nhận, RS30D>0 (outperform thị trường). Risk/reward≥1:2. Phạt nặng mã RSI>70 hoặc BB overbought.',
   dividend:
-    'Đầu tư cổ tức — thu nhập thụ động: ưu tiên mã có lịch sử trả cổ tức tiền mặt đều đặn và tăng, dividend yield > 4%, ROE > 12%, cashflow tự do dương và ổn định, tỷ lệ chi trả cổ tức bền vững (<70% lợi nhuận). Ưu tiên ngành bảo thủ: ngân hàng lớn, tiện ích, thực phẩm-đồ uống, bất động sản khu công nghiệp.',
+    'ĐẦU TƯ CỔ TỨC — Thu nhập thụ động: Ưu tiên dividend yield>4%, lịch sử trả cổ tức tiền mặt đều đặn và tăng, ROE>12%, cashflow tự do dương, payout ratio<70% lợi nhuận. Ngành bảo thủ: ngân hàng lớn, GAS, tiện ích, thực phẩm-đồ uống. Bền vững dài hạn quan trọng hơn upside ngắn hạn.',
   etf:
-    'Theo chỉ số VN30/VN-Index (phong cách đầu tư ETF): ưu tiên cổ phiếu trụ cột đại diện thị trường — vốn hóa top 30 thị trường, thanh khoản cao nhất (KLGD hàng đầu), blue-chip ổn định kết quả kinh doanh, đóng góp trọng số lớn vào VN-Index, được các quỹ ETF nội và ngoại nắm giữ nhiều. Ưu tiên bluechip vốn hóa lớn trong các ngành trụ cột: ngân hàng, thép, bất động sản, công nghệ.',
+    'VN30 STYLE — Phong cách ETF/Chỉ số: Ưu tiên cổ phiếu trụ cột VN30, vốn hóa top, thanh khoản KLGD hàng đầu, blue-chip ổn định KQKD, đóng góp trọng số lớn vào VN-Index, được quỹ ETF nội/ngoại nắm nhiều. Đại diện các ngành trụ cột: ngân hàng, thép, BĐS, công nghệ, tiện ích.',
+}
+
+// ─── Tool schema for guaranteed structured prediction output ──────────────────
+const PREDICT_TOOL: Anthropic.Tool = {
+  name: 'predict_stocks',
+  description: 'Xếp hạng TOP 5 cổ phiếu phù hợp nhất cho phong cách đầu tư được chỉ định, dựa trên dữ liệu kỹ thuật, cơ bản và dòng tiền ngoại',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      predictions: {
+        type: 'array' as const,
+        description: 'Danh sách TOP 5 cổ phiếu xếp hạng từ 1 (tốt nhất) đến 5',
+        items: {
+          type: 'object' as const,
+          properties: {
+            rank:           { type: 'number' as const, description: 'Xếp hạng 1-5' },
+            symbol:         { type: 'string' as const, description: 'Mã cổ phiếu, ví dụ FPT' },
+            score:          { type: 'number' as const, description: 'Điểm tổng 0-100 theo scoring framework' },
+            recommendation: { type: 'string' as const, enum: ['MUA MẠNH', 'MUA', 'GIỮ', 'BÁN', 'BÁN MẠNH'] as const },
+            targetPrice:    { type: 'number' as const, description: 'Giá mục tiêu 12 tháng (VND)' },
+            currentPrice:   { type: 'number' as const, description: 'Giá hiện tại (VND)' },
+            upsidePct:      { type: 'number' as const, description: '% upside = (target-current)/current*100' },
+            reason:         { type: 'string' as const, description: 'Phân tích 4-5 câu ĐẦY ĐỦ: (1) kỹ thuật ADX/RSI/MACD cụ thể với con số, (2) cơ bản PE vs benchmark ngành/ROE/LN_growth, (3) dòng tiền NN mua/bán bao nhiêu CP, (4) rủi ro chính cần theo dõi' },
+            catalyst:       { type: 'string' as const, description: '1-2 câu ngắn gọn: sự kiện CỤ THỂ thúc đẩy giá trong 1-3 tháng tới (KQKD quý/năm, chính sách, kỹ thuật bật hỗ trợ, cổ tức dự kiến...)' },
+            keyMetrics: {
+              type: 'object' as const,
+              properties: {
+                pe:     { type: 'number' as const },
+                roe:    { type: 'number' as const },
+                growth: { type: 'number' as const, description: 'Tăng trưởng lợi nhuận % YoY' },
+              },
+              required: ['pe', 'roe', 'growth'],
+            },
+            riskLevel:  { type: 'string' as const, enum: ['THẤP', 'TRUNG BÌNH', 'CAO'] as const },
+            entryZone: {
+              type: 'object' as const,
+              properties: {
+                low:  { type: 'number' as const },
+                high: { type: 'number' as const },
+              },
+              required: ['low', 'high'],
+            },
+            stopLoss: { type: 'number' as const, description: 'Giá cắt lỗ VND — tính từ support hoặc SMA50 theo công thức trong system prompt' },
+          },
+          required: ['rank', 'symbol', 'score', 'recommendation', 'targetPrice', 'currentPrice', 'upsidePct', 'reason', 'catalyst', 'keyMetrics', 'riskLevel', 'entryZone', 'stopLoss'],
+        },
+      },
+    },
+    required: ['predictions'],
+  },
 }
 
 export async function predictStocks(
@@ -756,115 +773,147 @@ export async function predictStocks(
     currentPrice: number
     upsidePct: number
     reason: string
+    catalyst?: string
     keyMetrics: { pe: number; roe: number; growth: number }
     riskLevel: string
     entryZone: { low: number; high: number }
+    stopLoss?: number
   }>
 > {
   const client = getClient()
 
-  const styleDesc = STYLE_DESCRIPTIONS[ctx.style] || STYLE_DESCRIPTIONS.balanced
+  const styleDesc = STYLE_DESCRIPTIONS[ctx.style] || STYLE_DESCRIPTIONS.longterm
   const timestamp = new Date().toLocaleString('vi-VN')
 
+  // Market context block with regime classification
   const vnBlock = ctx.vnIndex
-    ? `\n▌ BỐI CẢNH THỊ TRƯỜNG (VN-Index):\nVN-Index: ${ctx.vnIndex.currentLevel.toLocaleString('vi-VN')} điểm | Xu hướng 30D: ${ctx.vnIndex.trend30d >= 0 ? '+' : ''}${ctx.vnIndex.trend30d.toFixed(1)}% | RSI: ${ctx.vnIndex.rsi} (${ctx.vnIndex.rsi > 70 ? 'Quá mua — thận trọng' : ctx.vnIndex.rsi < 30 ? 'Quá bán — có thể phục hồi' : 'Trung lập'})\n${getMarketRegime(ctx.vnIndex)}\n`
+    ? `▌ BỐI CẢNH THỊ TRƯỜNG (VN-Index):
+VN-Index: ${ctx.vnIndex.currentLevel.toLocaleString('vi-VN')} điểm | Trend30D: ${ctx.vnIndex.trend30d >= 0 ? '+' : ''}${ctx.vnIndex.trend30d.toFixed(1)}% | RSI: ${ctx.vnIndex.rsi} (${ctx.vnIndex.rsi > 70 ? 'QUÁ MUA ⚠' : ctx.vnIndex.rsi < 30 ? 'QUÁ BÁN 🔻' : 'TRUNG LẬP'})
+${getMarketRegime(ctx.vnIndex)}
+→ Áp dụng MARKET REGIME ADJUSTMENT theo scoring framework`
     : ''
 
-  const sectorBenchBlock = ''
+  // Sector benchmarks for all unique industries in the stock pool — critical for PE comparison
+  const uniqueIndustries = Array.from(new Set(ctx.stocks.map(s => s.industry).filter(Boolean)))
+  const sectorBenchBlock = uniqueIndustries.length > 0
+    ? `\n▌ BENCHMARK ĐỊNH GIÁ NGÀNH (so sánh P/E, P/B, ROE từng mã với ngành):\n${uniqueIndustries.map(ind => getSectorBenchmark(ind)).filter(Boolean).join('\n')}\n`
+    : ''
 
+  // Per-stock data rows
   const tableRows = ctx.stocks
     .map((s, i) => {
       const foreignNet = s.foreignNetVol
-      const foreignStr = (s.foreignBuyVol > 0 || s.foreignSellVol > 0)
-        ? `\n   Dòng NN: Mua=${s.foreignBuyVol.toLocaleString('vi-VN')} | Bán=${s.foreignSellVol.toLocaleString('vi-VN')} | Net=${foreignNet >= 0 ? '+' : ''}${foreignNet.toLocaleString('vi-VN')}${s.foreignRoom !== undefined ? ` | Room: ${s.foreignRoom.toFixed(1)}%` : ''}`
+      const hasFlow = s.foreignBuyVol > 0 || s.foreignSellVol > 0
+      const foreignStr = hasFlow
+        ? `\n   Dòng NN: Mua=${s.foreignBuyVol.toLocaleString('vi-VN')} | Bán=${s.foreignSellVol.toLocaleString('vi-VN')} | Net=${foreignNet >= 0 ? '+' : ''}${foreignNet.toLocaleString('vi-VN')} CP${s.foreignRoom !== undefined ? ` | Room=${s.foreignRoom.toFixed(1)}%` : ''}`
         : ''
       const srStr = (s.support && s.resistance)
-        ? `\n   S/R: Hỗ trợ=${s.support2 ? s.support2.toLocaleString('vi-VN') + '→' : ''}${s.support.toLocaleString('vi-VN')}₫ | Kháng cự=${s.resistance2 ? s.resistance2.toLocaleString('vi-VN') + '→' : ''}${s.resistance.toLocaleString('vi-VN')}₫`
+        ? `\n   S/R: Hỗ trợ=${s.support2 ? s.support2.toLocaleString('vi-VN') + '→' : ''}${s.support.toLocaleString('vi-VN')}₫ | Kháng cự=${s.resistance.toLocaleString('vi-VN')}${s.resistance2 ? '→' + s.resistance2.toLocaleString('vi-VN') : ''}₫`
         : ''
       const w52Str = (s.w52high && s.w52low)
         ? `\n   52W: Low=${s.w52low.toLocaleString('vi-VN')}₫ / High=${s.w52high.toLocaleString('vi-VN')}₫ → Giá ở ${s.w52position ?? 50}% vùng 52 tuần`
         : ''
-      const pegStr = s.peg !== undefined ? ` | PEG=${s.peg.toFixed(2)}x${s.peg < 1 ? '🟢' : s.peg < 2 ? '' : '🔴'}` : ''
-      const rsStr2 = s.rs30d !== undefined ? ` | RS_vs_VNI=${s.rs30d >= 0 ? '+' : ''}${s.rs30d.toFixed(1)}%${s.rs30d > 3 ? '🚀' : s.rs30d < -3 ? '⚠' : ''}` : ''
+      const pegStr = s.peg !== undefined ? ` | PEG=${s.peg.toFixed(2)}x${s.peg < 0.8 ? '🟢rẻ' : s.peg < 1.5 ? '' : '🔴đắt'}` : ''
+      const rsStr = s.rs30d !== undefined ? ` | RS_VNI=${s.rs30d >= 0 ? '+' : ''}${s.rs30d.toFixed(1)}%${s.rs30d > 5 ? '🚀' : s.rs30d > 0 ? '↑' : s.rs30d < -5 ? '⚠' : '↓'}` : ''
+      const marginStr = (s.netMargin && s.netMargin > 0) ? ` | BiênLN=${s.netMargin.toFixed(1)}%` : ''
       const newsStr = s.newsHeadlines && s.newsHeadlines.length > 0
-        ? `\n   Tin tức: ${s.newsHeadlines.slice(0, 2).map(h => `"${h.slice(0, 90)}"`).join(' | ')}`
+        ? `\n   Tin tức: ${s.newsHeadlines.slice(0, 2).map(h => `"${h.slice(0, 80)}"`).join(' | ')}`
+        : ''
+      const marginQuality = (s.profitGrowth !== 0 && s.revenueGrowth !== 0)
+        ? ` [${s.profitGrowth > s.revenueGrowth ? '↑Biên_MỞ' : '↓Biên_THU'}]`
         : ''
       return `${i + 1}. [${s.symbol}] ${s.industry}
-   Giá: ${s.price.toLocaleString('vi-VN')}₫ (${s.changePct > 0 ? '+' : ''}${s.changePct.toFixed(1)}% hôm nay, Trend30D: ${s.trend30d >= 0 ? '+' : ''}${s.trend30d.toFixed(1)}%)
-   Kỹ thuật: RSI=${s.rsi} | ADX=${s.adx} (${s.adxTrend}) | MACD=${s.macdSignal} hist=${s.macdHistogram} | ${s.aboveSMA20 ? '↑SMA20' : '↓SMA20'} | ${s.aboveSMA50 ? '↑SMA50' : '↓SMA50'} | BB: ${s.bbSignal} | Vol: ${s.volumeSignal}
+   Giá: ${s.price.toLocaleString('vi-VN')}₫ | Hôm nay: ${s.changePct >= 0 ? '+' : ''}${s.changePct.toFixed(1)}% | Trend30D: ${s.trend30d >= 0 ? '+' : ''}${s.trend30d.toFixed(1)}%${rsStr}
+   Kỹ thuật: RSI=${s.rsi} | ADX=${s.adx}(${s.adxTrend}) | MACD ${s.macdSignal} hist=${s.macdHistogram} | ${s.aboveSMA20 ? '↑SMA20' : '↓SMA20'} ${s.aboveSMA50 ? '↑SMA50' : '↓SMA50'} | BB=${s.bbSignal} | Vol=${s.volumeSignal}
    Momentum: 1T=${s.momentum1M >= 0 ? '+' : ''}${s.momentum1M}% | 3T=${s.momentum3M >= 0 ? '+' : ''}${s.momentum3M}% | KL=${s.volume.toLocaleString('vi-VN')}${srStr}${w52Str}
-   Cơ bản: P/E=${s.pe.toFixed(1)}x | P/B=${s.pb.toFixed(2)}x | EPS=${s.eps.toLocaleString('vi-VN')}₫ | ROE=${s.roe.toFixed(1)}% | ROA=${s.roa.toFixed(1)}% | LN_Growth=${s.profitGrowth >= 0 ? '+' : ''}${s.profitGrowth.toFixed(1)}% | DT_Growth=${s.revenueGrowth >= 0 ? '+' : ''}${s.revenueGrowth.toFixed(1)}%${s.dividendYield > 0 ? ` | Cổ tức=${s.dividendYield.toFixed(1)}%` : ''}${s.debtEquity > 0 ? ` | Nợ/Vốn=${s.debtEquity.toFixed(2)}x` : ''}${pegStr}${rsStr2}${foreignStr}${newsStr}`
+   Cơ bản: P/E=${s.pe.toFixed(1)}x | P/B=${s.pb.toFixed(2)}x | EPS=${s.eps.toLocaleString('vi-VN')}₫ | ROE=${s.roe.toFixed(1)}% | ROA=${s.roa.toFixed(1)}%${marginStr} | LN_Growth=${s.profitGrowth >= 0 ? '+' : ''}${s.profitGrowth.toFixed(1)}% | DT_Growth=${s.revenueGrowth >= 0 ? '+' : ''}${s.revenueGrowth.toFixed(1)}%${marginQuality}${s.dividendYield > 0 ? ` | Cổtức=${s.dividendYield.toFixed(1)}%` : ''}${s.debtEquity > 0 ? ` | D/E=${s.debtEquity.toFixed(2)}x` : ''}${pegStr}${foreignStr}${newsStr}`
     })
-    .join('\n')
+    .join('\n\n')
 
-  const prompt = `PHÂN TÍCH CHUYÊN SÂU ${ctx.stocks.length} MÃ CỔ PHIẾU VIỆT NAM (${timestamp})
-${vnBlock}${sectorBenchBlock}
-═══════════════════════════════════════════
-DỮ LIỆU THỰC TẾ TỪNG MÃ (90 ngày lịch sử):
-═══════════════════════════════════════════
+  const systemPrompt = `Bạn là fund manager CFA Level 3, 20 năm tại HOSE/HNX (Dragon Capital, Vinacapital). Chuyên đánh giá đa yếu tố: kỹ thuật ADX/RSI/MACD, cơ bản PE/ROE/tăng trưởng, và dòng tiền ngoại (tín hiệu hàng đầu TTCK VN). Phân tích khách quan, dựa 100% trên số liệu thực tế. BẮT BUỘC dùng tool predict_stocks để output. KHÔNG text ngoài tool call.
+
+SCORING FRAMEWORK (100 điểm = 30 Kỹ thuật + 40 Cơ bản + 30 Dòng tiền):
+
+━━ KỸ THUẬT 30đ ━━
+• ADX≥25+DI+>DI-=+8 | ADX 15-25=+4 | ADX<15(sideway)=-2
+• RSI 40-60(tối ưu entry)=+6 | RSI 30-40(quá bán)=+4 | RSI<30(oversold bounce)=+3 | RSI>70=-3
+• MACD hist dương+tăng=+6 | âm+giảm=-4 | neutral=0
+• Trên SMA20+SMA50=+5 | chỉ trên SMA20=+2 | dưới SMA50=-3
+• BB inside=+3 | BB oversold(dưới lower)=+4 | BB overbought(trên upper)=-2
+• Momentum1T>0 VÀ 3T>0=+2 | cả 2 âm=-2
+
+━━ CƠ BẢN 40đ ━━
+• P/E so benchmark ngành: <50%=+10 | 50-80%=+7 | 80-120%=+4 | >150%=-3
+• ROE: >20%=+8 | 15-20%=+6 | 10-15%=+3 | <10%=-2
+• LN_growth: >25%=+8 | 15-25%=+6 | 5-15%=+3 | âm=-5
+• Biên LN mở rộng(LN_growth>DT_growth)=+4 | thu hẹp=-2
+• PEG<0.8=+5 | 0.8-1.5=+3 | >2.5=-2 | N/A=0
+• D/E(non-bank): <0.5=+5 | 0.5-1.5=+2 | >2.0=-3; bank→ROA>1.5%=+3,ROA<0.8%=-2
+
+━━ DÒNG TIỀN + MOMENTUM 30đ ━━
+• NN mua ròng >500K CP=+10 | 100-500K=+6 | 0-100K=+2 | bán 0-100K=-2 | bán 100-500K=-4 | bán >500K=-8
+• RS30D vs VN-Index: >+5%=+8 | +2→+5%=+5 | -2→+2%=+2 | <-5%=-4
+• Volume vs avg20: >50%=+6 | 20-50%=+3 | <50%=-2
+• Tin tức/catalyst tốt rõ ràng=+6 | neutral=0 | xấu=-4
+
+MARKET REGIME ADJUSTMENT (áp dụng SAU base score):
+• BULL MẠNH(RSI>70+Trend>10%): Mã ADX≥25+NN mua ròng bonus+5đ; mã RS30D âm penalty-5đ
+• BEAR(RSI<45+Trend<-3%): Trừ 8đ tất cả; chỉ khuyến nghị MUA nếu score≥75 sau điều chỉnh
+• SIDEWAYS: Ưu tiên RS30D>0 và cả 2 momentum dương
+
+FORMULA BẮT BUỘC:
+• entryZone.low = max(support1, price×0.985) nếu price>SMA20; hoặc price×0.978 nếu price<SMA20
+• entryZone.high = min(price×1.008, resistance1×0.99) nếu resistance1>price×1.03; else price×1.005
+• stopLoss(swing): support1 hoặc SMA50×0.97, tối đa -7% từ entryHigh
+• stopLoss(longterm/dca): SMA50×0.95, tối đa -12% từ entryHigh
+• stopLoss(dividend/etf): entryHigh×0.90
+• targetPrice(swing): resistance1 hoặc BB_upper, upside 8-15%
+• targetPrice(longterm/dca/dividend/etf): EPS×(PE_benchmark_ngành×0.95), upside 15-35%`
+
+  const prompt = `PHÂN TÍCH ${ctx.stocks.length} MÃ CỔ PHIẾU VIỆT NAM — ${timestamp}
+PHONG CÁCH: ${ctx.style.toUpperCase()} — ${styleDesc}
+
+${vnBlock}
+${sectorBenchBlock}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DỮ LIỆU THỰC TẾ TỪNG MÃ (kỹ thuật 90D + realtime + cơ bản):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${tableRows}
 
-═══════════════════════════════════════════
-PHONG CÁCH ĐẦU TƯ CẦN PHÂN TÍCH:
-${styleDesc}
-═══════════════════════════════════════════
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+NHIỆM VỤ:
+1. Tính score 0-100 cho từng mã theo SCORING FRAMEWORK ở system prompt
+2. So sánh P/E, P/B, ROE từng mã với BENCHMARK NGÀNH ở trên
+3. Áp dụng MARKET REGIME ADJUSTMENT theo bối cảnh VN-Index
+4. Chọn TOP 5 mã có score cao nhất VÀ phù hợp nhất với phong cách ${ctx.style}
+5. Tính targetPrice, entryZone, stopLoss theo FORMULA đã cho
+6. Gọi tool predict_stocks với đầy đủ 5 mã
 
-NHIỆM VỤ: Với vai trò chuyên gia quản lý quỹ CFA, hãy:
-1. Phân tích từng mã dựa trên dữ liệu KỸ THUẬT (ADX xu hướng, RSI, MACD, BB, momentum) và CƠ BẢN (P/E, P/B, ROE, ROA, tăng trưởng) thực tế ở trên
-2. Xét tác động dòng tiền nước ngoài (NN mua/bán ròng) — tín hiệu quan trọng nhất TTCK VN
-3. Chọn TOP 5 mã PHÙ HỢP NHẤT cho phong cách đầu tư này
-4. Với mỗi mã: giải thích cụ thể TẠI SAO phù hợp dựa trên các con số thực tế
-5. Xếp hạng từ phù hợp nhất → ít phù hợp nhất
-6. Định giá target price dựa trên PE ngành, tăng trưởng dự phóng và kỹ thuật
+QUAN TRỌNG: reason BẮT BUỘC gồm 4 yếu tố: (1) kỹ thuật ADX/RSI/MACD có số cụ thể, (2) cơ bản PE so ngành/ROE/LN_growth, (3) dòng tiền NN số CP mua/bán ròng, (4) rủi ro chính. catalyst: sự kiện CỤ THỂ trong 1-3 tháng tới.`
 
-PHÂN TÍCH PHẢI BAO GỒM (scoring = 30% kỹ thuật + 40% cơ bản + 30% momentum/tin tức/dòng tiền):
-- ADX: xu hướng mạnh/sideway? RSI/MACD có đáng tin không?
-- MACD histogram: đang tăng hay giảm? momentum ngắn hạn
-- BB: giá đang overbought/oversold/trong dải?
-- Momentum 1T/3T: ngắn hạn vs dài hạn khớp nhau không?
-- PEG: < 1.0 = rẻ so tăng trưởng (ưu tiên cao), 1-2 = hợp lý, > 2 = đắt
-- Relative Strength (RS): cổ phiếu outperform hay underperform VN-Index? (tín hiệu chọn lọc quan trọng)
-- Chất lượng LN: biên LN mở rộng (LN_Growth > DT_Growth) hay thu hẹp?
-- Dòng NN: smart money đang mua hay bán mã này?
-- Bối cảnh VN-Index: thị trường chung hỗ trợ hay cản trở?
-- Tin tức: có sự kiện catalyst tích cực/tiêu cực nào không?
-- Cơ bản: P/E+P/B định giá hợp lý? ROE+ROA so ngành? Tăng trưởng bền vững?
-
-PHẢI dùng đúng tên field: "pe", "roe", "growth" trong keyMetrics.
-
-Trả về JSON array trong thẻ <result>:
-<result>
-[{
-  "rank": 1,
-  "symbol": "FPT",
-  "score": 88,
-  "recommendation": "MUA MẠNH",
-  "targetPrice": 98000,
-  "currentPrice": 85200,
-  "upsidePct": 15.0,
-  "reason": "Tăng trưởng LN 28% YoY vượt kỳ vọng. ROE 23% duy trì bền vững 5 năm. RSI 48 chưa quá mua, giá trên SMA20+SMA50 xác nhận xu hướng tăng. P/E 18x hợp lý cho tốc độ tăng trưởng. Thị trường IT đang mở rộng mạnh tại VN.",
-  "keyMetrics": {"pe": 18.5, "roe": 22.1, "growth": 28.3},
-  "riskLevel": "THẤP",
-  "entryZone": {"low": 83000, "high": 87000}
-}]
-</result>`
-
-  const response = await client.messages.create({
-    model: 'claude-opus-4-6',
-    max_tokens: 5000,
-    system:
-      'Bạn là chuyên gia quản lý quỹ đầu tư CFA với 20 năm kinh nghiệm chuyên sâu tại thị trường chứng khoán Việt Nam (HOSE/HNX). Bạn thông thạo phân tích kỹ thuật, phân tích cơ bản, định giá doanh nghiệp, và chiến lược đầu tư đa phong cách. Phân tích khách quan dựa trên dữ liệu thực tế. QUAN TRỌNG: Chỉ được trả về JSON array hợp lệ trong thẻ <result></result>. Không có text, markdown hay giải thích nào ngoài thẻ đó.',
+  const response = await withRetry(() => client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 3500,
+    system: systemPrompt,
+    tools: [PREDICT_TOOL],
+    tool_choice: { type: 'tool', name: 'predict_stocks' },
     messages: [{ role: 'user', content: prompt }],
-  })
+  }))
 
-  const firstBlock = response.content?.[0]
-  const text = firstBlock && firstBlock.type === 'text' ? firstBlock.text : ''
+  const toolBlock = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
+  if (!toolBlock?.input) throw new Error('Claude did not return prediction data')
 
-  if (!text) {
-    throw new Error('Claude returned empty response')
+  const result = toolBlock.input as {
+    predictions: Array<{
+      rank: number; symbol: string; score: number; recommendation: string
+      targetPrice: number; currentPrice: number; upsidePct: number
+      reason: string; catalyst?: string
+      keyMetrics: { pe: number; roe: number; growth: number }
+      riskLevel: string; entryZone: { low: number; high: number }
+      stopLoss?: number
+    }>
   }
-
-  return JSON.parse(extractJSONArray(text))
+  return result.predictions ?? []
 }
 
 // ─── Chat AI ────────────────────────────────────────────────────────────────
@@ -1050,8 +1099,8 @@ QUY TẮC TRẢ LỜI — PHÂN TÍCH CHUYÊN SÂU:
   }
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-6',
-    max_tokens: 3000,
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2000,
     system: systemPrompt,
     messages: anthropicMessages,
   })
