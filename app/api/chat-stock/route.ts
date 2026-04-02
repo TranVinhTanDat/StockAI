@@ -2,17 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { chatStockAnalysis, type ChatMessage, type InvestmentStyle } from '@/lib/claude'
 import { requireAuth } from '@/lib/requireAuth'
 import { fetchQuote, fetchHistory } from '@/lib/tcbs'
-import { calcRSI, calcMACD, calcSMA, calcBB, calcADX } from '@/lib/indicators'
+import { calcRSI, calcMACD, calcSMA, calcBB, calcADX, calcBeta } from '@/lib/indicators'
+import { INDUSTRY_MAP } from '@/lib/utils'
 
 export const maxDuration = 60
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL
   || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 
-async function fetchVNIndexContext(): Promise<{ trend30d: number; currentLevel: number; rsi: number } | null> {
+async function fetchVNIndexContext(): Promise<{ trend30d: number; currentLevel: number; rsi: number; closes: number[] } | null> {
   try {
     const to = Math.floor(Date.now() / 1000)
-    const from = to - 35 * 86400
+    const from = to - 95 * 86400  // 95D for beta calculation (enough for 90D stock overlap)
     const res = await fetch(
       `https://histdatafeed.vps.com.vn/tradingview/history?symbol=VNINDEX&resolution=D&from=${from}&to=${to}`,
       { next: { revalidate: 3600 } }
@@ -25,34 +26,46 @@ async function fetchVNIndexContext(): Promise<{ trend30d: number; currentLevel: 
     const trend30d = first > 0 ? Math.round(((last - first) / first) * 1000) / 10 : 0
     const rsiArr = calcRSI(closes, 14).filter((v: number) => !isNaN(v))
     const rsi = rsiArr.length > 0 ? Math.round(rsiArr[rsiArr.length - 1]) : 50
-    return { trend30d, currentLevel: Math.round(last), rsi }
+    return { trend30d, currentLevel: Math.round(last), rsi, closes }
   } catch { return null }
 }
 
-async function fetchSimplize(symbol: string): Promise<{ roa: number; roe: number; pe: number; pb: number; eps: number; netMargin: number; dividendYield: number; debtToEquity: number }> {
+async function fetchSimplize(symbol: string): Promise<{
+  roa: number; roe: number; pe: number; pb: number; eps: number
+  netMargin: number; grossMargin: number; operatingMargin: number
+  dividendYield: number; debtToEquity: number; currentRatio: number
+  revenueGrowth: number; profitGrowth: number; marketCap: number
+}> {
+  const zero = { roa: 0, roe: 0, pe: 0, pb: 0, eps: 0, netMargin: 0, grossMargin: 0, operatingMargin: 0, dividendYield: 0, debtToEquity: 0, currentRatio: 0, revenueGrowth: 0, profitGrowth: 0, marketCap: 0 }
   try {
     const res = await fetch(`https://api.simplize.vn/api/company/summary/${symbol}`, {
       headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://simplize.vn/' },
       signal: AbortSignal.timeout(5000),
       next: { revalidate: 3600 } as RequestInit['next'],
     })
-    if (!res.ok) return { roa: 0, roe: 0, pe: 0, pb: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 }
+    if (!res.ok) return zero
     const d = await res.json()
     const s = d?.data || d
     return {
       roa: s?.roa || 0, roe: s?.roe || 0, pe: s?.peRatio || 0, pb: s?.pbRatio || 0, eps: s?.epsRatio || 0,
       netMargin: s?.netProfitMargin || s?.netMarginRatio || s?.netMargin || 0,
+      grossMargin: s?.grossProfitMargin || s?.grossMargin || s?.grossProfitRatio || s?.grossMarginRatio || 0,
+      operatingMargin: s?.operatingMargin || s?.operatingProfitMargin || s?.ebitMargin || s?.operatingMarginRatio || 0,
       dividendYield: s?.dividendYield || s?.dividendRatio || s?.dividend || 0,
       debtToEquity: s?.deRatio || s?.debtToEquity || s?.leverageRatio || 0,
+      currentRatio: s?.currentRatio || s?.liquidityRatio || s?.currentLiquidityRatio || 0,
+      revenueGrowth: s?.revenueGrowth || s?.revenue_growth || s?.revenueGrowthRate || s?.revenueGrowth1Y || 0,
+      profitGrowth: s?.profitGrowth || s?.earningGrowth || s?.netIncomeGrowth || s?.profitGrowthRate || s?.earningGrowth1Y || 0,
+      marketCap: s?.marketCap || s?.marketCapitalization || s?.cap || s?.marketCapVnd || 0,
     }
-  } catch { return { roa: 0, roe: 0, pe: 0, pb: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 } }
+  } catch { return zero }
 }
 
 // Fetch CafeF quarterly EPS/PE trend (4 quarters)
 async function fetchCafeFQuarterlyRatios(symbol: string): Promise<Array<{ period: string; eps: number; pe: number }>> {
   try {
     const res = await fetch(
-      `https://cafef.vn/du-lieu/Ajax/PageNew/ChiSoTaiChinh.ashx?Symbol=${symbol}&TotalRow=4&ReportType=Q&Sort=DESC`,
+      `https://cafef.vn/du-lieu/Ajax/PageNew/ChiSoTaiChinh.ashx?Symbol=${symbol}&TotalRow=8&ReportType=Q&Sort=DESC`,
       { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(4000), next: { revalidate: 86400 } as RequestInit['next'] }
     )
     if (!res.ok) return []
@@ -60,7 +73,7 @@ async function fetchCafeFQuarterlyRatios(symbol: string): Promise<Array<{ period
     const rows: Array<Record<string, unknown>> =
       data?.Data?.Data || data?.data?.Data || data?.Data || data?.data || []
     if (!Array.isArray(rows) || rows.length === 0) return []
-    return rows.slice(0, 4).map(r => ({
+    return rows.slice(0, 8).map(r => ({
       period: String(r.ReportDate || r.Quarter || r.reportDate || r.year || ''),
       eps: Number(r.EPS || r.eps || 0),
       pe: Number(r.PriceToEarning || r.PE || r.pe || r.priceToEarning || 0),
@@ -185,7 +198,7 @@ export async function POST(request: NextRequest) {
 
     const quote = quoteRes.status === 'fulfilled' ? quoteRes.value : null
     const candles = histRes.status === 'fulfilled' ? histRes.value : []
-    const simplize = simplizeRes.status === 'fulfilled' ? simplizeRes.value : { roa: 0, roe: 0, pe: 0, pb: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 }
+    const simplize = simplizeRes.status === 'fulfilled' ? simplizeRes.value : { roa: 0, roe: 0, pe: 0, pb: 0, eps: 0, netMargin: 0, grossMargin: 0, operatingMargin: 0, dividendYield: 0, debtToEquity: 0, currentRatio: 0, revenueGrowth: 0, profitGrowth: 0, marketCap: 0 }
     const cafeGrowth = cafeGrowthRes.status === 'fulfilled' ? cafeGrowthRes.value : { revenueGrowth: 0, profitGrowth: 0 }
     const newsHeadlines = newsRes.status === 'fulfilled' ? newsRes.value : []
     const vnIndex = vnIndexRes.status === 'fulfilled' ? vnIndexRes.value : null
@@ -257,6 +270,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Beta calculation from overlapping stock vs VN-Index daily returns
+    const stockCloses = candles.map((c: { close: number }) => c.close)
+    const vnCloses = vnIndex?.closes || []
+    const beta = stockCloses.length >= 11 && vnCloses.length >= 11
+      ? calcBeta(stockCloses, vnCloses)
+      : 0
+
     const validStyle = style && VALID_STYLES.includes(style) ? style as InvestmentStyle : undefined
 
     // 52-week position
@@ -265,10 +285,25 @@ export async function POST(request: NextRequest) {
     const price = quote?.price || 0
     const w52position = w52high > w52low ? Math.round(((price - w52low) / (w52high - w52low)) * 100) : undefined
 
+    // Growth data: CafeF primary, Simplize fallback
+    const effectiveRevenueGrowth = cafeGrowth.revenueGrowth !== 0 ? cafeGrowth.revenueGrowth : (simplize.revenueGrowth || 0)
+    const effectiveProfitGrowth  = cafeGrowth.profitGrowth  !== 0 ? cafeGrowth.profitGrowth  : (simplize.profitGrowth  || 0)
+
+    // YoY EPS growth from 8 quarterly data points (index 0 = latest, index 4 = same quarter ~1 year ago)
+    let epsGrowthYoY: number | undefined
+    if (quarterlyRatios.length >= 5 && quarterlyRatios[0].eps > 0 && quarterlyRatios[4].eps > 0) {
+      epsGrowthYoY = Math.round(((quarterlyRatios[0].eps - quarterlyRatios[4].eps) / Math.abs(quarterlyRatios[4].eps)) * 100)
+    }
+
+    // Use EPS YoY as last-resort fallback for PEG calculation
+    const growthForPEG = effectiveProfitGrowth !== 0 ? effectiveProfitGrowth : (epsGrowthYoY ?? 0)
+
     const ctx = {
       symbol: sym,
+      industry: INDUSTRY_MAP[sym] || quote?.industry || undefined,
       price,
       changePct: quote?.changePct || 0,
+      marketCap: simplize.marketCap || undefined,
       style: validStyle,
       rsi, macd, signal, macdHistogram,
       sma20, sma50, aboveSMA20, aboveSMA50,
@@ -280,13 +315,18 @@ export async function POST(request: NextRequest) {
       eps: simplize.eps,
       roe: simplize.roe,
       roa: simplize.roa,
-      revenueGrowth: cafeGrowth.revenueGrowth,
-      profitGrowth: cafeGrowth.profitGrowth,
+      revenueGrowth: effectiveRevenueGrowth,
+      profitGrowth: effectiveProfitGrowth,
       dividendYield: simplize.dividendYield || 0,
       debtEquity: simplize.debtToEquity || 0,
       netMargin: simplize.netMargin || 0,
+      grossMargin: simplize.grossMargin || undefined,
+      operatingMargin: simplize.operatingMargin || undefined,
+      currentRatio: simplize.currentRatio || undefined,
+      beta: beta !== 0 ? beta : undefined,
       quarterlyEPS: quarterlyRatios.length >= 2 ? quarterlyRatios : undefined,
-      peg: (simplize.pe > 0 && cafeGrowth.profitGrowth > 5) ? Math.round((simplize.pe / cafeGrowth.profitGrowth) * 100) / 100 : undefined,
+      epsGrowthYoY,
+      peg: (simplize.pe > 0 && growthForPEG > 5) ? Math.round((simplize.pe / growthForPEG) * 100) / 100 : undefined,
       rs30d: vnIndex ? Math.round((trend30d - vnIndex.trend30d) * 10) / 10 : undefined,
       foreignBuyVol: quote?.foreignBuyVol || 0,
       foreignSellVol: quote?.foreignSellVol || 0,

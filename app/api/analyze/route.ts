@@ -3,7 +3,7 @@ import { analyzeStock } from '@/lib/claude'
 import { calculateSmartScore } from '@/lib/smartScore'
 import { createClient } from '@supabase/supabase-js'
 import { verifyToken } from '@/lib/jwt'
-import { calcRSI, calcDMI } from '@/lib/indicators'
+import { calcRSI, calcDMI, calcBeta } from '@/lib/indicators'
 
 function getServerSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -39,14 +39,14 @@ async function saveCachedResult(symbol: string, result: unknown) {
 }
 
 // Fetch Simplize for full fundamental data — replaces WAF-blocked Vietcap
-async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pb: number; pe: number; eps: number; netMargin: number; dividendYield: number; debtToEquity: number }> {
+async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pb: number; pe: number; eps: number; netMargin: number; grossMargin: number; operatingMargin: number; currentRatio: number; dividendYield: number; debtToEquity: number }> {
   try {
     const res = await fetch(`https://api.simplize.vn/api/company/summary/${symbol}`, {
       headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://simplize.vn/' },
       signal: AbortSignal.timeout(5000),
       next: { revalidate: 3600 } as RequestInit['next'],
     })
-    if (!res.ok) return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 }
+    if (!res.ok) return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, grossMargin: 0, operatingMargin: 0, currentRatio: 0, dividendYield: 0, debtToEquity: 0 }
     const d = await res.json()
     const s = d?.data || d
     return {
@@ -56,10 +56,13 @@ async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe:
       pe: s?.peRatio || 0,
       eps: s?.epsRatio || 0,
       netMargin: s?.netProfitMargin || s?.netMarginRatio || s?.netMargin || 0,
+      grossMargin: s?.grossProfitMargin || s?.grossMargin || s?.grossProfitRatio || s?.grossMarginRatio || 0,
+      operatingMargin: s?.operatingMargin || s?.operatingProfitMargin || s?.ebitMargin || s?.operatingMarginRatio || 0,
+      currentRatio: s?.currentRatio || s?.liquidityRatio || s?.currentLiquidityRatio || 0,
       dividendYield: s?.dividendYield || s?.dividendRatio || s?.dividend || 0,
       debtToEquity: s?.deRatio || s?.debtToEquity || s?.leverageRatio || 0,
     }
-  } catch { return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 } }
+  } catch { return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, grossMargin: 0, operatingMargin: 0, currentRatio: 0, dividendYield: 0, debtToEquity: 0 } }
 }
 
 // Fetch CafeF KeHoachKinhDoanh for revenue/profit growth (fallback when Vietcap GraphQL is unavailable)
@@ -183,24 +186,24 @@ async function fetchStockHistoryForSmartScore(symbol: string): Promise<{ closes:
   } catch { return null }
 }
 
-// Fetch VN-Index 30-day trend for market context
-async function fetchVNIndexContext(): Promise<{ trend30d: number; currentLevel: number; rsi: number }> {
+// Fetch VN-Index 30-day trend + closes array (for beta calculation)
+async function fetchVNIndexContext(): Promise<{ trend30d: number; currentLevel: number; rsi: number; closes: number[] }> {
   try {
     const to = Math.floor(Date.now() / 1000)
-    const from = to - 35 * 86400
+    const from = to - 95 * 86400  // 95D for beta calculation overlap
     const res = await fetch(
       `https://histdatafeed.vps.com.vn/tradingview/history?symbol=VNINDEX&resolution=D&from=${from}&to=${to}`
     )
-    if (!res.ok) return { trend30d: 0, currentLevel: 0, rsi: 50 }
+    if (!res.ok) return { trend30d: 0, currentLevel: 0, rsi: 50, closes: [] }
     const d = await res.json()
-    if (!d.c || d.c.length < 5) return { trend30d: 0, currentLevel: 0, rsi: 50 }
+    if (!d.c || d.c.length < 5) return { trend30d: 0, currentLevel: 0, rsi: 50, closes: [] }
     const closes: number[] = d.c
     const first = closes[0], last = closes[closes.length - 1]
     const trend30d = first > 0 ? ((last - first) / first) * 100 : 0
     const rsiArr = calcRSI(closes, 14).filter((v: number) => !isNaN(v))
     const rsi = rsiArr.length > 0 ? Math.round(rsiArr[rsiArr.length - 1]) : 50
-    return { trend30d: Math.round(trend30d * 10) / 10, currentLevel: Math.round(last), rsi }
-  } catch { return { trend30d: 0, currentLevel: 0, rsi: 50 } }
+    return { trend30d: Math.round(trend30d * 10) / 10, currentLevel: Math.round(last), rsi, closes }
+  } catch { return { trend30d: 0, currentLevel: 0, rsi: 50, closes: [] } }
 }
 
 export const maxDuration = 60
@@ -406,6 +409,10 @@ export async function POST(request: NextRequest) {
     const profitGrowthVal = cafeGrowth.profitGrowth || fundamental?.profitGrowth || 0
     const peg = peVal > 0 && profitGrowthVal > 5 ? Math.round((peVal / profitGrowthVal) * 100) / 100 : undefined
     const rs30d = vnIndex ? Math.round((momentum1M - vnIndex.trend30d) * 10) / 10 : undefined
+    // Beta from stock closes vs VN-Index closes
+    const beta = closesArr.length >= 11 && vnIndex.closes.length >= 11
+      ? calcBeta(closesArr, vnIndex.closes)
+      : undefined
 
     // Run SmartScore to get algorithmic recommendation — pass to Claude for synchronization
     // Fetch 265-day history directly (same as Phân Tích Nhanh) so SmartScore results match exactly
@@ -471,6 +478,9 @@ export async function POST(request: NextRequest) {
       roa: simplize.roa || fundamental?.roa || 0,
       pb: simplize.pb || 0,
       netMargin: simplize.netMargin || 0,
+      grossMargin: simplize.grossMargin || 0,
+      operatingMargin: simplize.operatingMargin || 0,
+      currentRatio: simplize.currentRatio || 0,
       revenueGrowth: cafeGrowth.revenueGrowth || fundamental?.revenueGrowth || 0,  // CafeF > Vietcap
       profitGrowth: cafeGrowth.profitGrowth || fundamental?.profitGrowth || 0,
       debtEquity: simplize.debtToEquity || fundamental?.debtEquity || 0,
@@ -499,6 +509,7 @@ export async function POST(request: NextRequest) {
       reportTitle: analystReport.reportTitle || undefined,
       peg,
       rs30d,
+      beta,
       forcedRecommendation: smartRecommendation,
     })
 

@@ -3,7 +3,7 @@ import { fetchQuote } from '@/lib/tcbs'
 import { predictStocks, type InvestmentStyle } from '@/lib/claude'
 import { requireAuth } from '@/lib/requireAuth'
 import { INDUSTRY_MAP } from '@/lib/utils'
-import { calcRSI, calcMACD, calcBB, calcADX, calcSMA } from '@/lib/indicators'
+import { calcRSI, calcMACD, calcBB, calcADX, calcSMA, calcBeta } from '@/lib/indicators'
 import type { PredictionItem } from '@/types'
 
 export const maxDuration = 60
@@ -29,15 +29,15 @@ const STYLE_SYMBOLS: Record<InvestmentStyle, string[]> = {
   etf:      ['VCB', 'BID', 'CTG', 'HPG', 'VNM', 'GAS', 'FPT', 'VIC', 'VHM', 'MSN', 'MWG', 'TCB'],
 }
 
-// Fetch Simplize for ROE/ROA/PB/PE/EPS + netMargin/dividendYield — replaces WAF-blocked Vietcap
-async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pb: number; pe: number; eps: number; netMargin: number; dividendYield: number; debtToEquity: number }> {
+// Fetch Simplize for ROE/ROA/PB/PE/EPS + margins/dividendYield — replaces WAF-blocked Vietcap
+async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe: number; pb: number; pe: number; eps: number; netMargin: number; grossMargin: number; operatingMargin: number; dividendYield: number; debtToEquity: number }> {
   try {
     const res = await fetch(`https://api.simplize.vn/api/company/summary/${symbol}`, {
       headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://simplize.vn/' },
       signal: AbortSignal.timeout(4000),
       next: { revalidate: 3600 } as RequestInit['next'],
     })
-    if (!res.ok) return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 }
+    if (!res.ok) return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, grossMargin: 0, operatingMargin: 0, dividendYield: 0, debtToEquity: 0 }
     const d = await res.json()
     const s = d?.data || d
     return {
@@ -47,10 +47,32 @@ async function fetchSimplizeSummary(symbol: string): Promise<{ roa: number; roe:
       pe: s?.peRatio || 0,
       eps: s?.epsRatio || 0,
       netMargin: s?.netProfitMargin || s?.netMarginRatio || s?.netMargin || 0,
+      grossMargin: s?.grossProfitMargin || s?.grossMargin || s?.grossProfitRatio || s?.grossMarginRatio || 0,
+      operatingMargin: s?.operatingMargin || s?.operatingProfitMargin || s?.ebitMargin || s?.operatingMarginRatio || 0,
       dividendYield: s?.dividendYield || s?.dividendRatio || s?.dividend || 0,
       debtToEquity: s?.deRatio || s?.debtToEquity || s?.leverageRatio || 0,
     }
-  } catch { return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 } }
+  } catch { return { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, grossMargin: 0, operatingMargin: 0, dividendYield: 0, debtToEquity: 0 } }
+}
+
+// Fetch CafeF quarterly EPS/PE trend — for EPS growth YoY and PEG fallback
+async function fetchCafeFQuarterlyRatios(symbol: string): Promise<Array<{ period: string; eps: number; pe: number }>> {
+  try {
+    const res = await fetch(
+      `https://cafef.vn/du-lieu/Ajax/PageNew/ChiSoTaiChinh.ashx?Symbol=${symbol}&TotalRow=8&ReportType=Q&Sort=DESC`,
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://cafef.vn/' }, signal: AbortSignal.timeout(1500), next: { revalidate: 86400 } as RequestInit['next'] }
+    )
+    if (!res.ok) return []
+    const data = await res.json()
+    const rows: Array<Record<string, unknown>> =
+      data?.Data?.Data || data?.data?.Data || data?.Data || data?.data || []
+    if (!Array.isArray(rows) || rows.length === 0) return []
+    return rows.slice(0, 8).map(r => ({
+      period: String(r.ReportDate || r.Quarter || r.reportDate || r.year || ''),
+      eps: Number(r.EPS || r.eps || 0),
+      pe: Number(r.PriceToEarning || r.PE || r.pe || r.priceToEarning || 0),
+    })).filter(r => r.period && (r.eps !== 0 || r.pe !== 0))
+  } catch { return [] }
 }
 
 // Fetch CafeF profit growth — 3s hard timeout so it never blocks predict
@@ -107,25 +129,25 @@ async function fetchStockNewsHeadlines(symbol: string): Promise<string[]> {
   } catch { return [] }
 }
 
-// Fetch VN-Index 30-day trend for market context
-async function fetchVNIndexContext(): Promise<{ trend30d: number; currentLevel: number; rsi: number }> {
+// Fetch VN-Index 30-day trend + closes array (for beta calculation)
+async function fetchVNIndexContext(): Promise<{ trend30d: number; currentLevel: number; rsi: number; closes: number[] }> {
   try {
     const to = Math.floor(Date.now() / 1000)
-    const from = to - 35 * 86400
+    const from = to - 95 * 86400  // 95D covers 90D stock candle window for beta
     const res = await fetch(
       `https://histdatafeed.vps.com.vn/tradingview/history?symbol=VNINDEX&resolution=D&from=${from}&to=${to}`,
       { next: { revalidate: 3600 } }
     )
-    if (!res.ok) return { trend30d: 0, currentLevel: 0, rsi: 50 }
+    if (!res.ok) return { trend30d: 0, currentLevel: 0, rsi: 50, closes: [] }
     const d = await res.json()
-    if (!d.c || d.c.length < 5) return { trend30d: 0, currentLevel: 0, rsi: 50 }
+    if (!d.c || d.c.length < 5) return { trend30d: 0, currentLevel: 0, rsi: 50, closes: [] }
     const closes: number[] = d.c
     const first = closes[0], last = closes[closes.length - 1]
     const trend30d = first > 0 ? ((last - first) / first) * 100 : 0
     const rsiArr = calcRSI(closes, 14).filter((v: number) => !isNaN(v))
     const rsi = rsiArr.length > 0 ? Math.round(rsiArr[rsiArr.length - 1]) : 50
-    return { trend30d: Math.round(trend30d * 10) / 10, currentLevel: Math.round(last), rsi }
-  } catch { return { trend30d: 0, currentLevel: 0, rsi: 50 } }
+    return { trend30d: Math.round(trend30d * 10) / 10, currentLevel: Math.round(last), rsi, closes }
+  } catch { return { trend30d: 0, currentLevel: 0, rsi: 50, closes: [] } }
 }
 
 // Quick algorithmic pre-filter: scores all stocks and selects top 6 before Claude
@@ -211,19 +233,21 @@ export async function GET(request: NextRequest) {
     const [vnIndex, ...stockResults] = await Promise.all([
       fetchVNIndexContext(),
       ...symbols.map(async (symbol) => {
-        const [quoteRes, simplizeRes, cafeGrowthRes, newsRes] = await Promise.allSettled([
+        const [quoteRes, simplizeRes, cafeGrowthRes, newsRes, quarterlyRes] = await Promise.allSettled([
           fetchQuote(symbol),
           fetchSimplizeSummary(symbol),
           fetchCafeFGrowth(symbol),
           fetchStockNewsHeadlines(symbol),
+          fetchCafeFQuarterlyRatios(symbol),
         ])
 
         const q = quoteRes.status === 'fulfilled' ? quoteRes.value : null
         // Reuse the 365d candles already fetched inside fetchQuote (saves 1 VPS request per stock)
         const candles = q?.candles?.slice(-90) || []
-        const s = simplizeRes.status === 'fulfilled' ? simplizeRes.value : { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, dividendYield: 0, debtToEquity: 0 }
+        const s = simplizeRes.status === 'fulfilled' ? simplizeRes.value : { roa: 0, roe: 0, pb: 0, pe: 0, eps: 0, netMargin: 0, grossMargin: 0, operatingMargin: 0, dividendYield: 0, debtToEquity: 0 }
         const g = cafeGrowthRes.status === 'fulfilled' ? cafeGrowthRes.value : { revenueGrowth: 0, profitGrowth: 0 }
         const newsHeadlines = newsRes.status === 'fulfilled' ? newsRes.value : []
+        const quarterlyRatios = quarterlyRes.status === 'fulfilled' ? quarterlyRes.value : []
 
         if (!q || q.price <= 0) return null
 
@@ -331,6 +355,12 @@ export async function GET(request: NextRequest) {
           ? Math.round(((lastClose - w52low) / (w52high - w52low)) * 100)
           : undefined
 
+        // EPS YoY growth from quarterly data (fallback for PEG when CafeF growth is 0)
+        let epsGrowthYoY: number | undefined
+        if (quarterlyRatios.length >= 5 && quarterlyRatios[0].eps > 0 && quarterlyRatios[4].eps > 0) {
+          epsGrowthYoY = Math.round(((quarterlyRatios[0].eps - quarterlyRatios[4].eps) / Math.abs(quarterlyRatios[4].eps)) * 100)
+        }
+
         return {
           symbol,
           price: q.price,
@@ -366,8 +396,10 @@ export async function GET(request: NextRequest) {
           roa: Math.round((s.roa || 0) * 10) / 10,
           pb: Math.round((s.pb || 0) * 100) / 100,
           netMargin: Math.round((s.netMargin || 0) * 10) / 10,
+          grossMargin: Math.round((s.grossMargin || 0) * 10) / 10,
           revenueGrowth: g.revenueGrowth,
           profitGrowth: g.profitGrowth,
+          epsGrowthYoY,
           debtEquity: Math.round((s.debtToEquity || 0) * 100) / 100,
           dividendYield: Math.round((s.dividendYield || 0) * 10) / 10,
           // Foreign investor flows
@@ -375,20 +407,32 @@ export async function GET(request: NextRequest) {
           foreignSellVol: q.foreignSellVol ?? 0,
           foreignNetVol: (q.foreignBuyVol ?? 0) - (q.foreignSellVol ?? 0),
           foreignRoom: q.foreignRoom,
-          // Derived metrics
-          peg: (s.pe > 0 && g.profitGrowth > 5) ? Math.round((s.pe / g.profitGrowth) * 100) / 100 : undefined,
+          // Derived metrics — use EPS YoY as PEG fallback when CafeF growth is missing
+          peg: (() => {
+            const growthForPEG = g.profitGrowth !== 0 ? g.profitGrowth : (epsGrowthYoY ?? 0)
+            return (s.pe > 0 && growthForPEG > 5) ? Math.round((s.pe / growthForPEG) * 100) / 100 : undefined
+          })(),
           newsHeadlines,
+          _candles: closes, // for beta calculation after vnIndex resolves
         }
       })
     ])
 
-    // Compute rs30d after Promise.all resolves (vnIndex is available now)
+    // Compute rs30d + beta after Promise.all resolves (vnIndex is available now)
+    const vnCloses = vnIndex?.closes || []
     const stocks = stockResults
       .filter((r): r is NonNullable<typeof r> => r !== null)
-      .map(s => ({
-        ...s,
-        rs30d: vnIndex ? Math.round((s.trend30d - vnIndex.trend30d) * 10) / 10 : undefined,
-      }))
+      .map(s => {
+        const stockCloses = s._candles || []
+        const beta = stockCloses.length >= 11 && vnCloses.length >= 11
+          ? calcBeta(stockCloses, vnCloses)
+          : undefined
+        return {
+          ...s,
+          rs30d: vnIndex ? Math.round((s.trend30d - vnIndex.trend30d) * 10) / 10 : undefined,
+          beta,
+        }
+      })
 
     if (stocks.length < 5) {
       return NextResponse.json(

@@ -183,8 +183,11 @@ interface AnalysisContext {
   resistance?: number
   support2?: number
   resistance2?: number
-  // Net profit margin (biên lợi nhuận ròng)
-  netMargin?: number
+  // Margins
+  netMargin?: number          // Biên lợi nhuận ròng
+  grossMargin?: number        // Biên lợi nhuận gộp (pricing power)
+  operatingMargin?: number    // Biên EBIT (hiệu quả hoạt động)
+  currentRatio?: number       // Thanh khoản ngắn hạn (current assets / current liabilities)
   // Quarterly EPS trend (4 quarters, newest first) — shows earnings acceleration/deceleration
   quarterlyEPS?: Array<{ period: string; eps: number; pe: number }>
   // Latest analyst report PDF (base64) for deep analysis
@@ -193,6 +196,7 @@ interface AnalysisContext {
   // Derived valuation metrics
   peg?: number       // PE / profitGrowth — định giá tương đối vs tốc độ tăng trưởng
   rs30d?: number     // stock 30D return - VN-Index 30D return (outperform/underperform)
+  beta?: number      // Market Beta — hệ số biến động so VN-Index (β>1.2=high risk, β<0.8=defensive)
   // Algorithmic recommendation from SmartScore — Claude MUST use this value for "recommendation" field
   forcedRecommendation?: string
 }
@@ -299,9 +303,9 @@ Khối lượng: ${ctx.volumeSignal || 'Bình thường'}
 ${quarterlyEPSBlock}
 ▌ CƠ BẢN (số liệu mới nhất từ Simplize + báo cáo tài chính):
 P/E: ${fmt0(ctx.pe, 'x')} | P/B: ${fmt0(ctx.pb ?? 0, 'x', 2)} | EPS: ${ctx.eps > 0 ? ctx.eps.toLocaleString('vi-VN') + '₫' : 'N/A'}
-ROE: ${fmt0(ctx.roe, '%')} | ROA: ${fmt0(ctx.roa ?? 0, '%')}${ctx.netMargin ? ` | Biên LN ròng: ${ctx.netMargin.toFixed(1)}%` : ''}
+ROE: ${fmt0(ctx.roe, '%')} | ROA: ${fmt0(ctx.roa ?? 0, '%')}${ctx.netMargin ? ` | Biên LN ròng: ${ctx.netMargin.toFixed(1)}%` : ''}${ctx.grossMargin ? ` | Biên lãi gộp: ${ctx.grossMargin.toFixed(1)}%` : ''}${ctx.operatingMargin ? ` | Biên EBIT: ${ctx.operatingMargin.toFixed(1)}%` : ''}
 Tăng trưởng DT: ${fmtGrowth(ctx.revenueGrowth)} | Tăng trưởng LN: ${fmtGrowth(ctx.profitGrowth)}
-Nợ/Vốn chủ: ${ctx.debtEquity > 0 ? ctx.debtEquity.toFixed(2) : 'N/A'} | Cổ tức: ${fmt0(ctx.dividendYield, '%')}
+Nợ/Vốn chủ: ${ctx.debtEquity > 0 ? ctx.debtEquity.toFixed(2) : 'N/A'}${ctx.currentRatio ? ` | Thanh khoản ngắn hạn: ${ctx.currentRatio.toFixed(2)}x` : ''} | Cổ tức: ${fmt0(ctx.dividendYield, '%')}${ctx.beta !== undefined && ctx.beta !== 0 ? `\nBeta (β) vs VN-Index: ${ctx.beta.toFixed(2)} → ${ctx.beta > 1.3 ? '⚠ Biến động CAO hơn thị trường 30%+' : ctx.beta > 1.0 ? 'Biến động hơn thị trường' : ctx.beta < 0.7 ? '🛡 Phòng thủ — ít biến động hơn thị trường' : 'Biến động tương đương thị trường'}` : ''}
 ${(ctx.peg !== undefined || ctx.rs30d !== undefined) ? `
 ▌ ĐỊNH GIÁ TƯƠNG ĐỐI & SỨC MẠNH TƯƠNG ĐỐI:${ctx.peg !== undefined ? `
 PEG Ratio = P/E (${ctx.pe.toFixed(1)}x) / Tăng trưởng LN (${ctx.profitGrowth.toFixed(1)}%) = ${ctx.peg.toFixed(2)}x → ${ctx.peg < 0.8 ? '🟢 RẺ SO VỚI TĂNG TRƯỞNG (PEG < 0.8 — cơ hội mua tốt)' : ctx.peg < 1.5 ? '✅ Định giá hợp lý (PEG 0.8-1.5)' : ctx.peg < 2.5 ? '⚠ Hơi đắt so tăng trưởng (PEG 1.5-2.5)' : '🔴 ĐẮTS so tăng trưởng (PEG > 2.5 — cần thận trọng)'}` : ''}${ctx.rs30d !== undefined ? `
@@ -372,7 +376,7 @@ Trả về JSON trong thẻ <result>:
 
   const response = await withRetry(() => client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2000,
+    max_tokens: 3000,  // Phân tích 1 mã cần 2000-2800 tokens để đầy đủ; 3000 là safe
     system: `Bạn là chuyên gia phân tích chứng khoán CFA Level 3, 20 năm kinh nghiệm thị trường Việt Nam (HOSE/HNX). Nhiệm vụ: phân tích toàn diện, khách quan, ra quyết định đầu tư cụ thể dựa HOÀN TOÀN trên dữ liệu được cung cấp.
 
 QUY TẮC PHÂN TÍCH BẮT BUỘC:
@@ -682,8 +686,10 @@ interface PredictStock {
   roa: number
   pb: number
   netMargin?: number
+  grossMargin?: number
   revenueGrowth: number
   profitGrowth: number
+  epsGrowthYoY?: number
   debtEquity: number
   dividendYield: number
   // Foreign investor flows
@@ -694,6 +700,7 @@ interface PredictStock {
   // Derived metrics
   peg?: number
   rs30d?: number
+  beta?: number
   // News headlines
   newsHeadlines?: string[]
 }
@@ -822,16 +829,19 @@ ${getMarketRegime(ctx.vnIndex)}
       const w52Str = s.w52position !== undefined ? ` 52W=${s.w52position}%[${s.w52low ? Math.round(s.w52low / 1000) : '?'}-${s.w52high ? Math.round(s.w52high / 1000) : '?'}K]` : ''
       const line2 = ` KT:RSI=${s.rsi} ADX=${s.adx}(${s.adxTrend.replace('Xu hướng ', '')}) MACD=${s.macdSignal}/h${s.macdHistogram >= 0 ? '+' : ''}${s.macdHistogram} ${smaStr} BB=${bbShort} Vol=${volShort} 1T${s.momentum1M >= 0 ? '+' : ''}${s.momentum1M}%/3T${s.momentum3M >= 0 ? '+' : ''}${s.momentum3M}%${srStr}${w52Str}`
 
-      const marginStr = (s.netMargin && s.netMargin > 0) ? ` biên=${s.netMargin.toFixed(1)}%` : ''
+      const marginStr = (s.netMargin && s.netMargin > 0) ? ` biênRòng=${s.netMargin.toFixed(1)}%` : ''
+      const grossStr = (s.grossMargin && s.grossMargin > 0) ? ` biênGộp=${s.grossMargin.toFixed(1)}%` : ''
       const marginQ = (s.profitGrowth !== 0 && s.revenueGrowth !== 0) ? (s.profitGrowth > s.revenueGrowth ? '↑' : '↓') : ''
+      const growthStr = s.profitGrowth !== 0 ? `LN${s.profitGrowth >= 0 ? '+' : ''}${s.profitGrowth.toFixed(1)}%${marginQ}` : (s.epsGrowthYoY !== undefined ? `epsYoY${s.epsGrowthYoY >= 0 ? '+' : ''}${s.epsGrowthYoY}%` : 'LN=N/A')
       const pegStr = s.peg !== undefined ? ` PEG=${s.peg.toFixed(2)}${s.peg < 0.8 ? '🟢' : s.peg > 2.5 ? '🔴' : ''}` : ''
+      const betaStr = s.beta !== undefined ? ` β=${s.beta.toFixed(2)}` : ''
       const foreignNet = s.foreignNetVol
       const hasFlow = s.foreignBuyVol > 0 || s.foreignSellVol > 0
       const nnStr = hasFlow
         ? ` | NN${foreignNet >= 0 ? '+' : ''}${Math.round(foreignNet / 1000)}K(M=${Math.round(s.foreignBuyVol / 1000)}K B=${Math.round(s.foreignSellVol / 1000)}K)${s.foreignRoom !== undefined ? ` rm=${s.foreignRoom.toFixed(1)}%` : ''}`
         : ''
       const newsStr = s.newsHeadlines && s.newsHeadlines.length > 0 ? ` | "${s.newsHeadlines[0].slice(0, 55)}"` : ''
-      const line3 = ` CB:PE=${s.pe.toFixed(1)}x PB=${s.pb.toFixed(2)}x EPS=${s.eps > 0 ? Math.round(s.eps).toLocaleString('vi-VN') : 'N/A'}₫ ROE=${s.roe.toFixed(1)}% ROA=${s.roa.toFixed(1)}%${marginStr} LN${s.profitGrowth >= 0 ? '+' : ''}${s.profitGrowth.toFixed(1)}%${marginQ}DT${s.revenueGrowth >= 0 ? '+' : ''}${s.revenueGrowth.toFixed(1)}%${s.debtEquity > 0 ? ` D/E=${s.debtEquity.toFixed(2)}` : ''}${s.dividendYield > 0 ? ` cổtức=${s.dividendYield.toFixed(1)}%` : ''}${pegStr}${nnStr}${newsStr}`
+      const line3 = ` CB:PE=${s.pe.toFixed(1)}x PB=${s.pb.toFixed(2)}x EPS=${s.eps > 0 ? Math.round(s.eps).toLocaleString('vi-VN') : 'N/A'}₫ ROE=${s.roe.toFixed(1)}% ROA=${s.roa.toFixed(1)}%${marginStr}${grossStr} ${growthStr} DT${s.revenueGrowth >= 0 ? '+' : ''}${s.revenueGrowth.toFixed(1)}%${s.debtEquity > 0 ? ` D/E=${s.debtEquity.toFixed(2)}` : ''}${s.dividendYield > 0 ? ` cổtức=${s.dividendYield.toFixed(1)}%` : ''}${pegStr}${betaStr}${nnStr}${newsStr}`
 
       return `${line1}\n${line2}\n${line3}`
     })
@@ -948,8 +958,10 @@ export interface ChatMessage {
 
 export interface ChatStockContext {
   symbol: string
+  industry?: string          // Ngành — để hiện sector P/E benchmark
   price: number
   changePct: number
+  marketCap?: number         // Vốn hóa thị trường (tỷ đồng)
   style?: InvestmentStyle
   // Technical
   rsi: number
@@ -999,13 +1011,18 @@ export interface ChatStockContext {
   w52low?: number
   debtEquity?: number
   netMargin?: number
+  grossMargin?: number        // Biên lợi nhuận gộp
+  operatingMargin?: number    // Biên EBIT
+  currentRatio?: number       // Thanh khoản ngắn hạn
   quarterlyEPS?: Array<{ period: string; eps: number; pe: number }>
+  epsGrowthYoY?: number       // Tăng trưởng EPS YoY từ dữ liệu quý (fallback khi CafeF thiếu growth)
   // Analyst report PDF for deep analysis
   reportPdfBase64?: string
   reportTitle?: string
   // Derived valuation metrics
   peg?: number
   rs30d?: number
+  beta?: number               // Market Beta vs VN-Index
 }
 
 export async function chatStockAnalysis(
@@ -1068,16 +1085,16 @@ ${(() => {
     const trend = epsChg > 20 ? `→ ⬆ EPS TĂNG TỐC +${epsChg}%` : epsChg > 5 ? `→ ↑ +${epsChg}%` : epsChg < -20 ? `→ ⬇ EPS SUY GIẢM ${epsChg}%` : epsChg < -5 ? `→ ↓ ${epsChg}%` : `→ ↔ ổn định`
     return `▌ EPS THEO QUÝ (4 quý gần nhất):\n${rows}\n${trend}\n\n`
   })()}▌ CƠ BẢN (Simplize + CafeF — dữ liệu mới nhất):
-P/E: ${fmt0(ctx.pe, 'x')} | P/B: ${fmt0(ctx.pb, 'x', 2)} | EPS: ${ctx.eps > 0 ? ctx.eps.toLocaleString('vi-VN') + '₫' : 'N/A'}
-ROE: ${fmt0(ctx.roe, '%')} | ROA: ${fmt0(ctx.roa, '%')}${ctx.netMargin ? ` | Biên LN ròng: ${ctx.netMargin.toFixed(1)}%` : ''}${ctx.debtEquity !== undefined && ctx.debtEquity > 0 ? ` | Nợ/Vốn: ${ctx.debtEquity.toFixed(2)}x` : ''}
-Tăng trưởng Doanh thu: ${fmtGrowth(ctx.revenueGrowth)} | Tăng trưởng Lợi nhuận: ${fmtGrowth(ctx.profitGrowth)}
-Cổ tức: ${fmt0(ctx.dividendYield, '%')}${(ctx.peg !== undefined || ctx.rs30d !== undefined) ? `
+P/E: ${fmt0(ctx.pe, 'x')} | P/B: ${fmt0(ctx.pb, 'x', 2)} | EPS: ${ctx.eps > 0 ? ctx.eps.toLocaleString('vi-VN') + '₫' : 'N/A'}${ctx.marketCap && ctx.marketCap > 0 ? ` | Vốn hóa: ${ctx.marketCap > 1000 ? (ctx.marketCap / 1000).toFixed(1) + ' nghìn tỷ' : ctx.marketCap.toFixed(0) + ' tỷ'} VND` : ''}
+ROE: ${fmt0(ctx.roe, '%')} | ROA: ${fmt0(ctx.roa, '%')}${ctx.netMargin ? ` | Biên LN ròng: ${ctx.netMargin.toFixed(1)}%` : ''}${ctx.grossMargin ? ` | Biên lãi gộp: ${ctx.grossMargin.toFixed(1)}%` : ''}${ctx.operatingMargin ? ` | Biên EBIT: ${ctx.operatingMargin.toFixed(1)}%` : ''}
+Tăng trưởng Doanh thu: ${fmtGrowth(ctx.revenueGrowth)} | Tăng trưởng Lợi nhuận: ${fmtGrowth(ctx.profitGrowth)}${ctx.epsGrowthYoY !== undefined && ctx.profitGrowth === 0 ? ` (EPS YoY: ${ctx.epsGrowthYoY >= 0 ? '+' : ''}${ctx.epsGrowthYoY}%)` : ''}
+Nợ/Vốn: ${ctx.debtEquity !== undefined && ctx.debtEquity > 0 ? ctx.debtEquity.toFixed(2) + 'x' : 'N/A'}${ctx.currentRatio ? ` | Thanh khoản ngắn hạn: ${ctx.currentRatio.toFixed(2)}x` : ''} | Cổ tức: ${fmt0(ctx.dividendYield, '%')}${ctx.beta !== undefined && ctx.beta !== 0 ? `\nBeta (β): ${ctx.beta.toFixed(2)} → ${ctx.beta > 1.3 ? '⚠ Biến động CAO hơn VN-Index 30%+' : ctx.beta > 1.0 ? 'Biến động hơn thị trường' : ctx.beta < 0.7 ? '🛡 Phòng thủ — ít biến động' : 'Tương đương thị trường'}` : ''}${(ctx.peg !== undefined || ctx.rs30d !== undefined) ? `
 
 ▌ ĐỊNH GIÁ TƯƠNG ĐỐI & SỨC MẠNH TƯƠNG ĐỐI:${ctx.peg !== undefined ? `
 PEG Ratio = P/E / TT_LN = ${ctx.peg.toFixed(2)}x → ${ctx.peg < 0.8 ? '🟢 RẺ SO VỚI TĂNG TRƯỞNG (cơ hội mua tốt)' : ctx.peg < 1.5 ? '✅ Định giá hợp lý' : ctx.peg < 2.5 ? '⚠ Hơi đắt' : '🔴 ĐẮTS so tăng trưởng'}` : ''}${ctx.rs30d !== undefined ? `
 RS vs VN-Index (30 ngày): ${ctx.rs30d >= 0 ? '+' : ''}${ctx.rs30d.toFixed(1)}% → ${ctx.rs30d > 5 ? '🚀 OUTPERFORM MẠNH' : ctx.rs30d > 0 ? '📈 Outperform nhẹ' : ctx.rs30d > -5 ? '📉 Underperform nhẹ' : '⚠ UNDERPERFORM MẠNH'}` : ''}${ctx.revenueGrowth !== 0 && ctx.profitGrowth !== 0 ? `
 Chất lượng LN: ${ctx.profitGrowth > ctx.revenueGrowth ? '✓ Biên LN MỞ RỘNG (LN tăng nhanh hơn DT — hiệu quả cải thiện)' : '⚠ Biên LN THU HẸP (LN tăng chậm hơn DT — chi phí leo thang)'}` : ''}` : ''}
-
+${ctx.industry ? `\n${getSectorBenchmark(ctx.industry)}` : ''}
 ▌ DÒNG TIỀN NGOẠI (tín hiệu quan trọng TTCK VN):
 ${foreignBlock}
 
@@ -1123,7 +1140,7 @@ QUY TẮC TRẢ LỜI — PHÂN TÍCH CHUYÊN SÂU:
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2000,
+    max_tokens: 5000,  // Chat cần response dài ~3000-4500 tokens cho phân tích toàn diện
     system: systemPrompt,
     messages: anthropicMessages,
   })

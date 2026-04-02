@@ -339,3 +339,26 @@ export function calcCCI(highs: number[], lows: number[], closes: number[], perio
   }
   return result
 }
+
+// calcBeta — Market Beta vs a benchmark (e.g., VN-Index)
+// β = Cov(stock_returns, benchmark_returns) / Var(benchmark_returns)
+// Aligns the last min(stock.len, bench.len) candles, computes daily returns, returns 0 if <10 data points.
+export function calcBeta(stockCloses: number[], benchmarkCloses: number[]): number {
+  const n = Math.min(stockCloses.length, benchmarkCloses.length)
+  if (n < 11) return 0
+  const sRets: number[] = [], bRets: number[] = []
+  for (let i = 1; i < n; i++) {
+    const si  = stockCloses[stockCloses.length - n + i]
+    const si1 = stockCloses[stockCloses.length - n + i - 1]
+    const bi  = benchmarkCloses[benchmarkCloses.length - n + i]
+    const bi1 = benchmarkCloses[benchmarkCloses.length - n + i - 1]
+    if (si1 > 0 && bi1 > 0) { sRets.push((si - si1) / si1); bRets.push((bi - bi1) / bi1) }
+  }
+  if (sRets.length < 10) return 0
+  const m  = sRets.length
+  const ms = sRets.reduce((a, b) => a + b, 0) / m
+  const mb = bRets.reduce((a, b) => a + b, 0) / m
+  const cov  = sRets.reduce((sum, r, i) => sum + (r - ms) * (bRets[i] - mb), 0) / (m - 1)
+  const varB = bRets.reduce((sum, r) => sum + (r - mb) ** 2, 0) / (m - 1)
+  return varB > 0 ? Math.round((cov / varB) * 100) / 100 : 0
+}
