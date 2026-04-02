@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk'
+import Anthropic, { APIUserAbortError } from '@anthropic-ai/sdk'
 import type { AnalysisResult } from '@/types'
 
 function getClient(): Anthropic {
@@ -9,17 +9,25 @@ function getClient(): Anthropic {
   return new Anthropic({ apiKey })
 }
 
-// Retry 1 lần cho lỗi 529 Overloaded / 429 Rate Limit — tổng max ~4+30s = 34s < maxDuration 60s
+// Retry 1 lần cho lỗi 529/503/500 (Overloaded/ServiceUnavailable/InternalError) và 429 Rate Limit
+// Không retry nếu request bị abort (tránh gọi lại sau khi đã timeout)
 async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn()
   } catch (err: unknown) {
+    // Pass-through abort — don't retry a cancelled request
+    // Anthropic SDK throws APIUserAbortError (not standard AbortError) when AbortSignal fires
+    if (err instanceof APIUserAbortError || (err instanceof Error && err.name === 'AbortError')) {
+      throw new Error('Phân tích AI timeout — server đang bận, vui lòng thử lại sau vài giây')
+    }
     const status = (err as { status?: number })?.status
     const msg    = err instanceof Error ? err.message : ''
     const isOverloaded = status === 529 || msg.toLowerCase().includes('overloaded')
     const isRateLimit  = status === 429
-    if (isOverloaded || isRateLimit) {
-      await new Promise(resolve => setTimeout(resolve, 4000))
+    // Also retry Anthropic's own 5xx errors (InternalServerError=500, ServiceUnavailableError=503)
+    const isServerError = status === 500 || status === 503
+    if (isOverloaded || isRateLimit || isServerError) {
+      await new Promise(resolve => setTimeout(resolve, 3000))
       return await fn()
     }
     throw err
@@ -731,8 +739,8 @@ const PREDICT_TOOL: Anthropic.Tool = {
             targetPrice:    { type: 'number' as const, description: 'Giá mục tiêu 12 tháng (VND)' },
             currentPrice:   { type: 'number' as const, description: 'Giá hiện tại (VND)' },
             upsidePct:      { type: 'number' as const, description: '% upside = (target-current)/current*100' },
-            reason:         { type: 'string' as const, description: 'Phân tích 4-5 câu ĐẦY ĐỦ: (1) kỹ thuật ADX/RSI/MACD cụ thể với con số, (2) cơ bản PE vs benchmark ngành/ROE/LN_growth, (3) dòng tiền NN mua/bán bao nhiêu CP, (4) rủi ro chính cần theo dõi' },
-            catalyst:       { type: 'string' as const, description: '1-2 câu ngắn gọn: sự kiện CỤ THỂ thúc đẩy giá trong 1-3 tháng tới (KQKD quý/năm, chính sách, kỹ thuật bật hỗ trợ, cổ tức dự kiến...)' },
+            reason:         { type: 'string' as const, description: '2-3 câu: (1) KT ADX/RSI/MACD với số cụ thể, (2) CB PE so ngành/ROE/LN_growth%, (3) rủi ro chính' },
+            catalyst:       { type: 'string' as const, description: '1 câu: sự kiện cụ thể thúc đẩy giá 1-3 tháng tới' },
             keyMetrics: {
               type: 'object' as const,
               properties: {
@@ -799,34 +807,33 @@ ${getMarketRegime(ctx.vnIndex)}
     ? `\n▌ BENCHMARK ĐỊNH GIÁ NGÀNH (so sánh P/E, P/B, ROE từng mã với ngành):\n${uniqueIndustries.map(ind => getSectorBenchmark(ind)).filter(Boolean).join('\n')}\n`
     : ''
 
-  // Per-stock data rows
+  // Per-stock data rows — compact 3-line format (same data, ~50% fewer tokens)
   const tableRows = ctx.stocks
     .map((s, i) => {
+      const rsStr = s.rs30d !== undefined ? `/RS${s.rs30d >= 0 ? '+' : ''}${s.rs30d.toFixed(1)}%${s.rs30d > 5 ? '🚀' : s.rs30d < -5 ? '⚠' : ''}` : ''
+      const line1 = `${i + 1}.${s.symbol}[${s.industry}] ${s.price.toLocaleString('vi-VN')}₫(${s.changePct >= 0 ? '+' : ''}${s.changePct.toFixed(1)}%/30D${s.trend30d >= 0 ? '+' : ''}${s.trend30d.toFixed(1)}%${rsStr}) KL=${(s.volume / 1000).toFixed(0)}K`
+
+      const smaStr = `${s.aboveSMA20 ? '↑' : '↓'}SMA20${s.aboveSMA50 ? '↑' : '↓'}SMA50`
+      const bbShort = s.bbSignal.includes('top') || s.bbSignal.includes('trên') ? 'top' : s.bbSignal.includes('bot') || s.bbSignal.includes('dưới') ? 'bot' : 'mid'
+      const volShort = s.volumeSignal.includes('lớn') || s.volumeSignal.includes('thường') && s.volumeSignal.includes('Cao') ? 'HIGH' : s.volumeSignal.includes('Thấp') ? 'low' : 'norm'
+      const srStr = (s.support && s.resistance)
+        ? ` S=${s.support2 ? Math.round(s.support2 / 1000) + '→' : ''}${Math.round(s.support / 1000)}K R=${Math.round(s.resistance / 1000)}${s.resistance2 ? '→' + Math.round(s.resistance2 / 1000) : ''}K`
+        : ''
+      const w52Str = s.w52position !== undefined ? ` 52W=${s.w52position}%[${s.w52low ? Math.round(s.w52low / 1000) : '?'}-${s.w52high ? Math.round(s.w52high / 1000) : '?'}K]` : ''
+      const line2 = ` KT:RSI=${s.rsi} ADX=${s.adx}(${s.adxTrend.replace('Xu hướng ', '')}) MACD=${s.macdSignal}/h${s.macdHistogram >= 0 ? '+' : ''}${s.macdHistogram} ${smaStr} BB=${bbShort} Vol=${volShort} 1T${s.momentum1M >= 0 ? '+' : ''}${s.momentum1M}%/3T${s.momentum3M >= 0 ? '+' : ''}${s.momentum3M}%${srStr}${w52Str}`
+
+      const marginStr = (s.netMargin && s.netMargin > 0) ? ` biên=${s.netMargin.toFixed(1)}%` : ''
+      const marginQ = (s.profitGrowth !== 0 && s.revenueGrowth !== 0) ? (s.profitGrowth > s.revenueGrowth ? '↑' : '↓') : ''
+      const pegStr = s.peg !== undefined ? ` PEG=${s.peg.toFixed(2)}${s.peg < 0.8 ? '🟢' : s.peg > 2.5 ? '🔴' : ''}` : ''
       const foreignNet = s.foreignNetVol
       const hasFlow = s.foreignBuyVol > 0 || s.foreignSellVol > 0
-      const foreignStr = hasFlow
-        ? `\n   Dòng NN: Mua=${s.foreignBuyVol.toLocaleString('vi-VN')} | Bán=${s.foreignSellVol.toLocaleString('vi-VN')} | Net=${foreignNet >= 0 ? '+' : ''}${foreignNet.toLocaleString('vi-VN')} CP${s.foreignRoom !== undefined ? ` | Room=${s.foreignRoom.toFixed(1)}%` : ''}`
+      const nnStr = hasFlow
+        ? ` | NN${foreignNet >= 0 ? '+' : ''}${Math.round(foreignNet / 1000)}K(M=${Math.round(s.foreignBuyVol / 1000)}K B=${Math.round(s.foreignSellVol / 1000)}K)${s.foreignRoom !== undefined ? ` rm=${s.foreignRoom.toFixed(1)}%` : ''}`
         : ''
-      const srStr = (s.support && s.resistance)
-        ? `\n   S/R: Hỗ trợ=${s.support2 ? s.support2.toLocaleString('vi-VN') + '→' : ''}${s.support.toLocaleString('vi-VN')}₫ | Kháng cự=${s.resistance.toLocaleString('vi-VN')}${s.resistance2 ? '→' + s.resistance2.toLocaleString('vi-VN') : ''}₫`
-        : ''
-      const w52Str = (s.w52high && s.w52low)
-        ? `\n   52W: Low=${s.w52low.toLocaleString('vi-VN')}₫ / High=${s.w52high.toLocaleString('vi-VN')}₫ → Giá ở ${s.w52position ?? 50}% vùng 52 tuần`
-        : ''
-      const pegStr = s.peg !== undefined ? ` | PEG=${s.peg.toFixed(2)}x${s.peg < 0.8 ? '🟢rẻ' : s.peg < 1.5 ? '' : '🔴đắt'}` : ''
-      const rsStr = s.rs30d !== undefined ? ` | RS_VNI=${s.rs30d >= 0 ? '+' : ''}${s.rs30d.toFixed(1)}%${s.rs30d > 5 ? '🚀' : s.rs30d > 0 ? '↑' : s.rs30d < -5 ? '⚠' : '↓'}` : ''
-      const marginStr = (s.netMargin && s.netMargin > 0) ? ` | BiênLN=${s.netMargin.toFixed(1)}%` : ''
-      const newsStr = s.newsHeadlines && s.newsHeadlines.length > 0
-        ? `\n   Tin tức: ${s.newsHeadlines.slice(0, 2).map(h => `"${h.slice(0, 80)}"`).join(' | ')}`
-        : ''
-      const marginQuality = (s.profitGrowth !== 0 && s.revenueGrowth !== 0)
-        ? ` [${s.profitGrowth > s.revenueGrowth ? '↑Biên_MỞ' : '↓Biên_THU'}]`
-        : ''
-      return `${i + 1}. [${s.symbol}] ${s.industry}
-   Giá: ${s.price.toLocaleString('vi-VN')}₫ | Hôm nay: ${s.changePct >= 0 ? '+' : ''}${s.changePct.toFixed(1)}% | Trend30D: ${s.trend30d >= 0 ? '+' : ''}${s.trend30d.toFixed(1)}%${rsStr}
-   Kỹ thuật: RSI=${s.rsi} | ADX=${s.adx}(${s.adxTrend}) | MACD ${s.macdSignal} hist=${s.macdHistogram} | ${s.aboveSMA20 ? '↑SMA20' : '↓SMA20'} ${s.aboveSMA50 ? '↑SMA50' : '↓SMA50'} | BB=${s.bbSignal} | Vol=${s.volumeSignal}
-   Momentum: 1T=${s.momentum1M >= 0 ? '+' : ''}${s.momentum1M}% | 3T=${s.momentum3M >= 0 ? '+' : ''}${s.momentum3M}% | KL=${s.volume.toLocaleString('vi-VN')}${srStr}${w52Str}
-   Cơ bản: P/E=${s.pe.toFixed(1)}x | P/B=${s.pb.toFixed(2)}x | EPS=${s.eps.toLocaleString('vi-VN')}₫ | ROE=${s.roe.toFixed(1)}% | ROA=${s.roa.toFixed(1)}%${marginStr} | LN_Growth=${s.profitGrowth >= 0 ? '+' : ''}${s.profitGrowth.toFixed(1)}% | DT_Growth=${s.revenueGrowth >= 0 ? '+' : ''}${s.revenueGrowth.toFixed(1)}%${marginQuality}${s.dividendYield > 0 ? ` | Cổtức=${s.dividendYield.toFixed(1)}%` : ''}${s.debtEquity > 0 ? ` | D/E=${s.debtEquity.toFixed(2)}x` : ''}${pegStr}${foreignStr}${newsStr}`
+      const newsStr = s.newsHeadlines && s.newsHeadlines.length > 0 ? ` | "${s.newsHeadlines[0].slice(0, 55)}"` : ''
+      const line3 = ` CB:PE=${s.pe.toFixed(1)}x PB=${s.pb.toFixed(2)}x EPS=${s.eps > 0 ? Math.round(s.eps).toLocaleString('vi-VN') : 'N/A'}₫ ROE=${s.roe.toFixed(1)}% ROA=${s.roa.toFixed(1)}%${marginStr} LN${s.profitGrowth >= 0 ? '+' : ''}${s.profitGrowth.toFixed(1)}%${marginQ}DT${s.revenueGrowth >= 0 ? '+' : ''}${s.revenueGrowth.toFixed(1)}%${s.debtEquity > 0 ? ` D/E=${s.debtEquity.toFixed(2)}` : ''}${s.dividendYield > 0 ? ` cổtức=${s.dividendYield.toFixed(1)}%` : ''}${pegStr}${nnStr}${newsStr}`
+
+      return `${line1}\n${line2}\n${line3}`
     })
     .join('\n\n')
 
@@ -889,16 +896,30 @@ NHIỆM VỤ:
 5. Tính targetPrice, entryZone, stopLoss theo FORMULA đã cho
 6. Gọi tool predict_stocks với đầy đủ 5 mã
 
-QUAN TRỌNG: reason BẮT BUỘC gồm 4 yếu tố: (1) kỹ thuật ADX/RSI/MACD có số cụ thể, (2) cơ bản PE so ngành/ROE/LN_growth, (3) dòng tiền NN số CP mua/bán ròng, (4) rủi ro chính. catalyst: sự kiện CỤ THỂ trong 1-3 tháng tới.`
+reason: 2-3 câu (KT ADX/RSI/MACD số cụ thể, CB PE so ngành/ROE/growth, rủi ro). catalyst: 1 câu sự kiện cụ thể 1-3 tháng.`
 
-  const response = await withRetry(() => client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 3500,
-    system: systemPrompt,
-    tools: [PREDICT_TOOL],
-    tool_choice: { type: 'tool', name: 'predict_stocks' },
-    messages: [{ role: 'user', content: prompt }],
-  }))
+  // Hard 55s abort — prevents exceeding Vercel's 60s maxDuration (55s + JSON response overhead ≈ 55.5s < 60s)
+  const controller = new AbortController()
+  const abortTimer = setTimeout(() => controller.abort(), 55000)
+
+  let response: Anthropic.Message
+  try {
+    response = await withRetry(() => client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 3000,  // 5 predictions × reason(4-5 câu ~150tk) + catalyst + fields ≈ 2000-2500tk; 3000 is safe
+      system: systemPrompt,
+      tools: [PREDICT_TOOL],
+      tool_choice: { type: 'tool', name: 'predict_stocks' },
+      messages: [{ role: 'user', content: prompt }],
+    }, { signal: controller.signal }))
+  } finally {
+    clearTimeout(abortTimer)
+  }
+
+  // Detect truncation — if max_tokens hit, predictions may be incomplete/empty
+  if (response.stop_reason === 'max_tokens') {
+    throw new Error('Phân tích AI bị cắt ngắn — vui lòng thử lại')
+  }
 
   const toolBlock = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
   if (!toolBlock?.input) throw new Error('Claude did not return prediction data')
@@ -913,7 +934,9 @@ QUAN TRỌNG: reason BẮT BUỘC gồm 4 yếu tố: (1) kỹ thuật ADX/RSI/M
       stopLoss?: number
     }>
   }
-  return result.predictions ?? []
+  const preds = result.predictions ?? []
+  if (preds.length === 0) throw new Error('Claude không trả về dự đoán — vui lòng thử lại')
+  return preds
 }
 
 // ─── Chat AI ────────────────────────────────────────────────────────────────

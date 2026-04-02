@@ -43,7 +43,7 @@ export default function StockPredictions() {
   const [retryMsg, setRetryMsg] = useState<string | null>(null)
   const [loadingStage, setLoadingStage] = useState(0)
   const stageTimers = useRef<ReturnType<typeof setTimeout>[]>([])
-  const [error, setError] = useState(false)
+  const [error, setError] = useState<string | false>(false)
   const [fromStorage, setFromStorage] = useState(false)
   const [predictedAt, setPredictedAt] = useState<string | null>(null)
 
@@ -76,7 +76,7 @@ export default function StockPredictions() {
           setFromStorage(false)
           setPredictedAt(null)
         }
-        setError(false)
+        setError(false as const)
       }
     }
     loadFromStorage()
@@ -86,7 +86,7 @@ export default function StockPredictions() {
   const runAnalysis = useCallback(async (s: ActiveTab) => {
     if (s === 'chat') return
     setIsLoading(true)
-    setError(false)
+    setError(false as const)
     setFromStorage(false)
     setPredictedAt(null)
     setRetryMsg(null)
@@ -102,7 +102,10 @@ export default function StockPredictions() {
         setRetryMsg(null)
         return attempt(retryCount + 1)
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error((errData as { error?: string }).error || `HTTP ${res.status}`)
+      }
       const data: PredictionItem[] = await res.json()
       await savePredictions(s as InvestmentStyle, data)
       setPredictions(data)
@@ -112,8 +115,8 @@ export default function StockPredictions() {
 
     try {
       await attempt(0)
-    } catch {
-      setError(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Phân tích thất bại')
       setPredictions(null)
     } finally {
       setIsLoading(false)
@@ -269,9 +272,10 @@ export default function StockPredictions() {
       {/* Error */}
       {style !== 'chat' && error && !isLoading && (
         <div className="card-glass p-8 text-center">
-          <Sparkles className="w-8 h-8 text-muted mx-auto mb-3 opacity-50" />
-          <p className="text-muted text-sm">Phân tích thất bại. Vui lòng thử lại.</p>
-          <button onClick={handleReanalyze} className="mt-3 text-xs text-accent hover:underline">Thử lại</button>
+          <AlertTriangle className="w-8 h-8 text-danger mx-auto mb-3 opacity-70" />
+          <p className="text-danger/80 text-sm font-medium mb-1">Phân tích thất bại</p>
+          <p className="text-muted text-xs mb-3 max-w-sm mx-auto">{typeof error === 'string' ? error : 'Vui lòng thử lại.'}</p>
+          <button onClick={handleReanalyze} className="text-xs text-accent hover:underline">Thử lại</button>
         </div>
       )}
 
